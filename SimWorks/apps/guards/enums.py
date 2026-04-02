@@ -51,7 +51,11 @@ RESUMABLE_GUARD_STATES = frozenset(
 
 
 class PauseReason(models.TextChoices):
-    """Why a session was paused."""
+    """Why a session entered its current state.
+
+    Exposed publicly as ``guard_reason`` in the API contract.
+    The internal model field remains ``pause_reason`` to avoid migration churn.
+    """
 
     NONE = "none", "None"
     INACTIVITY = "inactivity", "Inactivity"
@@ -59,6 +63,9 @@ class PauseReason(models.TextChoices):
     USAGE_LIMIT = "usage_limit", "Usage Limit"
     WALL_CLOCK_EXPIRY = "wall_clock_expiry", "Wall-Clock Expiry"
     MANUAL = "manual", "Manual"
+    USER_ENDED = "user_ended", "User Ended"
+    ADMIN_ENDED = "admin_ended", "Admin Ended"
+    SESSION_EXPIRY = "session_expiry", "Session Expiry"
 
 
 class DenialReason(models.TextChoices):
@@ -77,7 +84,6 @@ class DenialReason(models.TextChoices):
     USER_TOKEN_LIMIT = "user_token_limit", "Your usage limit reached"
     ACCOUNT_TOKEN_LIMIT = "account_token_limit", "Account usage limit reached"
     INSUFFICIENT_TOKEN_BUDGET = "insufficient_token_budget", "Insufficient token budget"
-    WALL_CLOCK_EXPIRED = "wall_clock_expired", "Session wall-clock expired"
 
 
 class ClientVisibility(models.TextChoices):

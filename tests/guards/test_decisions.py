@@ -112,7 +112,7 @@ class TestMayStartRuntimeOperation:
         guard = RuntimeGuard(presence, policy)
         decision = guard.may_start_runtime_operation(active_elapsed=0)
         assert not decision.allowed
-        assert decision.denial_reason == DenialReason.WALL_CLOCK_EXPIRED
+        assert decision.denial_reason == DenialReason.SESSION_ENDED
 
     def test_near_cap_includes_warning(self):
         presence = _make_presence()

@@ -5797,8 +5797,8 @@
             "title": "Guard State",
             "type": "string"
           },
-          "pause_reason": {
-            "title": "Pause Reason",
+          "guard_reason": {
+            "title": "Guard Reason",
             "type": "string"
           },
           "engine_runnable": {
@@ -5852,7 +5852,7 @@
         },
         "required": [
           "guard_state",
-          "pause_reason",
+          "guard_reason",
           "engine_runnable"
         ],
         "title": "GuardStateOut",

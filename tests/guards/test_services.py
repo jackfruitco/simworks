@@ -487,3 +487,50 @@ class TestGetGuardState:
         state = get_guard_state_for_simulation(simulation.pk)
         assert "denial_reason" not in state
         assert "denial_message" not in state
+
+    def test_no_presence_guard_reason_is_none(self, simulation):
+        """Default state should have guard_reason='none'."""
+        state = get_guard_state_for_simulation(simulation.pk)
+        assert state["guard_reason"] == "none"
+        assert "pause_reason" not in state
+
+    def test_guard_reason_replaces_pause_reason(self, simulation, trainerlab_presence):
+        """Public response uses guard_reason, not pause_reason."""
+        trainerlab_presence.guard_state = GuardState.PAUSED_INACTIVITY
+        trainerlab_presence.pause_reason = PauseReason.INACTIVITY
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        assert state["guard_reason"] == PauseReason.INACTIVITY
+        assert "pause_reason" not in state
+
+    def test_ended_wall_clock_guard_reason(self, simulation, trainerlab_presence):
+        """Ended by wall-clock uses guard_reason=wall_clock_expiry, denial.code=session_ended."""
+        trainerlab_presence.guard_state = GuardState.ENDED
+        trainerlab_presence.pause_reason = PauseReason.WALL_CLOCK_EXPIRY
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        assert state["guard_state"] == GuardState.ENDED
+        assert state["guard_reason"] == PauseReason.WALL_CLOCK_EXPIRY
+
+        denial = state["denial"]
+        assert denial is not None
+        assert denial["code"] == DenialReason.SESSION_ENDED
+        assert denial["terminal"] is True
+        assert denial["metadata"]["guard_reason"] == PauseReason.WALL_CLOCK_EXPIRY
+
+    def test_denial_metadata_uses_guard_reason(self, simulation, trainerlab_presence):
+        """Denial metadata should use guard_reason, not pause_reason."""
+        trainerlab_presence.guard_state = GuardState.LOCKED_USAGE
+        trainerlab_presence.pause_reason = PauseReason.USAGE_LIMIT
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        denial = state["denial"]
+        assert "guard_reason" in denial["metadata"]
+        assert "pause_reason" not in denial["metadata"]
+        assert denial["metadata"]["guard_reason"] == PauseReason.USAGE_LIMIT

@@ -34,7 +34,7 @@ class GuardStateOut(Schema):
     """Current guard state for a session."""
 
     guard_state: str
-    pause_reason: str
+    guard_reason: str
     engine_runnable: bool
     active_elapsed_seconds: int = 0
     runtime_cap_seconds: int | None = None

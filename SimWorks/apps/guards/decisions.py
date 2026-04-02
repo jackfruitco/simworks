@@ -193,8 +193,8 @@ class RuntimeGuard:
         now = now or timezone.now()
         if now >= self.presence.wall_clock_expires_at:
             return GuardDecision.deny(
-                DenialReason.WALL_CLOCK_EXPIRED,
-                "Session wall-clock time has expired.",
+                DenialReason.SESSION_ENDED,
+                "Session has ended — wall-clock time expired.",
             )
         return GuardDecision.allow()
 

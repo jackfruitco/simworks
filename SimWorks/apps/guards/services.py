@@ -746,7 +746,7 @@ def get_guard_state_for_simulation(
     except SessionPresence.DoesNotExist:
         return {
             "guard_state": GuardState.ACTIVE,
-            "pause_reason": PauseReason.NONE,
+            "guard_reason": PauseReason.NONE,
             "engine_runnable": True,
             "active_elapsed_seconds": 0,
             "runtime_cap_seconds": None,
@@ -781,7 +781,7 @@ def get_guard_state_for_simulation(
 
     return {
         "guard_state": presence.guard_state,
-        "pause_reason": presence.pause_reason,
+        "guard_reason": presence.pause_reason,
         "engine_runnable": presence.engine_runnable,
         "active_elapsed_seconds": active_elapsed,
         "runtime_cap_seconds": policy.runtime_cap_seconds,

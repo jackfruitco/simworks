@@ -926,6 +926,8 @@ class TestGuardDeniedChatSend:
         assert denial["resumable"] is True
         assert denial["terminal"] is False
         assert denial["metadata"]["guard_state"] == GuardState.LOCKED_USAGE
+        assert denial["metadata"]["guard_reason"] == PauseReason.USAGE_LIMIT
+        assert "pause_reason" not in denial["metadata"]
 
     @patch("apps.guards.services.check_chat_send_allowed")
     def test_paused_runtime_cap_returns_terminal_guard_denial(

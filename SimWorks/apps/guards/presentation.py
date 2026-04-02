@@ -140,7 +140,7 @@ def denial_for_state(
         terminal=guard_state in TERMINAL_GUARD_STATES,
         metadata={
             "guard_state": guard_state,
-            "pause_reason": pause_reason,
+            "guard_reason": pause_reason,
         },
     )
 
@@ -192,11 +192,6 @@ _REASON_SIGNAL_MAP: dict[str, dict[str, Any]] = {
     },
     DenialReason.SESSION_ENDED: {
         "title": "Session ended",
-        "resumable": False,
-        "terminal": True,
-    },
-    DenialReason.WALL_CLOCK_EXPIRED: {
-        "title": "Session expired",
         "resumable": False,
         "terminal": True,
     },

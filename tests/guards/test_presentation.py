@@ -79,6 +79,8 @@ class TestDenialForState:
         assert sig["terminal"] is False
         assert sig["severity"] == "error"
         assert sig["metadata"]["guard_state"] == GuardState.PAUSED_INACTIVITY
+        assert sig["metadata"]["guard_reason"] == PauseReason.INACTIVITY
+        assert "pause_reason" not in sig["metadata"]
 
     def test_paused_manual(self):
         sig = denial_for_state(GuardState.PAUSED_MANUAL, PauseReason.MANUAL)
@@ -106,6 +108,14 @@ class TestDenialForState:
         assert sig is not None
         assert sig["code"] == DenialReason.SESSION_ENDED
         assert sig["resumable"] is False
+        assert sig["terminal"] is True
+
+    def test_ended_wall_clock(self):
+        sig = denial_for_state(GuardState.ENDED, PauseReason.WALL_CLOCK_EXPIRY)
+        assert sig is not None
+        assert sig["code"] == DenialReason.SESSION_ENDED
+        assert sig["metadata"]["guard_state"] == GuardState.ENDED
+        assert sig["metadata"]["guard_reason"] == PauseReason.WALL_CLOCK_EXPIRY
         assert sig["terminal"] is True
 
     def test_active_returns_none(self):

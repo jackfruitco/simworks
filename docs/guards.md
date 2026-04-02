@@ -35,18 +35,40 @@ SSE connection alone does **not** define active state.
 | `locked_usage` | Token usage limit exceeded |
 | `ended` | Terminal (wall-clock expiry or explicit end) |
 
-### Pause Reasons
+### Guard Reasons (`guard_reason`)
+
+The `guard_reason` field tells the client **why** the session entered its
+current state.  It is distinct from `denial.code` — the reason is the cause,
+the denial code is the UI/action category.
 
 | Reason | Description |
 |--------|-------------|
-| `none` | Not paused |
+| `none` | Not paused / active |
 | `inactivity` | No heartbeat for 5 minutes |
 | `runtime_cap` | Active elapsed time exceeded plan limit |
 | `usage_limit` | Token limit exceeded |
 | `wall_clock_expiry` | Session wall-clock expired |
 | `manual` | User/instructor manually paused |
+| `user_ended` | User explicitly ended the session |
+| `admin_ended` | Instructor/admin ended the session |
+| `session_expiry` | Session expired (future use) |
 
-### Resumable vs Terminal Pause
+### Semantic Split
+
+- **`guard_state`** tells the client what state the session is currently in.
+- **`guard_reason`** tells the client why the session entered that state.
+- **`denial`** tells the client what to display and what actions remain available.
+
+Specific terminal causes such as wall-clock expiry are communicated through
+`guard_reason`, while `denial.code` remains the broader UI/action category
+(e.g. `session_ended`).
+
+Frontends should:
+- Use `denial.title` and `denial.message` for display
+- Use `denial.resumable` / `denial.terminal` for behavior
+- Use `guard_reason` only when they need more specific cause handling
+
+### Resumable vs Terminal
 
 - **Resumable**: `paused_inactivity`, `paused_manual`, `locked_usage` — user can resume and continue
 - **Terminal**: `paused_runtime_cap`, `ended` — engine progression is permanently stopped
@@ -65,7 +87,7 @@ objects, not free-form strings.**
 ```json
 {
   "guard_state": "paused_runtime_cap",
-  "pause_reason": "runtime_cap",
+  "guard_reason": "runtime_cap",
   "engine_runnable": false,
   "active_elapsed_seconds": 1200,
   "runtime_cap_seconds": 1200,
@@ -81,7 +103,29 @@ objects, not free-form strings.**
     "expires_in_seconds": null,
     "metadata": {
       "guard_state": "paused_runtime_cap",
-      "pause_reason": "runtime_cap"
+      "guard_reason": "runtime_cap"
+    }
+  }
+}
+```
+
+#### Wall-clock terminal example
+
+```json
+{
+  "guard_state": "ended",
+  "guard_reason": "wall_clock_expiry",
+  "engine_runnable": false,
+  "denial": {
+    "code": "session_ended",
+    "severity": "error",
+    "title": "Session ended",
+    "message": "Session has ended.",
+    "resumable": false,
+    "terminal": true,
+    "metadata": {
+      "guard_state": "ended",
+      "guard_reason": "wall_clock_expiry"
     }
   }
 }
@@ -143,7 +187,7 @@ the same canonical code and semantics as the guard-state endpoint:
   "title": "Guard denied",
   "status": 403,
   "detail": "Session locked due to usage limits.",
-  "instance": "/api/v1/simulations/123/conversations/456/messages/",
+  "instance": "/api/v1/simulations/123/messages/",
   "correlation_id": "...",
   "guard_denial": {
     "code": "usage_limit_reached",
@@ -155,7 +199,7 @@ the same canonical code and semantics as the guard-state endpoint:
     "expires_in_seconds": null,
     "metadata": {
       "guard_state": "locked_usage",
-      "pause_reason": "usage_limit"
+      "guard_reason": "usage_limit"
     }
   }
 }
