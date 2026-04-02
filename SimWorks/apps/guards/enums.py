@@ -62,16 +62,22 @@ class PauseReason(models.TextChoices):
 
 
 class DenialReason(models.TextChoices):
-    """Structured reason codes returned when a guard check denies a request."""
+    """Canonical public denial codes for the guard API contract.
+
+    These values are the **single source of truth** for external-facing
+    denial codes.  ``presentation.py`` maps guard states to these codes;
+    ``decisions.py`` uses them internally.  Clients branch on these codes.
+    """
 
     SESSION_PAUSED = "session_paused", "Session is paused"
     RUNTIME_CAP_REACHED = "runtime_cap_reached", "Runtime cap reached"
+    SESSION_ENDED = "session_ended", "Session has ended"
+    USAGE_LIMIT_REACHED = "usage_limit_reached", "Usage limit reached"
     SESSION_TOKEN_LIMIT = "session_token_limit", "Session token limit reached"
     USER_TOKEN_LIMIT = "user_token_limit", "Your usage limit reached"
     ACCOUNT_TOKEN_LIMIT = "account_token_limit", "Account usage limit reached"
     INSUFFICIENT_TOKEN_BUDGET = "insufficient_token_budget", "Insufficient token budget"
     WALL_CLOCK_EXPIRED = "wall_clock_expired", "Session wall-clock expired"
-    CHAT_SEND_LOCKED = "chat_send_locked", "Sending locked due to usage"
 
 
 class ClientVisibility(models.TextChoices):

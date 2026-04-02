@@ -1,15 +1,20 @@
-"""Tests for the guard presentation layer."""
+"""Tests for the guard presentation layer.
+
+Validates that:
+- signal builders produce correct shapes
+- canonical denial codes come from DenialReason (single source of truth)
+- same guard state always produces the same code, resumable, terminal
+- guard-state endpoint and 403 denial path agree on semantics
+"""
 
 from __future__ import annotations
 
-from apps.guards.enums import GuardState, PauseReason
+from apps.guards.enums import DenialReason, GuardState, PauseReason
 from apps.guards.presentation import (
     build_denial_signal,
     build_warning_signal,
     denial_for_state,
-    denial_from_decision,
     warning_approaching_runtime_cap,
-    warning_approaching_usage_limit,
     warning_inactivity,
 )
 
@@ -64,10 +69,12 @@ class TestBuildDenialSignal:
 
 
 class TestDenialForState:
+    """Canonical denial mapping uses DenialReason enum values."""
+
     def test_paused_inactivity(self):
         sig = denial_for_state(GuardState.PAUSED_INACTIVITY, PauseReason.INACTIVITY)
         assert sig is not None
-        assert sig["code"] == "session_paused"
+        assert sig["code"] == DenialReason.SESSION_PAUSED
         assert sig["resumable"] is True
         assert sig["terminal"] is False
         assert sig["severity"] == "error"
@@ -76,28 +83,28 @@ class TestDenialForState:
     def test_paused_manual(self):
         sig = denial_for_state(GuardState.PAUSED_MANUAL, PauseReason.MANUAL)
         assert sig is not None
-        assert sig["code"] == "session_paused"
+        assert sig["code"] == DenialReason.SESSION_PAUSED
         assert sig["resumable"] is True
         assert sig["terminal"] is False
 
     def test_paused_runtime_cap(self):
         sig = denial_for_state(GuardState.PAUSED_RUNTIME_CAP, PauseReason.RUNTIME_CAP)
         assert sig is not None
-        assert sig["code"] == "runtime_cap_reached"
+        assert sig["code"] == DenialReason.RUNTIME_CAP_REACHED
         assert sig["resumable"] is False
         assert sig["terminal"] is True
 
     def test_locked_usage(self):
         sig = denial_for_state(GuardState.LOCKED_USAGE, PauseReason.USAGE_LIMIT)
         assert sig is not None
-        assert sig["code"] == "usage_limit_reached"
+        assert sig["code"] == DenialReason.USAGE_LIMIT_REACHED
         assert sig["resumable"] is True
         assert sig["terminal"] is False
 
     def test_ended(self):
         sig = denial_for_state(GuardState.ENDED)
         assert sig is not None
-        assert sig["code"] == "session_ended"
+        assert sig["code"] == DenialReason.SESSION_ENDED
         assert sig["resumable"] is False
         assert sig["terminal"] is True
 
@@ -106,28 +113,6 @@ class TestDenialForState:
 
     def test_warning_returns_none(self):
         assert denial_for_state(GuardState.WARNING) is None
-
-
-class TestDenialFromDecision:
-    def test_with_known_state(self):
-        sig = denial_from_decision(
-            denial_reason="session_paused",
-            denial_message="paused",
-            guard_state=GuardState.PAUSED_INACTIVITY,
-            pause_reason=PauseReason.INACTIVITY,
-        )
-        # Should use the canonical state-based signal
-        assert sig["code"] == "session_paused"
-        assert sig["resumable"] is True
-
-    def test_without_state_falls_back(self):
-        sig = denial_from_decision(
-            denial_reason="chat_send_locked",
-            denial_message="Locked.",
-        )
-        assert sig["code"] == "chat_send_locked"
-        assert sig["severity"] == "error"
-        assert sig["message"] == "Locked."
 
 
 class TestWarningApproachingRuntimeCap:
@@ -150,11 +135,45 @@ class TestWarningInactivity:
         assert sig["metadata"]["seconds_until_pause"] == 30
 
 
-class TestWarningApproachingUsageLimit:
-    def test_shape_and_content(self):
-        sig = warning_approaching_usage_limit(3, 15000)
-        assert sig["code"] == "approaching_usage_limit"
-        assert sig["severity"] == "warning"
-        assert sig["metadata"]["estimated_turns"] == 3
-        assert sig["metadata"]["remaining_tokens"] == 15000
-        assert "3" in sig["message"]
+class TestCodeConsistency:
+    """All denial codes from presentation.py must be DenialReason values."""
+
+    def test_all_denial_map_codes_are_denial_reason_values(self):
+        from apps.guards.presentation import _DENIAL_MAP
+
+        valid_codes = {v.value for v in DenialReason}
+        for state, entry in _DENIAL_MAP.items():
+            assert entry["code"] in valid_codes, (
+                f"Denial map for {state} uses code {entry['code']!r} "
+                f"which is not a DenialReason value"
+            )
+
+    def test_decisions_and_presentation_use_same_codes(self):
+        """_deny_for_current_state() and denial_for_state() should produce
+        the same code for each non-runnable guard state."""
+        from apps.guards.decisions import RuntimeGuard
+        from apps.guards.enums import NON_RUNNABLE_STATES
+        from apps.guards.models import SessionPresence
+        from apps.guards.policy import GuardPolicy
+
+        policy = GuardPolicy()
+        for state in NON_RUNNABLE_STATES:
+            # Decision layer
+            presence = SessionPresence(
+                lab_type="trainerlab",
+                guard_state=state,
+                pause_reason="none",
+                engine_runnable=False,
+            )
+            guard = RuntimeGuard(presence, policy)
+            decision = guard._deny_for_current_state()
+
+            # Presentation layer
+            signal = denial_for_state(state)
+
+            assert signal is not None, f"denial_for_state returned None for {state}"
+            assert decision.denial_reason == signal["code"], (
+                f"Code mismatch for state {state}: "
+                f"decisions={decision.denial_reason!r}, "
+                f"presentation={signal['code']!r}"
+            )

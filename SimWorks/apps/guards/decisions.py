@@ -160,7 +160,7 @@ class RuntimeGuard:
         if remaining is not None:
             if remaining < self.policy.chat_send_min_safe_tokens:
                 return GuardDecision.deny(
-                    DenialReason.CHAT_SEND_LOCKED,
+                    DenialReason.USAGE_LIMIT_REACHED,
                     "Usage limit approaching — sending is locked.",
                 )
             warnings = []
@@ -250,11 +250,11 @@ class RuntimeGuard:
                 "Session runtime cap reached — engine progression stopped.",
             ),
             GuardState.LOCKED_USAGE: (
-                DenialReason.CHAT_SEND_LOCKED,
+                DenialReason.USAGE_LIMIT_REACHED,
                 "Session locked due to usage limits.",
             ),
             GuardState.ENDED: (
-                DenialReason.RUNTIME_CAP_REACHED,
+                DenialReason.SESSION_ENDED,
                 "Session has ended.",
             ),
         }

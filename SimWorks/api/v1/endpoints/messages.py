@@ -564,15 +564,31 @@ def mark_message_read(
 
 
 def _guard_chat_send(sim) -> None:
-    """Check ChatLab send-lock and raise ``GuardDeniedError`` if denied."""
+    """Check ChatLab send-lock and raise ``GuardDeniedError`` if denied.
+
+    Uses ``denial_for_state()`` when a ``SessionPresence`` exists so the
+    403 response carries the same canonical code, resumable/terminal
+    semantics, and metadata as the guard-state endpoint.
+    """
     from api.v1.errors import GuardDeniedError
-    from apps.guards.presentation import denial_from_decision
+    from apps.guards.models import SessionPresence
+    from apps.guards.presentation import build_denial_signal, denial_for_state
     from apps.guards.services import check_chat_send_allowed
 
     decision = check_chat_send_allowed(sim.pk)
     if not decision.allowed:
-        signal = denial_from_decision(
-            denial_reason=decision.denial_reason,
-            denial_message=decision.denial_message,
-        )
+        # Try state-aware signal first for canonical semantics.
+        try:
+            presence = SessionPresence.objects.get(simulation_id=sim.pk)
+            signal = denial_for_state(presence.guard_state, presence.pause_reason)
+        except SessionPresence.DoesNotExist:
+            signal = None
+
+        if signal is None:
+            # Fallback: build from the decision's raw fields.
+            signal = build_denial_signal(
+                code=decision.denial_reason,
+                message=decision.denial_message or "Action denied by guard.",
+                title="Action denied",
+            )
         raise GuardDeniedError(signal)

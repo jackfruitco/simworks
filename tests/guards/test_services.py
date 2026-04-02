@@ -457,6 +457,31 @@ class TestGetGuardState:
         assert warning["severity"] == "warning"
         assert warning["expires_in_seconds"] is not None
 
+    def test_locked_usage_uses_canonical_code(self, simulation, trainerlab_presence):
+        trainerlab_presence.guard_state = GuardState.LOCKED_USAGE
+        trainerlab_presence.pause_reason = PauseReason.USAGE_LIMIT
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        denial = state["denial"]
+        assert denial is not None
+        assert denial["code"] == DenialReason.USAGE_LIMIT_REACHED
+        assert denial["resumable"] is True
+        assert denial["terminal"] is False
+
+    def test_ended_uses_session_ended_code(self, simulation, trainerlab_presence):
+        trainerlab_presence.guard_state = GuardState.ENDED
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        denial = state["denial"]
+        assert denial is not None
+        assert denial["code"] == DenialReason.SESSION_ENDED
+        assert denial["resumable"] is False
+        assert denial["terminal"] is True
+
     def test_no_denial_reason_or_denial_message_keys(self, simulation, trainerlab_presence):
         """Verify the old flat denial fields are removed."""
         state = get_guard_state_for_simulation(simulation.pk)

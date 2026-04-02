@@ -262,7 +262,7 @@ class TestShouldLockSend:
         snapshot = {"user_total_tokens": 97_000}  # 3k remaining < 5k
         decision = guard.should_lock_send(snapshot)
         assert not decision.allowed
-        assert decision.denial_reason == DenialReason.CHAT_SEND_LOCKED
+        assert decision.denial_reason == DenialReason.USAGE_LIMIT_REACHED
 
     def test_paused_session_locks_send(self):
         presence = _make_presence(guard_state=GuardState.PAUSED_RUNTIME_CAP)

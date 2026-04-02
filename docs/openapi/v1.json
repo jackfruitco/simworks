@@ -8354,15 +8354,13 @@
           "guard_denial": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/GuardDenialDetail"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Structured guard denial signal, present only on guard-denied errors",
-            "title": "Guard Denial"
+            "description": "Structured guard denial signal, present only on guard-denied errors"
           }
         },
         "required": [
@@ -8372,6 +8370,86 @@
           "detail"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "GuardDenialDetail": {
+        "description": "Structured guard denial signal embedded in error responses.\n\nMatches the ``GuardSignalOut`` schema shape so clients get the same\ntyped object whether reading from the guard-state endpoint or from\na 403 error payload.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable denial code",
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "description": "'warning' or 'error'",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short UI-ready title",
+            "title": "Title"
+          },
+          "message": {
+            "description": "Human-readable message",
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the session can be resumed",
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the state is permanent",
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Extra machine-readable context",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardDenialDetail",
         "type": "object"
       },
       "TrainerCommandAck": {

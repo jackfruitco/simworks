@@ -6,13 +6,23 @@ guard semantics (codes, titles, messages, resumability, terminality).
 
 All API endpoints should use these builders rather than constructing
 warning or denial payloads inline.
+
+The public denial codes are defined in ``enums.DenialReason`` — this
+module maps guard states to those codes.  No other module should invent
+external-facing codes.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from .enums import GuardState, PauseReason
+from .enums import (
+    RESUMABLE_GUARD_STATES,
+    TERMINAL_GUARD_STATES,
+    DenialReason,
+    GuardState,
+    PauseReason,
+)
 
 # ───────────────────────────────────────────────────────────────────────
 # Generic builders
@@ -64,52 +74,45 @@ def build_denial_signal(
 
 # ───────────────────────────────────────────────────────────────────────
 # Canonical denial map — guard state → structured signal
+#
+# Uses DenialReason enum values as the single public code vocabulary.
+# This must stay in sync with RuntimeGuard._deny_for_current_state()
+# in decisions.py (same codes, but this layer adds presentation
+# semantics like resumable/terminal/title).
 # ───────────────────────────────────────────────────────────────────────
 
 _DENIAL_MAP: dict[str, dict[str, Any]] = {
     GuardState.PAUSED_INACTIVITY: {
-        "code": "session_paused",
+        "code": DenialReason.SESSION_PAUSED,
         "title": "Session paused",
         "message": "Session is paused due to inactivity.",
-        "resumable": True,
-        "terminal": False,
     },
     GuardState.PAUSED_MANUAL: {
-        "code": "session_paused",
+        "code": DenialReason.SESSION_PAUSED,
         "title": "Session paused",
         "message": "Session is manually paused.",
-        "resumable": True,
-        "terminal": False,
     },
     GuardState.PAUSED_RUNTIME_CAP: {
-        "code": "runtime_cap_reached",
+        "code": DenialReason.RUNTIME_CAP_REACHED,
         "title": "Runtime limit reached",
         "message": "Engine progression is no longer available for this session.",
-        "resumable": False,
-        "terminal": True,
     },
     GuardState.LOCKED_USAGE: {
-        "code": "usage_limit_reached",
+        "code": DenialReason.USAGE_LIMIT_REACHED,
         "title": "Usage limit reached",
         "message": "Session locked due to usage limits.",
-        "resumable": True,
-        "terminal": False,
     },
     GuardState.ENDED: {
-        "code": "session_ended",
+        "code": DenialReason.SESSION_ENDED,
         "title": "Session ended",
         "message": "Session has ended.",
-        "resumable": False,
-        "terminal": True,
     },
 }
 
 _DENIAL_FALLBACK = {
-    "code": "session_paused",
+    "code": DenialReason.SESSION_PAUSED,
     "title": "Session unavailable",
     "message": "Session is not runnable.",
-    "resumable": False,
-    "terminal": False,
 }
 
 
@@ -121,11 +124,10 @@ def denial_for_state(
 
     Returns ``None`` if the state is runnable (no denial applies).
     """
+    from .enums import NON_RUNNABLE_STATES
+
     entry = _DENIAL_MAP.get(guard_state)
     if entry is None:
-        # If the state isn't in the map, it's either runnable or unknown.
-        from .enums import NON_RUNNABLE_STATES
-
         if guard_state not in NON_RUNNABLE_STATES:
             return None
         entry = _DENIAL_FALLBACK
@@ -134,40 +136,8 @@ def denial_for_state(
         code=entry["code"],
         message=entry["message"],
         title=entry["title"],
-        resumable=entry["resumable"],
-        terminal=entry["terminal"],
-        metadata={
-            "guard_state": guard_state,
-            "pause_reason": pause_reason,
-        },
-    )
-
-
-def denial_from_decision(
-    denial_reason: str,
-    denial_message: str,
-    guard_state: str = "",
-    pause_reason: str = PauseReason.NONE,
-) -> dict[str, Any]:
-    """Build a denial signal from a ``GuardDecision``'s denial fields.
-
-    Used when a ``GuardDecision`` is denied but we're not in a state
-    that maps cleanly to ``denial_for_state`` (e.g. chat send-lock
-    from budget exhaustion).
-    """
-    # Try the state-based map first for canonical semantics.
-    if guard_state:
-        state_denial = denial_for_state(guard_state, pause_reason)
-        if state_denial is not None:
-            return state_denial
-
-    # Fall back to a signal built from the decision's raw fields.
-    return build_denial_signal(
-        code=denial_reason or "guard_denied",
-        message=denial_message or "Action denied by guard.",
-        title="Action denied",
-        resumable=None,
-        terminal=None,
+        resumable=guard_state in RESUMABLE_GUARD_STATES,
+        terminal=guard_state in TERMINAL_GUARD_STATES,
         metadata={
             "guard_state": guard_state,
             "pause_reason": pause_reason,
@@ -205,20 +175,4 @@ def warning_inactivity(seconds_until_pause: int) -> dict[str, Any]:
         message=f"Session will pause in {seconds_until_pause} seconds due to inactivity.",
         expires_in_seconds=seconds_until_pause,
         metadata={"seconds_until_pause": seconds_until_pause},
-    )
-
-
-def warning_approaching_usage_limit(
-    estimated_turns: int,
-    remaining_tokens: int,
-) -> dict[str, Any]:
-    """Structured warning for sessions nearing a token usage limit."""
-    return build_warning_signal(
-        code="approaching_usage_limit",
-        title="Usage limit approaching",
-        message=f"Approximately {estimated_turns} message(s) remaining.",
-        metadata={
-            "estimated_turns": estimated_turns,
-            "remaining_tokens": remaining_tokens,
-        },
     )

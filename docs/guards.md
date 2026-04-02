@@ -114,9 +114,11 @@ Every warning and denial is a structured object with these fields:
 |------|------|-------------|
 | `approaching_runtime_cap` | Active runtime nearing cap (<=5 min) | `remaining_seconds`, `cap_seconds` |
 | `inactivity_warning` | No heartbeat for 4m30s | `seconds_until_pause` |
-| `approaching_usage_limit` | Token budget running low | `estimated_turns`, `remaining_tokens` |
 
 ### Denial Codes
+
+All denial codes are defined in `DenialReason` (`apps/guards/enums.py`) — this
+is the single source of truth for the external API vocabulary.
 
 | Code | Guard State | Resumable | Terminal |
 |------|-------------|-----------|----------|
@@ -124,6 +126,10 @@ Every warning and denial is a structured object with these fields:
 | `runtime_cap_reached` | `paused_runtime_cap` | false | true |
 | `usage_limit_reached` | `locked_usage` | true | false |
 | `session_ended` | `ended` | false | true |
+| `insufficient_token_budget` | (pre-session check) | — | — |
+| `session_token_limit` | (token limit check) | — | — |
+| `user_token_limit` | (token limit check) | — | — |
+| `account_token_limit` | (token limit check) | — | — |
 
 ### Guard-Denied 403 Responses
 
@@ -166,7 +172,6 @@ for branching instead of parsing `detail`.
 │  • denial_for_state()                   │
 │  • warning_approaching_runtime_cap()    │
 │  • warning_inactivity()                 │
-│  • warning_approaching_usage_limit()    │
 └─────────────┬───────────────────────────┘
               │ called by
 ┌─────────────▼───────────────────────────┐
