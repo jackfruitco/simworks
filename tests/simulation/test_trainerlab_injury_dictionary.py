@@ -27,6 +27,9 @@ def test_dictionary_choices_match_orm_choices():
 def test_normalizes_codes_and_friendly_labels():
     assert normalize_injury_category("m") == "M"
     assert normalize_injury_category(" Massive   Hemorrhage ") == "M"
+    assert normalize_injury_category("PC") == "PC"
+    assert normalize_injury_category("PFC") == "PC"
+    assert normalize_injury_category("Prolonged Field Care") == "PC"
     assert normalize_injury_location("hla") == "HLA"
     assert normalize_injury_location("left anterior head") == "HLA"
     assert normalize_injury_kind("laceration") == "LAC"
@@ -38,6 +41,6 @@ def test_rejects_unknown_values_with_explicit_error():
         normalize_injury_location("not-a-real-location")
 
 
-def test_integrity_guard_surfaces_pfc_pc_mismatch_warning():
+def test_integrity_guard_does_not_warn_for_intentional_pfc_pc_alias():
     warnings = get_injury_mapping_warnings()
-    assert any("PFC" in warning and "PC" in warning for warning in warnings)
+    assert warnings == ()

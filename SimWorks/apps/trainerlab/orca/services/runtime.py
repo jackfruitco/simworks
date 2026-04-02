@@ -8,12 +8,12 @@ from typing import ClassVar
 from asgiref.sync import sync_to_async
 
 from apps.trainerlab.services import apply_runtime_turn_output, clear_runtime_processing
-from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
+from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
 
 
 @orca.service
-class GenerateTrainerRuntimeTurn(PreviousResponseMixin, DjangoBaseService):
+class GenerateTrainerRuntimeTurn(DjangoBaseService):
     instruction_refs: ClassVar[list[str]] = [
         "trainerlab.initial.TrainerLabMixin",
         "trainerlab.runtime.TrainerRuntimeRoleInstruction",
@@ -39,6 +39,8 @@ class GenerateTrainerRuntimeTurn(PreviousResponseMixin, DjangoBaseService):
     async def on_failure_ctx(self, *, context, err: Exception) -> None:
         session_id = context.get("session_id")
         if session_id is None:
+            return
+        if context.get("call_id"):
             return
         await sync_to_async(clear_runtime_processing, thread_sensitive=True)(
             session_id=session_id,

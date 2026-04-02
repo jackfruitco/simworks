@@ -16,6 +16,7 @@ from api.v1.schemas.conversations import (
     conversation_to_out,
 )
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
@@ -23,6 +24,11 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 router = Router(tags=["conversations"], auth=DualAuth())
+
+
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
+
 
 STITCH_GREETING_MESSAGE = (
     "Hey, what would you like to discuss? Do you have a specific question "
@@ -76,10 +82,11 @@ def list_conversations(
     simulation_id: int,
 ) -> ConversationListResponse:
     """List conversations in a simulation."""
+    _require_chatlab_access(request)
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     conversations = (
         Conversation.objects.filter(simulation=sim, is_archived=False)
@@ -105,10 +112,11 @@ def create_conversation(
     body: ConversationCreate,
 ) -> tuple[int, ConversationOut]:
     """Create a new conversation in a simulation."""
+    _require_chatlab_access(request)
     from apps.simcore.models import Conversation, ConversationType
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # Resolve conversation type
     try:
@@ -164,10 +172,11 @@ def get_conversation(
     conversation_uuid: str,
 ) -> ConversationOut:
     """Get a specific conversation by UUID."""
+    _require_chatlab_access(request)
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         conv = (

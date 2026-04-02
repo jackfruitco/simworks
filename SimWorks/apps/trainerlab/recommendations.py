@@ -30,7 +30,9 @@ _PROBLEM_INTERVENTION_COMPATIBILITY: dict[str, frozenset[str]] = {
     "respiratory_distress": frozenset({"chest_seal", "needle_decompression", "advanced_airway"}),
     "tension_pneumothorax": frozenset({"needle_decompression", "chest_tube"}),
     "infectious_process": frozenset({"antibiotics"}),
-    "hypoperfusion_shock": frozenset({"fluid_resuscitation", "blood_transfusion"}),
+    "hypoperfusion_shock": frozenset(
+        {"iv_access", "io_access", "fluid_resuscitation", "blood_transfusion"}
+    ),
 }
 
 
@@ -83,6 +85,19 @@ def is_recommendation_compatible(*, problem_kind: str, intervention_kind: str) -
     if allowed is None:
         return True
     return intervention_kind in allowed
+
+
+def build_recommendation_compatibility_instruction() -> str:
+    lines = [
+        "### Recommendation Compatibility",
+        "- Recommendations must use only the allowed intervention kinds for each problem kind.",
+    ]
+    for problem_kind, intervention_kinds in _PROBLEM_INTERVENTION_COMPATIBILITY.items():
+        allowed = ", ".join(
+            f"`{kind}` ({get_intervention_label(kind)})" for kind in sorted(intervention_kinds)
+        )
+        lines.append(f"- `{problem_kind}`: {allowed}")
+    return "\n".join(lines) + "\n"
 
 
 def _problem_tokens(problem: Problem) -> set[str]:

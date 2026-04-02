@@ -17,6 +17,7 @@ async def create_new_simulation(
     modifiers: list | None = None,
     force: bool = False,
     request_session: bool = False,
+    account=None,
 ) -> Simulation | TrainerSession:
     """Create a new Simulation and TrainerSession, and trigger a celery task."""
     if isinstance(user, int):
@@ -24,6 +25,7 @@ async def create_new_simulation(
 
     session, call_id = await sync_to_async(create_session_with_initial_generation)(
         user=user,
+        account=account,
         scenario_spec={},
         directives=None,
         modifiers=modifiers,

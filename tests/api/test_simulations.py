@@ -59,13 +59,42 @@ def trainerlab_lab(db):
 
 
 @pytest.fixture
-def instructor_membership(test_user, trainerlab_lab):
-    from apps.accounts.models import LabMembership
+def instructor_membership(test_user):
+    """Grant entitlement-based TrainerLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
 
-    return LabMembership.objects.create(
-        user=test_user,
-        lab=trainerlab_lab,
-        access_level=LabMembership.AccessLevel.INSTRUCTOR,
+    personal_account = get_personal_account_for_user(test_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:trainerlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=test_user,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+
+
+@pytest.fixture(autouse=True)
+def chatlab_access(test_user):
+    """Grant entitlement-based ChatLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
+
+    personal_account = get_personal_account_for_user(test_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:chatlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=test_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
     )
 
 
@@ -440,8 +469,10 @@ class TestQuickCreateSimulation:
         data = response.json()
         assert data["id"] == sim.pk
         assert data["user_id"] == test_user.pk
+        test_user.refresh_from_db()
         mock_create.assert_awaited_once_with(
             user=test_user,
+            account=test_user.active_account,
             modifiers=["night_shift", "limited_resources"],
         )
 

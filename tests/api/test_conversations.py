@@ -31,6 +31,26 @@ def test_user(django_user_model, user_role):
     )
 
 
+@pytest.fixture(autouse=True)
+def chatlab_access(test_user):
+    """Grant entitlement-based ChatLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
+
+    personal_account = get_personal_account_for_user(test_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:chatlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=test_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+
+
 @pytest.fixture
 def auth_client(test_user):
     """Create a client with JWT authentication."""
@@ -105,6 +125,19 @@ def conversation(simulation, patient_type):
 @pytest.mark.django_db
 class TestListConversations:
     """Tests for GET /simulations/{id}/conversations/."""
+
+    def test_simulation_defaults_to_users_active_account(self, test_user):
+        """New simulations inherit the user's default account context."""
+        from apps.simcore.models import Simulation
+
+        simulation = Simulation.objects.create(
+            user=test_user,
+            diagnosis="Test Diagnosis",
+            chief_complaint="Test Complaint",
+        )
+        test_user.refresh_from_db()
+
+        assert simulation.account_id == test_user.active_account_id
 
     def test_list_conversations_returns_conversations(self, auth_client, simulation, conversation):
         """Returns conversations for the simulation."""

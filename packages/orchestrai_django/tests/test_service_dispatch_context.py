@@ -1,3 +1,5 @@
+import importlib
+
 import pytest
 
 from orchestrai.components.services.service import BaseService
@@ -133,6 +135,24 @@ def test_ensure_autostarted_rebinds_cached_started_app(monkeypatch):
     assert rebound == [cached_app]
 
 
+def test_app_ready_installs_django_task_proxy_without_autostart(monkeypatch):
+    from orchestrai_django import apps as apps_module
+
+    ready_calls: list[str] = []
+
+    monkeypatch.setattr(apps_module, "_autostart_enabled", lambda: False)
+    monkeypatch.setattr(apps_module, "use_django_task_proxy", lambda: ready_calls.append("proxy"))
+
+    config = apps_module.OrchestrAIDjangoConfig(
+        "orchestrai_django",
+        importlib.import_module("orchestrai_django"),
+    )
+
+    config.ready()
+
+    assert ready_calls == ["proxy"]
+
+
 def test_ensure_autostarted_resets_started_on_autostart_failure(monkeypatch):
     from orchestrai_django import apps as apps_module
 
@@ -238,3 +258,26 @@ def test_run_service_call_uses_autostart_returned_app_for_registry(monkeypatch):
     tasks.run_service_call("call-1")
 
     assert registry_apps == [autostart_app]
+
+
+def test_app_config_ready_installs_task_proxy_without_entrypoint(monkeypatch):
+    from orchestrai_django import apps as apps_module
+
+    installed: list[bool] = []
+    autostarted: list[bool] = []
+    config = apps_module.OrchestrAIDjangoConfig("orchestrai_django", apps_module)
+
+    monkeypatch.setattr(apps_module, "use_django_task_proxy", lambda: installed.append(True))
+    monkeypatch.setattr(apps_module, "_autostart_enabled", lambda: True)
+    monkeypatch.setattr(apps_module, "_should_skip_ready_command", lambda argv: None)
+    monkeypatch.setattr(apps_module, "_resolve_entrypoint", lambda: None)
+    monkeypatch.setattr(
+        apps_module,
+        "ensure_autostarted",
+        lambda **kwargs: autostarted.append(True),
+    )
+
+    config.ready()
+
+    assert installed == [True]
+    assert autostarted == []

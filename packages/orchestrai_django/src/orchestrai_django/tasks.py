@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from email.utils import parsedate_to_datetime
 import inspect
 import logging
+import random
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -28,7 +30,10 @@ from orchestrai_django.models import (
     ServiceCall as ServiceCallModel,
 )
 from orchestrai_django.signals import emit_service_call_dispatched, emit_service_call_succeeded
-from orchestrai_django.utils.serialization import pydantic_model_to_dict
+from orchestrai_django.utils.serialization import (
+    pydantic_model_to_dict,
+    serialize_run_messages_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +321,64 @@ def _get_retry_delay(attempt: int) -> int:
     return base * (2 ** (attempt - 1))
 
 
+def _get_retry_backoff_max() -> int:
+    """Return the cap for retry backoff delay in seconds."""
+    return getattr(settings, "ORCA_RETRY_BACKOFF_MAX", 60)
+
+
+def _extract_retry_after_seconds(exc: Exception) -> int | None:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        headers = getattr(exc, "headers", None)
+    if not headers:
+        return None
+
+    retry_after = None
+    if isinstance(headers, dict):
+        retry_after = headers.get("retry-after") or headers.get("Retry-After")
+    else:
+        retry_after = getattr(headers, "get", lambda *_args, **_kwargs: None)("retry-after")
+        retry_after = retry_after or getattr(headers, "get", lambda *_args, **_kwargs: None)(
+            "Retry-After"
+        )
+    if retry_after in (None, ""):
+        return None
+
+    try:
+        return max(0, int(float(retry_after)))
+    except (TypeError, ValueError):
+        try:
+            retry_after_dt = parsedate_to_datetime(str(retry_after))
+        except (TypeError, ValueError):
+            return None
+        retry_after_dt = _normalize_dt(retry_after_dt)
+        if retry_after_dt is None:
+            return None
+        return max(0, int((retry_after_dt - timezone.now()).total_seconds()))
+
+
+def _error_status_code(exc: Exception) -> int | None:
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    return None
+
+
+def _compute_retry_delay_seconds(exc: Exception, attempt: int) -> int:
+    retry_after = _extract_retry_after_seconds(exc)
+    if retry_after is not None:
+        return min(_get_retry_backoff_max(), max(1, retry_after))
+
+    delay = _get_retry_delay(attempt)
+    delay += random.uniform(0.0, 1.0)
+    return max(1, min(_get_retry_backoff_max(), int(delay)))
+
+
 def _get_stale_attempt_threshold() -> int:
     """Return seconds before an in-flight attempt is considered stale (worker died)."""
     return getattr(settings, "ORCA_STALE_ATTEMPT_THRESHOLD", 300)  # 5 min default
@@ -344,7 +407,7 @@ def run_service_call(call_id: str):
 
     Uses ServiceCallAttempt to track individual execution attempts.
     Retries on failure up to ORCA_MAX_ATTEMPTS times (default: 4).
-    Retries are immediate.
+    Retries use delayed exponential backoff with jitter.
     After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
@@ -433,6 +496,16 @@ def run_service_call(call_id: str):
         call.save(update_fields=["status", "started_at", "related_object_id"])
 
     current_attempt = attempt_record.attempt
+    if call.context is None:
+        call.context = {}
+    call.context.update(
+        {
+            "call_id": str(call_id),
+            "service_call_id": str(call_id),
+            "attempt": current_attempt,
+        }
+    )
+    call.save(update_fields=["context"])
 
     # Bind structured context for all log lines in this task execution
     sim_id = call.context.get("simulation_id") if call.context else None
@@ -461,6 +534,13 @@ def run_service_call(call_id: str):
 
     service_cls = registry.get(Identity.get(call.service_identity))
     service = service_cls(**call.service_kwargs)
+    try:
+        service.context = {
+            **dict(getattr(service, "context", None) or {}),
+            **dict(call.context or {}),
+        }
+    except Exception:
+        logger.debug("Failed to merge persisted context into service for call=%s", call_id)
 
     # Suppress service-level per-attempt failure emissions inside retry loop.
     # Terminal failure is emitted explicitly below when retries are exhausted.
@@ -538,15 +618,16 @@ def run_service_call(call_id: str):
                 timestamp_val = (
                     result.timestamp() if callable(result.timestamp) else result.timestamp
                 )
-
-                from orchestrai.utils.json import make_json_safe
+                messages_envelope = serialize_run_messages_envelope(result)
 
                 result_json = {
                     "output": output_json,
-                    "messages": make_json_safe(result.all_messages_json()),
+                    "messages": messages_envelope["messages"],
                     "run_id": str(result.run_id) if result.run_id else None,
                     "timestamp": timestamp_val.isoformat() if timestamp_val else None,
                 }
+                if messages_envelope["fallback"] is not None:
+                    result_json["messages_fallback"] = messages_envelope["fallback"]
                 call_output_data = output_json
             elif isinstance(result, dict):
                 result_json = result
@@ -819,15 +900,18 @@ def run_service_call(call_id: str):
             call.status = CallStatus.IN_PROGRESS
             call.error = f"Attempt {current_attempt} failed: {exc!s}"
             call.save(update_fields=["status", "error"])
+            retry_delay_seconds = _compute_retry_delay_seconds(exc, current_attempt)
+            run_after = timezone.now() + timedelta(seconds=retry_delay_seconds)
 
             logger.info(
-                "Service call %s will retry immediately (attempt %d/%d)",
+                "Service call %s will retry after %.2fs (attempt %d/%d)",
                 call_id,
+                retry_delay_seconds,
                 current_attempt + 1,
                 max_attempts,
             )
 
-            run_service_call_task.enqueue(call_id=call_id)
+            run_service_call_task.using(run_after=run_after).enqueue(call_id=call_id)
 
             return call.to_jsonable()
 
@@ -874,6 +958,13 @@ def run_service_call(call_id: str):
 
 def _classify_error(exc: Exception) -> ErrorClassification:
     """Classify errors for system retry and user retry semantics."""
+    if _error_status_code(exc) == 429:
+        return ErrorClassification(
+            system_retryable=True,
+            user_retryable=True,
+            reason_code="provider_rate_limited",
+        )
+
     non_retryable_types = (
         ValueError,
         TypeError,
@@ -920,7 +1011,6 @@ def _classify_error(exc: Exception) -> ErrorClassification:
         "connection",
         "temporarily unavailable",
         "service unavailable",
-        "rate limit",
     ]
     for pattern in network_patterns:
         if pattern in error_str:
@@ -929,6 +1019,13 @@ def _classify_error(exc: Exception) -> ErrorClassification:
                 user_retryable=True,
                 reason_code="provider_transient_error",
             )
+
+    if "rate limit" in error_str:
+        return ErrorClassification(
+            system_retryable=True,
+            user_retryable=True,
+            reason_code="provider_rate_limited",
+        )
 
     return ErrorClassification(
         system_retryable=True,

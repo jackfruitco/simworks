@@ -50,6 +50,13 @@ DEFAULT_SKIP_READY_COMMANDS = {
     "shell",
     "export_openapi",
     "create_dev_user",
+    "create_demo_user",
+    "dump_users",
+    "restore_users",
+    "seed_users",
+    "grant_manual_entitlement",
+    "reset_migrations",
+    "sim_debug",
 }
 
 
@@ -260,6 +267,11 @@ class OrchestrAIDjangoConfig(AppConfig):
     name = "orchestrai_django"
 
     def ready(self) -> None:
+        try:
+            use_django_task_proxy()
+        except Exception:
+            logger.debug("Failed to install Django task proxy during app ready", exc_info=True)
+
         # Allow opt-out for special cases (tests, one-off management commands, etc.)
         if not _autostart_enabled():
             return

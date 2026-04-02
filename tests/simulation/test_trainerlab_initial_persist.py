@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -536,6 +537,70 @@ def test_validates_blood_pressure_logic():
 
     with pytest.raises(ValidationError):
         InitialScenarioSchema.model_validate(payload)
+
+
+def test_exact_recommendation_temp_ids_remain_unchanged():
+    payload = _initial_payload()
+
+    schema = InitialScenarioSchema.model_validate(payload)
+
+    assert schema.problems[0].recommendation_refs == ["rec_tq"]
+    assert schema.problems[1].recommendation_refs == ["rec_pressure"]
+
+
+def test_symbolic_recommendation_refs_are_normalized_to_temp_ids(caplog):
+    payload = _initial_payload()
+    payload["problems"][0]["recommendation_refs"] = ["tourniquet_to_left_thigh_if_uncontrolled"]
+
+    with caplog.at_level(logging.INFO):
+        schema = InitialScenarioSchema.model_validate(payload)
+
+    assert schema.problems[0].recommendation_refs == ["rec_tq"]
+    assert any(
+        "Normalized TrainerLab recommendation ref for problem problem_hemorrhage" in record.message
+        and "tourniquet_to_left_thigh_if_uncontrolled" in record.message
+        and "rec_tq" in record.message
+        for record in caplog.records
+    )
+
+
+def test_ambiguous_recommendation_refs_fail_with_clear_message():
+    payload = _initial_payload()
+    payload["recommended_interventions"][0]["temp_id"] = "rec_tq_left"
+    payload["recommended_interventions"][0]["title"] = "Tourniquet to left thigh"
+    payload["recommended_interventions"][0]["site"] = "left_leg"
+    payload["recommended_interventions"].append(
+        {
+            "temp_id": "rec_tq_right",
+            "intervention_kind": "tourniquet",
+            "title": "Tourniquet to right thigh",
+            "target_problem_ref": "problem_hemorrhage",
+            "target_cause_ref": "cause_gsw_left_thigh",
+            "rationale": "Alternative site suggestion",
+            "priority": 1,
+            "site": "right_leg",
+        }
+    )
+    payload["problems"][0]["recommendation_refs"] = ["tourniquet"]
+
+    with pytest.raises(ValidationError) as exc_info:
+        InitialScenarioSchema.model_validate(payload)
+
+    message = str(exc_info.value)
+    assert "recommendation ref 'tourniquet' is ambiguous" in message
+    assert "rec_tq_left, rec_tq_right" in message
+
+
+def test_missing_recommendation_refs_fail_with_available_temp_ids():
+    payload = _initial_payload()
+    payload["problems"][0]["recommendation_refs"] = ["not_a_real_recommendation"]
+
+    with pytest.raises(ValidationError) as exc_info:
+        InitialScenarioSchema.model_validate(payload)
+
+    message = str(exc_info.value)
+    assert "references unknown recommendation 'not_a_real_recommendation'" in message
+    assert "Available recommendation temp_ids for this problem: rec_tq" in message
 
 
 def test_rejects_unknown_problem_references():

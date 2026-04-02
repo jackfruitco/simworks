@@ -3,8 +3,18 @@ from django.test.utils import CaptureQueriesContext
 import pytest
 
 from apps.trainerlab.adjudication import adjudicate_intervention
-from apps.trainerlab.models import EventSource, Illness, Injury, Intervention, Problem
+from apps.trainerlab.models import (
+    EventSource,
+    HeartRate,
+    Illness,
+    Injury,
+    Intervention,
+    Problem,
+    PulseAssessment,
+)
 from apps.trainerlab.recommendations import validate_and_normalize_recommendation
+from apps.trainerlab.runtime_llm import build_runtime_llm_context, compact_runtime_reasons
+from apps.trainerlab.services import create_session, get_runtime_state, project_current_snapshot
 
 
 @pytest.fixture
@@ -282,6 +292,51 @@ class TestTrainerLabAdjudication:
         assert rejected.accepted is False
         assert rejected.validation_status == "rejected"
 
+    def test_hypoperfusion_shock_accepts_access_recommendations_and_rejects_unrelated_kind(
+        self, simulation
+    ):
+        cause = _injury(
+            simulation,
+            description="GSW left thigh",
+            location=Injury.InjuryLocation.LEG_LEFT_UPPER,
+            kind=Injury.InjuryKind.GSW,
+        )
+        shock = _problem(
+            simulation,
+            cause_injury=cause,
+            kind="hypoperfusion_shock",
+            title="Progressive hypoperfusion / shock",
+            march_category=Problem.MARCHCategory.C,
+            anatomical_location="Left thigh",
+        )
+
+        iv_access = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="IV Access",
+            raw_title="Establish IV access",
+        )
+        io_access = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="io_access",
+            raw_title="Establish IO access",
+        )
+        rejected = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="tourniquet",
+            raw_title="Tourniquet for shock",
+        )
+
+        assert iv_access.accepted is True
+        assert iv_access.kind == "iv_access"
+        assert io_access.accepted is True
+        assert io_access.kind == "io_access"
+        assert rejected.accepted is False
+        assert rejected.validation_status == "rejected"
+        assert (
+            rejected.metadata["rejection_reason"]
+            == "'tourniquet' is not a valid recommendation for 'hypoperfusion_shock'"
+        )
+
     def test_project_current_snapshot_does_not_regress_into_n_plus_one(self, simulation):
         from apps.trainerlab.recommendations import validate_and_normalize_recommendation
         from apps.trainerlab.services import create_session, project_current_snapshot
@@ -340,3 +395,159 @@ class TestTrainerLabAdjudication:
         assert snapshot["problems"]
         assert snapshot["recommended_interventions"]
         assert len(context) <= 20
+
+    def test_runtime_llm_context_keeps_relevant_state_but_excludes_raw_snapshot_noise(
+        self, simulation
+    ):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        session.status = "running"
+        session.save(update_fields=["status", "modified_at"])
+
+        cause = _injury(
+            session.simulation,
+            description="GSW left thigh",
+            location=Injury.InjuryLocation.LEG_LEFT_UPPER,
+            kind=Injury.InjuryKind.GSW,
+        )
+        problem = _problem(
+            session.simulation,
+            cause_injury=cause,
+            kind="hemorrhage",
+            title="Massive hemorrhage",
+            march_category=Problem.MARCHCategory.M,
+            anatomical_location="Left thigh",
+        )
+        intervention = _intervention(
+            session.simulation,
+            problem=problem,
+            intervention_type="tourniquet",
+            site_code="LEFT_LEG",
+            details={"kind": "tourniquet", "application_mode": "deliberate"},
+        )
+
+        old_hr = HeartRate.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            min_value=92,
+            max_value=96,
+        )
+        old_hr.is_active = False
+        old_hr.save(update_fields=["is_active"])
+        HeartRate.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            supersedes=old_hr,
+            min_value=128,
+            max_value=136,
+        )
+        PulseAssessment.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            location=PulseAssessment.Location.PEDAL_LEFT,
+            present=False,
+            description=PulseAssessment.Description.ABSENT,
+            color_normal=False,
+            color_description=PulseAssessment.ColorDescription.PALE,
+            condition_normal=False,
+            condition_description=PulseAssessment.ConditionDescription.CLAMMY,
+            temperature_normal=False,
+            temperature_description=PulseAssessment.TemperatureDescription.COOL,
+        )
+
+        state = get_runtime_state(session)
+        state["intervention_effects"] = {
+            str(intervention.id): {
+                "status": "active",
+                "clinical_effect": "Bleeding is slowing but shock risk remains.",
+                "notes": "Observe distal perfusion.",
+            }
+        }
+        snapshot = project_current_snapshot(session, state=state)
+        context = build_runtime_llm_context(
+            session,
+            current_snapshot=snapshot,
+            runtime_reasons=[
+                {
+                    "reason_kind": "intervention_recorded",
+                    "payload": {
+                        "event_kind": "intervention",
+                        "domain_event_id": intervention.id,
+                    },
+                    "created_at": "2026-03-22T00:00:00Z",
+                }
+            ],
+            active_elapsed_seconds=120,
+        )
+
+        context_json = str(context)
+        assert context["active_elapsed_seconds"] == 120
+        assert context["patient_status"]["hemodynamic_instability"] is True
+        assert context["vitals_summary"]["heart_rate"]["trend"] == "up"
+        assert context["interventions"][0]["clinical_effect"].startswith("Bleeding is slowing")
+        assert context["pulse_summary"][0]["location"] == "pedal_left"
+        assert "details" not in context_json
+        assert "timestamp" not in context_json
+        assert "source" not in context_json
+        assert "display_name" not in context_json
+        assert "slug" not in context_json
+
+    def test_runtime_reason_compaction_deduplicates_and_prioritizes(self):
+        reasons = [
+            {
+                "reason_kind": "tick",
+                "payload": {"tick_nonce": 1},
+                "created_at": "2026-03-22T00:00:00Z",
+            }
+            for _ in range(12)
+        ]
+        reasons.extend(
+            [
+                {
+                    "reason_kind": "manual_tick",
+                    "payload": {"triggered_at": "2026-03-22T00:01:00Z"},
+                    "created_at": "2026-03-22T00:01:00Z",
+                }
+                for _ in range(4)
+            ]
+        )
+        reasons.extend(
+            [
+                {
+                    "reason_kind": "note_recorded",
+                    "payload": {
+                        "event_kind": "note",
+                        "domain_event_id": 44,
+                        "send_to_ai": True,
+                        "content": "Need to reassess breathing after intervention.",
+                    },
+                    "created_at": "2026-03-22T00:01:05Z",
+                },
+                {
+                    "reason_kind": "intervention_recorded",
+                    "payload": {
+                        "event_kind": "intervention",
+                        "domain_event_id": 55,
+                    },
+                    "created_at": "2026-03-22T00:01:10Z",
+                },
+                {
+                    "reason_kind": "steer_prompt",
+                    "payload": {"command_id": "cmd-1", "prompt": "Focus on deterioration."},
+                    "created_at": "2026-03-22T00:01:15Z",
+                },
+            ]
+        )
+
+        compacted = compact_runtime_reasons(reasons, max_reasons=8)
+
+        assert len(compacted) <= 8
+        assert sum(1 for item in compacted if item["reason_kind"] == "tick") == 1
+        assert next(item for item in compacted if item["reason_kind"] == "tick")["count"] == 12
+        assert sum(1 for item in compacted if item["reason_kind"] == "manual_tick") == 1
+        assert any(item["reason_kind"] == "note_recorded" for item in compacted)
+        assert any(item["reason_kind"] == "intervention_recorded" for item in compacted)

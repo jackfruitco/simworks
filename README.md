@@ -3,6 +3,7 @@
 [![ci](https://github.com/jackfruitco/simworks/actions/workflows/ci.yml/badge.svg)](https://github.com/jackfruitco/simworks/actions/workflows/ci.yml)
 [![security](https://github.com/jackfruitco/simworks/actions/workflows/security.yml/badge.svg)](https://github.com/jackfruitco/simworks/actions/workflows/security.yml)
 [![coverage](https://codecov.io/gh/jackfruitco/simworks/graph/badge.svg)](https://codecov.io/gh/jackfruitco/simworks)
+[![CodeQL](https://github.com/jackfruitco/simworks/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/jackfruitco/simworks/actions/workflows/github-code-scanning/codeql)
 
 MedSim (formerly SimWorks) is a medical simulation and training platform built on Django, HTMX, and AI-driven orchestration workflows.
 

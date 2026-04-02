@@ -24,6 +24,9 @@ instructions:
         `cause_ref`.
       - One cause may create multiple problems.
       - Recommended interventions are suggestions only. They must target a problem, not a cause.
+      - Every `problems[*].recommendation_refs` entry must exactly equal a
+        `recommended_interventions[*].temp_id` value.
+      - Do not use recommendation titles, labels, or descriptive aliases inside `recommendation_refs`.
       - If useful, also generate structured `assessment_findings`, `diagnostic_results`, `resources`, and
         `disposition` to support the simulation state.
       - Findings should describe what an examiner can detect now.

@@ -18,6 +18,7 @@ from api.v1.schemas.messages import (
     message_to_out,
 )
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
 from apps.common.retries import has_user_retries_remaining
@@ -268,6 +269,10 @@ def _enqueue_ai_reply_and_handle_failure(
 router = Router(tags=["messages"], auth=DualAuth())
 
 
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
+
+
 @router.get(
     "/{simulation_id}/messages/",
     response=MessageListResponse,
@@ -289,10 +294,11 @@ def list_messages(
     ),
 ) -> MessageListResponse:
     """List messages in a simulation with cursor pagination."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # Base queryset with select_related to avoid N+1 on conversation_type
     queryset = (
@@ -360,10 +366,14 @@ def create_message(
     Returns 201 if the message was created successfully, or
     202 if the message was created and an AI response is pending.
     """
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message, RoleChoices
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
+
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    _guard_chat_send(sim)
 
     # Resolve conversation and check per-conversation lock
     conversation = _resolve_conversation(sim, body.conversation_id)
@@ -426,10 +436,14 @@ def retry_message(
     simulation_id: int,
     message_id: int,
 ) -> tuple[int, MessageOut]:
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
+
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    _guard_chat_send(sim)
 
     try:
         message = Message.objects.select_related("conversation__conversation_type").get(
@@ -493,10 +507,11 @@ def get_message(
     message_id: int,
 ) -> MessageOut:
     """Get a specific message by ID."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (
@@ -523,10 +538,11 @@ def mark_message_read(
     message_id: int,
 ) -> MessageOut:
     """Mark a message as read."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (
@@ -542,3 +558,37 @@ def mark_message_read(
         message.save(update_fields=["is_read"])
 
     return message_to_out(message, request=request)
+
+
+# ── Guard helper ──────────────────────────────────────────────────────
+
+
+def _guard_chat_send(sim) -> None:
+    """Check ChatLab send-lock and raise ``GuardDeniedError`` if denied.
+
+    Uses ``denial_for_state()`` when a ``SessionPresence`` exists so the
+    403 response carries the same canonical code, resumable/terminal
+    semantics, and metadata as the guard-state endpoint.
+    """
+    from api.v1.errors import GuardDeniedError
+    from apps.guards.models import SessionPresence
+    from apps.guards.presentation import denial_for_state, denial_from_reason
+    from apps.guards.services import check_chat_send_allowed
+
+    decision = check_chat_send_allowed(sim.pk)
+    if not decision.allowed:
+        # Try state-aware signal first for canonical semantics.
+        signal = None
+        try:
+            presence = SessionPresence.objects.get(simulation_id=sim.pk)
+            signal = denial_for_state(presence.guard_state, presence.pause_reason)
+        except SessionPresence.DoesNotExist:
+            pass
+
+        if signal is None:
+            # Non-state denial (e.g. budget exhaustion before state transition).
+            signal = denial_from_reason(
+                decision.denial_reason,
+                decision.denial_message,
+            )
+        raise GuardDeniedError(signal)

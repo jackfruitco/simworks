@@ -9,6 +9,8 @@ class AccountsConfig(AppConfig):
     def ready(self):
         from django.db.models.signals import post_migrate
 
+        from apps.accounts import signals  # noqa: F401
+
         post_migrate.connect(_seed_roles, sender=self)
 
         from config.settings_parsers import bool_from_env

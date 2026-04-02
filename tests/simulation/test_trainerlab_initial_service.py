@@ -53,6 +53,10 @@ class TestGenerateInitialScenarioService:
         assert "M=Massive Hemorrhage" in codebook
         assert "HLA=Left Anterior Head" in codebook
         assert "LAC=Laceration" in codebook
+        assert "Recommendation Compatibility" in codebook
+        assert "`hypoperfusion_shock`" in codebook
+        assert "`iv_access`" in codebook
+        assert "`io_access`" in codebook
 
     def test_initial_response_instruction_requests_scenario_brief(self):
         instruction = InitialResponseMixin.instruction
@@ -60,6 +64,8 @@ class TestGenerateInitialScenarioService:
         assert "scenario_brief" in instruction
         assert "read out loud to the trainee" in instruction
         assert "evacuation options" in instruction
+        assert "recommendation_refs" in instruction
+        assert "must exactly equal" in instruction
 
     def test_service_instantiates_in_fresh_thread(self):
         service = _instantiate_service_in_thread(

@@ -33,13 +33,45 @@ class PersistContext:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+def _resolve_current_callable(fn: Callable | None) -> Callable | None:
+    """Resolve a callable to the module's current binding when possible.
+
+    This keeps ``__persist__`` handler identity stable when a module is reloaded
+    after a schema mixin has already captured an older function object.
+    """
+
+    if fn is None or not callable(fn):
+        return fn
+
+    module_name = getattr(fn, "__module__", None)
+    qualname = getattr(fn, "__qualname__", None)
+    if not isinstance(module_name, str) or not isinstance(qualname, str):
+        return fn
+    if "<locals>" in qualname:
+        return fn
+
+    try:
+        current: Any = importlib.import_module(module_name)
+        for attr in qualname.split("."):
+            current = getattr(current, attr)
+    except Exception:
+        return fn
+
+    return current if callable(current) else fn
+
+
 def _merge_persist_from_mro(cls: type) -> dict[str, Callable | None]:
     """Merge ``__persist__`` dicts from full MRO (base-first)."""
     merged: dict[str, Callable | None] = {}
     for klass in reversed(cls.__mro__):
         persist_dict = vars(klass).get("__persist__")
         if isinstance(persist_dict, dict):
-            merged.update(persist_dict)
+            merged.update(
+                {
+                    field_name: _resolve_current_callable(fn_or_none)
+                    for field_name, fn_or_none in persist_dict.items()
+                }
+            )
     return merged
 
 

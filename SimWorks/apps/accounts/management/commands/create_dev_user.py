@@ -1,16 +1,20 @@
 import os
 
-from django.core.management.base import BaseCommand
+from django.core.management import call_command
+from django.core.management.base import BaseCommand, CommandError
 
+from apps.accounts.models import User
 from config.settings_parsers import bool_from_env
 
 DEV_EMAIL = "dev@medsim.local"
 DEV_PASSWORD = "dev"
+DEV_PRODUCT = "medsim_one"
+DEV_ROLE = "System"
 
 
 class Command(BaseCommand):
     help = (
-        "Create a dev user (dev@medsim.local) if it does not exist. "
+        "Create or update the legacy dev user by delegating to create_demo_user. "
         "Only runs when DJANGO_CREATE_DEV_USER=true and DJANGO_DEBUG=true, "
         "unless --force is provided."
     )
@@ -24,8 +28,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from apps.accounts.models import User, UserRole
-
         force = options.get("force", False)
 
         if not force and not bool_from_env("DJANGO_DEBUG"):
@@ -36,33 +38,26 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Skipped: DJANGO_CREATE_DEV_USER is not enabled."))
             return
 
-        role = UserRole.objects.order_by("id").first()
-        if role is None:
-            self.stdout.write(
-                self.style.ERROR(
-                    "No UserRole found — cannot create dev user. "
-                    "Run migrations or create a role first."
-                )
-            )
+        if User.objects.filter(email=DEV_EMAIL).exists():
+            self.stdout.write(self.style.WARNING(f"Dev user already exists: {DEV_EMAIL}"))
             return
 
         password = os.getenv("DJANGO_DEV_USER_PASSWORD", DEV_PASSWORD)
 
-        user, created = User.objects.get_or_create(
-            email=DEV_EMAIL,
-            defaults={
-                "first_name": "Dev",
-                "last_name": "User",
-                "is_active": True,
-                "is_staff": True,
-                "is_superuser": True,
-                "role": role,
-            },
-        )
-
-        if created:
-            user.set_password(password)
-            user.save(update_fields=["password"])
-            self.stdout.write(self.style.SUCCESS(f"Created dev user: {DEV_EMAIL} (role: {role})"))
-        else:
-            self.stdout.write(self.style.WARNING(f"Dev user already exists: {DEV_EMAIL}"))
+        try:
+            call_command(
+                "create_demo_user",
+                email=DEV_EMAIL,
+                password=password,
+                product=DEV_PRODUCT,
+                role=DEV_ROLE,
+                first_name="Dev",
+                last_name="User",
+                staff=True,
+                superuser=True,
+                source_ref="manual-entitlement",
+                stdout=self.stdout,
+                stderr=self.stderr,
+            )
+        except CommandError as exc:
+            self.stdout.write(self.style.ERROR(str(exc)))

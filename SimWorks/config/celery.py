@@ -30,6 +30,12 @@ app.conf.beat_schedule = {
         "task": "apps.common.tasks.retry_failed_events",
         "schedule": crontab(minute=30),  # At 30 minutes past each hour
     },
+    # Evaluate inactivity and wall-clock expiry for all active sessions.
+    # Must run at least as often as the heartbeat stale threshold (45s).
+    "check-stale-sessions-every-15-seconds": {
+        "task": "apps.guards.tasks.check_stale_sessions",
+        "schedule": 15.0,  # seconds
+    },
 }
 
 # @signals.worker_process_init.connect

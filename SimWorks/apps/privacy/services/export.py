@@ -1,12 +1,22 @@
+from django.db.models import Q
+
+from apps.accounts.services import get_personal_account_for_user
 from apps.chatlab.models import Message
 from apps.simcore.models import Simulation, SimulationFeedback, SimulationSummary
 
 
 def build_user_export_payload(user) -> dict:
-    sims = Simulation.objects.filter(user=user).order_by("id")
-    messages = Message.objects.filter(simulation__user=user).order_by("id")
-    summaries = SimulationSummary.objects.filter(simulation__user=user).order_by("id")
-    feedback = SimulationFeedback.objects.filter(simulation__user=user).order_by("id")
+    personal_account = get_personal_account_for_user(user)
+    simulation_filter = Q(account=personal_account) | Q(account__isnull=True, user=user)
+    related_filter = Q(simulation__account=personal_account) | Q(
+        simulation__account__isnull=True,
+        simulation__user=user,
+    )
+
+    sims = Simulation.objects.filter(simulation_filter).order_by("id")
+    messages = Message.objects.filter(related_filter).order_by("id")
+    summaries = SimulationSummary.objects.filter(related_filter).order_by("id")
+    feedback = SimulationFeedback.objects.filter(related_filter).order_by("id")
 
     return {
         "account": {

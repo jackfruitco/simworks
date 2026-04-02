@@ -10,6 +10,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from apps.accounts.decorators import is_inviter
+from apps.accounts.services import get_personal_account_for_user
+from apps.simcore.access import get_simulation_queryset_for_request
 from apps.simcore.models import Simulation
 
 from .forms import AvatarUploadForm, InvitationForm
@@ -110,10 +112,10 @@ def profile_view(request, user_id=None):
     connected_provider_ids = list(social_accounts.values_list("provider", flat=True))
 
     # Get simulation statistics
-    total_simulations = Simulation.objects.filter(user=profile_user).count()
-    completed_simulations = Simulation.objects.filter(
-        user=profile_user, end_timestamp__isnull=False
-    ).count()
+    personal_account = get_personal_account_for_user(profile_user)
+    personal_simulations = Simulation.objects.filter(account=personal_account)
+    total_simulations = personal_simulations.count()
+    completed_simulations = personal_simulations.filter(end_timestamp__isnull=False).count()
     in_progress_simulations = total_simulations - completed_simulations
 
     # Calculate completion rate
@@ -211,7 +213,7 @@ def simulation_history_list(request):
     date_to = request.GET.get("date_to", "")
 
     # Base queryset
-    simulations = Simulation.objects.filter(user=request.user)
+    simulations = get_simulation_queryset_for_request(request, request.user)
 
     # Apply filters
     if lab_type:

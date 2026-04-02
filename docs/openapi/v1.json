@@ -177,6 +177,366 @@
         }
       }
     },
+    "/api/v1/accounts/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_list_accounts",
+        "summary": "List accessible accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/select/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_select_account",
+        "summary": "Select active account context",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountSelectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/organizations/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_create_organization",
+        "summary": "Create organization account",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/me/access/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_current_access_snapshot",
+        "summary": "Get current access snapshot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessSnapshotOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_list_memberships",
+        "summary": "List memberships for current account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MembershipOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/invite/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_invite_membership",
+        "summary": "Invite a member to the current account",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipInviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/{membership_uuid}/approve/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_approve_membership",
+        "summary": "Approve a pending membership",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membership_uuid",
+            "schema": {
+              "title": "Membership Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/billing-summary/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_billing_summary",
+        "summary": "Get billing summary for the current account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/stripe/webhook/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_stripe_webhook",
+        "summary": "Receive Stripe webhook events",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/apple/sync/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_apple_sync",
+        "summary": "Sync an Apple subscription transaction for the signed-in user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleTransactionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/stripe/checkout-session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_create_checkout_session",
+        "summary": "Create a Stripe checkout session for a personal plan",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/simulations/": {
       "get": {
         "operationId": "api_v1_endpoints_simulations_list_simulations",
@@ -1328,6 +1688,119 @@
         "description": "Returns available simulation modifier groups. Optionally filter by group names.",
         "tags": [
           "modifiers"
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/heartbeat/": {
+      "post": {
+        "operationId": "api_v1_endpoints_guards_heartbeat",
+        "summary": "Record a client heartbeat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Clients send this every 15 seconds to report presence and visibility. Returns the current guard state for UI rendering.",
+        "tags": [
+          "guards"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/guard-state/": {
+      "get": {
+        "operationId": "api_v1_endpoints_guards_get_guard_state",
+        "summary": "Get current guard state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the current guard state for a simulation.",
+        "tags": [
+          "guards"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chatlab/access/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
+        "summary": "Get ChatLab access for current user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabAccessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "chatlab"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
         ]
       }
     },
@@ -3376,6 +3849,617 @@
         "title": "LogoutRequest",
         "type": "object"
       },
+      "AccountOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "account_type": {
+            "title": "Account Type",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "requires_join_approval": {
+            "title": "Requires Join Approval",
+            "type": "boolean"
+          },
+          "parent_account_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Account Uuid"
+          },
+          "membership_role": {
+            "default": "",
+            "title": "Membership Role",
+            "type": "string"
+          },
+          "membership_status": {
+            "default": "",
+            "title": "Membership Status",
+            "type": "string"
+          },
+          "is_active_context": {
+            "default": false,
+            "title": "Is Active Context",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "slug",
+          "account_type",
+          "is_active",
+          "requires_join_approval"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AccountSelectIn": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_uuid"
+        ],
+        "title": "AccountSelectIn",
+        "type": "object"
+      },
+      "OrganizationCreateIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "default": "",
+            "title": "Slug",
+            "type": "string"
+          },
+          "requires_join_approval": {
+            "default": false,
+            "title": "Requires Join Approval",
+            "type": "boolean"
+          },
+          "parent_account_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Account Uuid"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OrganizationCreateIn",
+        "type": "object"
+      },
+      "AccessSnapshotOut": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "account_type": {
+            "title": "Account Type",
+            "type": "string"
+          },
+          "membership_role": {
+            "default": "",
+            "title": "Membership Role",
+            "type": "string"
+          },
+          "products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProductAccessOut"
+            },
+            "title": "Products",
+            "type": "object"
+          }
+        },
+        "required": [
+          "account_uuid",
+          "account_name",
+          "account_type"
+        ],
+        "title": "AccessSnapshotOut",
+        "type": "object"
+      },
+      "ProductAccessOut": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "features": {
+            "additionalProperties": true,
+            "title": "Features",
+            "type": "object"
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Limits",
+            "type": "object"
+          }
+        },
+        "title": "ProductAccessOut",
+        "type": "object"
+      },
+      "MembershipOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "invite_email": {
+            "default": "",
+            "title": "Invite Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          }
+        },
+        "required": [
+          "uuid",
+          "account_uuid",
+          "role",
+          "status"
+        ],
+        "title": "MembershipOut",
+        "type": "object"
+      },
+      "MembershipInviteIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "MembershipInviteIn",
+        "type": "object"
+      },
+      "BillingAccountOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "provider_type": {
+            "title": "Provider Type",
+            "type": "string"
+          },
+          "provider_customer_id": {
+            "title": "Provider Customer Id",
+            "type": "string"
+          },
+          "billing_email": {
+            "title": "Billing Email",
+            "type": "string"
+          },
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "provider_type",
+          "provider_customer_id",
+          "billing_email",
+          "country_code",
+          "is_active"
+        ],
+        "title": "BillingAccountOut",
+        "type": "object"
+      },
+      "BillingSummaryOut": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "billing_accounts": {
+            "items": {
+              "$ref": "#/components/schemas/BillingAccountOut"
+            },
+            "title": "Billing Accounts",
+            "type": "array"
+          },
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionOut"
+            },
+            "title": "Subscriptions",
+            "type": "array"
+          },
+          "entitlements": {
+            "items": {
+              "$ref": "#/components/schemas/EntitlementOut"
+            },
+            "title": "Entitlements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_uuid"
+        ],
+        "title": "BillingSummaryOut",
+        "type": "object"
+      },
+      "EntitlementOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "subject_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject User Id"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "feature_code": {
+            "default": "",
+            "title": "Feature Code",
+            "type": "string"
+          },
+          "limit_code": {
+            "default": "",
+            "title": "Limit Code",
+            "type": "string"
+          },
+          "limit_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Value"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          }
+        },
+        "required": [
+          "uuid",
+          "source_type",
+          "source_ref",
+          "scope_type",
+          "product_code",
+          "status"
+        ],
+        "title": "EntitlementOut",
+        "type": "object"
+      },
+      "SubscriptionOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "provider_type": {
+            "title": "Provider Type",
+            "type": "string"
+          },
+          "plan_code": {
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_subscription_id": {
+            "title": "Provider Subscription Id",
+            "type": "string"
+          },
+          "provider_original_transaction_id": {
+            "title": "Provider Original Transaction Id",
+            "type": "string"
+          },
+          "cancel_at_period_end": {
+            "title": "Cancel At Period End",
+            "type": "boolean"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          }
+        },
+        "required": [
+          "uuid",
+          "provider_type",
+          "plan_code",
+          "status",
+          "provider_subscription_id",
+          "provider_original_transaction_id",
+          "cancel_at_period_end"
+        ],
+        "title": "SubscriptionOut",
+        "type": "object"
+      },
+      "StripeWebhookReceiptOut": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "status"
+        ],
+        "title": "StripeWebhookReceiptOut",
+        "type": "object"
+      },
+      "AppleTransactionIn": {
+        "properties": {
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          },
+          "original_transaction_id": {
+            "title": "Original Transaction Id",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date"
+          },
+          "expires_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Date"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "original_transaction_id",
+          "product_id"
+        ],
+        "title": "AppleTransactionIn",
+        "type": "object"
+      },
+      "CheckoutSessionOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "detail"
+        ],
+        "title": "CheckoutSessionOut",
+        "type": "object"
+      },
+      "CheckoutSessionIn": {
+        "properties": {
+          "plan_code": {
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "success_url": {
+            "title": "Success Url",
+            "type": "string"
+          },
+          "cancel_url": {
+            "title": "Cancel Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_code",
+          "success_url",
+          "cancel_url"
+        ],
+        "title": "CheckoutSessionIn",
+        "type": "object"
+      },
       "PaginatedResponse_SimulationOut_": {
         "properties": {
           "items": {
@@ -4057,7 +5141,7 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated",
+            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
             "examples": [
               "message.item.created",
               "message.delivery.updated",
@@ -4633,25 +5717,168 @@
         "title": "ModifierOut",
         "type": "object"
       },
+      "GuardSignalOut": {
+        "description": "Structured guard signal \u2014 warning or denial.\n\nClients should branch on ``code`` for logic, render ``message`` for\ndisplay, and use ``resumable`` / ``terminal`` to decide UI affordances.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardSignalOut",
+        "type": "object"
+      },
+      "GuardStateOut": {
+        "description": "Current guard state for a session.",
+        "properties": {
+          "guard_state": {
+            "title": "Guard State",
+            "type": "string"
+          },
+          "guard_reason": {
+            "title": "Guard Reason",
+            "type": "string"
+          },
+          "engine_runnable": {
+            "title": "Engine Runnable",
+            "type": "boolean"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "runtime_cap_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Cap Seconds"
+          },
+          "wall_clock_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Clock Expires At"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/GuardSignalOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "denial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardSignalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "guard_state",
+          "guard_reason",
+          "engine_runnable"
+        ],
+        "title": "GuardStateOut",
+        "type": "object"
+      },
+      "HeartbeatIn": {
+        "description": "Client heartbeat payload.",
+        "properties": {
+          "client_visibility": {
+            "default": "unknown",
+            "title": "Client Visibility",
+            "type": "string"
+          }
+        },
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
       "LabAccessOut": {
         "properties": {
           "lab_slug": {
             "title": "Lab Slug",
             "type": "string"
-          },
-          "access_level": {
-            "enum": [
-              "viewer",
-              "instructor",
-              "admin"
-            ],
-            "title": "Access Level",
-            "type": "string"
           }
         },
         "required": [
-          "lab_slug",
-          "access_level"
+          "lab_slug"
         ],
         "title": "LabAccessOut",
         "type": "object"
@@ -7123,6 +8350,17 @@
               "550e8400-e29b-41d4-a716-446655440000"
             ],
             "title": "Correlation Id"
+          },
+          "guard_denial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardDenialDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured guard denial signal, present only on guard-denied errors"
           }
         },
         "required": [
@@ -7132,6 +8370,86 @@
           "detail"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "GuardDenialDetail": {
+        "description": "Structured guard denial signal embedded in error responses.\n\nMatches the ``GuardSignalOut`` schema shape so clients get the same\ntyped object whether reading from the guard-state endpoint or from\na 403 error payload.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable denial code",
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "description": "'warning' or 'error'",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short UI-ready title",
+            "title": "Title"
+          },
+          "message": {
+            "description": "Human-readable message",
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the session can be resumed",
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the state is permanent",
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Extra machine-readable context",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardDenialDetail",
         "type": "object"
       },
       "TrainerCommandAck": {
