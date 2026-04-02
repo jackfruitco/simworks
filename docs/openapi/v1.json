@@ -5717,6 +5717,79 @@
         "title": "ModifierOut",
         "type": "object"
       },
+      "GuardSignalOut": {
+        "description": "Structured guard signal \u2014 warning or denial.\n\nClients should branch on ``code`` for logic, render ``message`` for\ndisplay, and use ``resumable`` / ``terminal`` to decide UI affordances.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardSignalOut",
+        "type": "object"
+      },
       "GuardStateOut": {
         "description": "Current guard state for a session.",
         "properties": {
@@ -5761,32 +5834,20 @@
           },
           "warnings": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/GuardSignalOut"
             },
             "title": "Warnings",
             "type": "array"
           },
-          "denial_reason": {
+          "denial": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/GuardSignalOut"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Denial Reason"
-          },
-          "denial_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Denial Message"
+            ]
           }
         },
         "required": [
@@ -8289,6 +8350,19 @@
               "550e8400-e29b-41d4-a716-446655440000"
             ],
             "title": "Correlation Id"
+          },
+          "guard_denial": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured guard denial signal, present only on guard-denied errors",
+            "title": "Guard Denial"
           }
         },
         "required": [

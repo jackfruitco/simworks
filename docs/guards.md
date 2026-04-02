@@ -54,6 +54,106 @@ SSE connection alone does **not** define active state.
   - TrainerLab: manual record edits still allowed
   - ChatLab: transcript remains readable
 
+## API Contract
+
+### Guard State Response
+
+The `GET /api/v1/simulations/{id}/guard-state/` and heartbeat endpoints
+return a `GuardStateOut` object. **Warnings and denials are structured
+objects, not free-form strings.**
+
+```json
+{
+  "guard_state": "paused_runtime_cap",
+  "pause_reason": "runtime_cap",
+  "engine_runnable": false,
+  "active_elapsed_seconds": 1200,
+  "runtime_cap_seconds": 1200,
+  "wall_clock_expires_at": "2026-04-02T14:30:00Z",
+  "warnings": [],
+  "denial": {
+    "code": "runtime_cap_reached",
+    "severity": "error",
+    "title": "Runtime limit reached",
+    "message": "Engine progression is no longer available for this session.",
+    "resumable": false,
+    "terminal": true,
+    "expires_in_seconds": null,
+    "metadata": {
+      "guard_state": "paused_runtime_cap",
+      "pause_reason": "runtime_cap"
+    }
+  }
+}
+```
+
+### Guard Signal Object (`GuardSignalOut`)
+
+Every warning and denial is a structured object with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | `string` | Stable machine-readable code for client branching |
+| `severity` | `string` | `"warning"` or `"error"` |
+| `title` | `string?` | Short UI-ready title |
+| `message` | `string` | Human-readable message for display |
+| `resumable` | `bool?` | Whether the session can be resumed (denials only) |
+| `terminal` | `bool?` | Whether the state is permanent (denials only) |
+| `expires_in_seconds` | `int?` | Countdown until the condition triggers (warnings) |
+| `metadata` | `object` | Extra machine-readable context |
+
+**Clients should:**
+- Branch on `code` for logic decisions
+- Render `message` for user display
+- Use `resumable` and `terminal` directly for UI affordances (show/hide resume button, etc.)
+- Never parse `message` for semantics
+
+### Warning Codes
+
+| Code | When | Key metadata |
+|------|------|-------------|
+| `approaching_runtime_cap` | Active runtime nearing cap (<=5 min) | `remaining_seconds`, `cap_seconds` |
+| `inactivity_warning` | No heartbeat for 4m30s | `seconds_until_pause` |
+| `approaching_usage_limit` | Token budget running low | `estimated_turns`, `remaining_tokens` |
+
+### Denial Codes
+
+| Code | Guard State | Resumable | Terminal |
+|------|-------------|-----------|----------|
+| `session_paused` | `paused_inactivity`, `paused_manual` | true | false |
+| `runtime_cap_reached` | `paused_runtime_cap` | false | true |
+| `usage_limit_reached` | `locked_usage` | true | false |
+| `session_ended` | `ended` | false | true |
+
+### Guard-Denied 403 Responses
+
+When a ChatLab send is denied by the guard, the 403 response includes a
+structured `guard_denial` object in the error payload:
+
+```json
+{
+  "type": "guard_denied",
+  "title": "Guard denied",
+  "status": 403,
+  "detail": "Usage limit approaching — sending is locked.",
+  "instance": "/api/v1/simulations/123/conversations/456/messages/",
+  "correlation_id": "...",
+  "guard_denial": {
+    "code": "chat_send_locked",
+    "severity": "error",
+    "title": "Action denied",
+    "message": "Usage limit approaching — sending is locked.",
+    "resumable": null,
+    "terminal": null,
+    "expires_in_seconds": null,
+    "metadata": {}
+  }
+}
+```
+
+Clients should check for `type == "guard_denied"` and use `guard_denial.code`
+for branching instead of parsing `detail`.
+
 ## Architecture
 
 ```
@@ -61,6 +161,14 @@ SSE connection alone does **not** define active state.
 │  API Endpoints (heartbeat, guard-state) │
 └─────────────┬───────────────────────────┘
               │
+┌─────────────▼───────────────────────────┐
+│  Presentation (presentation.py)         │ ← API signal builders
+│  • denial_for_state()                   │
+│  • warning_approaching_runtime_cap()    │
+│  • warning_inactivity()                 │
+│  • warning_approaching_usage_limit()    │
+└─────────────┬───────────────────────────┘
+              │ called by
 ┌─────────────▼───────────────────────────┐
 │  Guard Services (services.py)           │ ← Single entry: guard_service_entry()
 │  • ensure_session_presence()            │
@@ -143,7 +251,7 @@ Caps are based on **active elapsed time** — paused time does not count.
 
 - Clients send `POST /api/v1/simulations/{id}/heartbeat/` every 15 seconds
 - Payload: `{"client_visibility": "foreground" | "background" | "unknown"}`
-- Response: current `GuardStateOut` with warnings and denial info
+- Response: current `GuardStateOut` with structured warnings and denial
 - Server evaluates inactivity via periodic Celery task (`check_stale_sessions`)
 - Heartbeat stale threshold: 45 seconds
 - Warning at 4 minutes 30 seconds
@@ -181,7 +289,7 @@ When limits _are_ set, all three checks enforce them correctly.
 
 ### UsageRecord Integrity
 
-`UsageRecord` rows are aggregate counters (one per scope × period × lab × product).
+`UsageRecord` rows are aggregate counters (one per scope x period x lab x product).
 Three conditional `UniqueConstraint`s enforce uniqueness at the DB level, making the
 update-or-create upsert concurrency-safe even under parallel service call completions.
 

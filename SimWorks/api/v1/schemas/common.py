@@ -4,7 +4,7 @@ Includes error responses (RFC 7807) and pagination schemas.
 """
 
 from datetime import UTC, datetime
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +46,10 @@ class ErrorResponse(BaseModel):
         default=None,
         description="Request correlation ID for tracing",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
+    guard_denial: dict[str, Any] | None = Field(
+        default=None,
+        description="Structured guard denial signal, present only on guard-denied errors",
     )
 
 

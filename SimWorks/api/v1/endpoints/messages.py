@@ -373,14 +373,7 @@ def create_message(
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # ── Guard: ChatLab send-lock check ──────────────────────────────
-    from apps.guards.services import check_chat_send_allowed
-
-    send_decision = check_chat_send_allowed(sim.pk)
-    if not send_decision.allowed:
-        raise HttpError(
-            403,
-            send_decision.denial_message or "Sending is locked due to usage limits.",
-        )
+    _guard_chat_send(sim)
 
     # Resolve conversation and check per-conversation lock
     conversation = _resolve_conversation(sim, body.conversation_id)
@@ -450,14 +443,7 @@ def retry_message(
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # ── Guard: ChatLab send-lock check ──────────────────────────────
-    from apps.guards.services import check_chat_send_allowed
-
-    send_decision = check_chat_send_allowed(sim.pk)
-    if not send_decision.allowed:
-        raise HttpError(
-            403,
-            send_decision.denial_message or "Sending is locked due to usage limits.",
-        )
+    _guard_chat_send(sim)
 
     try:
         message = Message.objects.select_related("conversation__conversation_type").get(
@@ -572,3 +558,21 @@ def mark_message_read(
         message.save(update_fields=["is_read"])
 
     return message_to_out(message, request=request)
+
+
+# ── Guard helper ──────────────────────────────────────────────────────
+
+
+def _guard_chat_send(sim) -> None:
+    """Check ChatLab send-lock and raise ``GuardDeniedError`` if denied."""
+    from api.v1.errors import GuardDeniedError
+    from apps.guards.presentation import denial_from_decision
+    from apps.guards.services import check_chat_send_allowed
+
+    decision = check_chat_send_allowed(sim.pk)
+    if not decision.allowed:
+        signal = denial_from_decision(
+            denial_reason=decision.denial_reason,
+            denial_message=decision.denial_message,
+        )
+        raise GuardDeniedError(signal)

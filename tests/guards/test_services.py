@@ -407,18 +407,58 @@ class TestGetGuardState:
         state = get_guard_state_for_simulation(simulation.pk)
         assert state["guard_state"] == GuardState.ACTIVE
         assert state["engine_runnable"] is True
+        assert state["warnings"] == []
+        assert state["denial"] is None
 
     def test_with_presence(self, simulation, trainerlab_presence):
         state = get_guard_state_for_simulation(simulation.pk)
         assert state["guard_state"] == GuardState.ACTIVE
         assert state["engine_runnable"] is True
+        assert state["denial"] is None
 
-    def test_paused_includes_denial(self, simulation, trainerlab_presence):
+    def test_paused_runtime_cap_has_structured_denial(self, simulation, trainerlab_presence):
         trainerlab_presence.guard_state = GuardState.PAUSED_RUNTIME_CAP
+        trainerlab_presence.pause_reason = PauseReason.RUNTIME_CAP
         trainerlab_presence.engine_runnable = False
         trainerlab_presence.save()
 
         state = get_guard_state_for_simulation(simulation.pk)
         assert state["guard_state"] == GuardState.PAUSED_RUNTIME_CAP
         assert state["engine_runnable"] is False
-        assert state["denial_reason"] is not None
+        denial = state["denial"]
+        assert denial is not None
+        assert denial["code"] == "runtime_cap_reached"
+        assert denial["severity"] == "error"
+        assert denial["resumable"] is False
+        assert denial["terminal"] is True
+
+    def test_paused_inactivity_has_resumable_denial(self, simulation, trainerlab_presence):
+        trainerlab_presence.guard_state = GuardState.PAUSED_INACTIVITY
+        trainerlab_presence.pause_reason = PauseReason.INACTIVITY
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        denial = state["denial"]
+        assert denial is not None
+        assert denial["code"] == "session_paused"
+        assert denial["resumable"] is True
+        assert denial["terminal"] is False
+
+    def test_inactivity_warning_is_structured(self, simulation, trainerlab_presence):
+        trainerlab_presence.guard_state = GuardState.WARNING
+        trainerlab_presence.last_presence_at = timezone.now() - timedelta(seconds=275)
+        trainerlab_presence.save()
+
+        state = get_guard_state_for_simulation(simulation.pk)
+        assert len(state["warnings"]) >= 1
+        warning = state["warnings"][0]
+        assert warning["code"] == "inactivity_warning"
+        assert warning["severity"] == "warning"
+        assert warning["expires_in_seconds"] is not None
+
+    def test_no_denial_reason_or_denial_message_keys(self, simulation, trainerlab_presence):
+        """Verify the old flat denial fields are removed."""
+        state = get_guard_state_for_simulation(simulation.pk)
+        assert "denial_reason" not in state
+        assert "denial_message" not in state

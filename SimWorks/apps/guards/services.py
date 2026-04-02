@@ -728,7 +728,17 @@ def _upsert_usage(
 def get_guard_state_for_simulation(
     simulation_id: int,
 ) -> dict[str, Any]:
-    """Return the current guard state as a dict suitable for API responses."""
+    """Return the current guard state as a dict suitable for API responses.
+
+    Returns structured warning and denial objects via the presentation
+    layer rather than free-form strings.
+    """
+    from .presentation import (
+        denial_for_state,
+        warning_approaching_runtime_cap,
+        warning_inactivity,
+    )
+
     try:
         presence = SessionPresence.objects.select_related("simulation").get(
             simulation_id=simulation_id,
@@ -742,8 +752,7 @@ def get_guard_state_for_simulation(
             "runtime_cap_seconds": None,
             "wall_clock_expires_at": None,
             "warnings": [],
-            "denial_reason": None,
-            "denial_message": None,
+            "denial": None,
         }
 
     _, _, policy = resolve_policy_for_simulation(presence.simulation)
@@ -753,27 +762,22 @@ def get_guard_state_for_simulation(
     if presence.lab_type == LabType.TRAINERLAB:
         active_elapsed = _get_trainerlab_active_elapsed(presence.simulation)
 
-    # Collect warnings.
-    warnings: list[str] = []
+    # Collect structured warnings.
+    warnings: list[dict[str, Any]] = []
     if policy.has_runtime_cap and presence.guard_state == GuardState.ACTIVE:
         remaining = policy.runtime_cap_seconds - active_elapsed
         if 0 < remaining <= 300:
-            warnings.append(f"{remaining} seconds of active runtime remaining.")
+            warnings.append(warning_approaching_runtime_cap(remaining, policy.runtime_cap_seconds))
 
     if presence.guard_state == GuardState.WARNING:
         age = 0.0
         if presence.last_presence_at:
             age = (timezone.now() - presence.last_presence_at).total_seconds()
         seconds_until_pause = max(0, int(policy.inactivity_pause_seconds - age))
-        warnings.append(f"Inactivity warning — session will pause in {seconds_until_pause}s.")
+        warnings.append(warning_inactivity(seconds_until_pause))
 
-    denial_reason = None
-    denial_message = None
-    if presence.guard_state in NON_RUNNABLE_STATES:
-        guard = RuntimeGuard(presence, policy)
-        denial = guard._deny_for_current_state()
-        denial_reason = denial.denial_reason
-        denial_message = denial.denial_message
+    # Build structured denial for non-runnable states.
+    denial = denial_for_state(presence.guard_state, presence.pause_reason)
 
     return {
         "guard_state": presence.guard_state,
@@ -785,8 +789,7 @@ def get_guard_state_for_simulation(
             presence.wall_clock_expires_at.isoformat() if presence.wall_clock_expires_at else None
         ),
         "warnings": warnings,
-        "denial_reason": denial_reason,
-        "denial_message": denial_message,
+        "denial": denial,
     }
 
 

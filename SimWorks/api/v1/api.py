@@ -24,6 +24,7 @@ from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.endpoints.tools import router as tools_router
 from api.v1.endpoints.trainerlab import router as trainerlab_router
+from api.v1.errors import GuardDeniedError
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 from apps.common.ratelimit import RateLimitExceeded
 from config.logging import get_logger
@@ -115,6 +116,21 @@ def rate_limit_error_handler(request: HttpRequest, exc: RateLimitExceeded):
     )
     response["Retry-After"] = str(exc.retry_after)
     return response
+
+
+@api.exception_handler(GuardDeniedError)
+def guard_denied_handler(request: HttpRequest, exc: GuardDeniedError):
+    """Handle guard-denied errors with structured denial payload."""
+    resp = create_error_response(
+        request,
+        error_type="guard_denied",
+        title="Guard denied",
+        status=403,
+        detail=str(exc.message),
+    )
+    data = resp.model_dump()
+    data["guard_denial"] = exc.denial_signal
+    return api.create_response(request, data, status=403)
 
 
 @api.exception_handler(HttpError)
