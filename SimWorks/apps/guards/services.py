@@ -257,7 +257,7 @@ def evaluate_inactivity(simulation_id: int) -> GuardState | None:
                 "guard.state.updated",
                 {
                     "guard_state": GuardState.PAUSED_INACTIVITY,
-                    "pause_reason": PauseReason.INACTIVITY,
+                    "guard_reason": PauseReason.INACTIVITY,
                 },
             )
             logger.info(
@@ -376,7 +376,7 @@ def _transition_to_runtime_cap_paused(presence: SessionPresence) -> None:
         "guard.state.updated",
         {
             "guard_state": GuardState.PAUSED_RUNTIME_CAP,
-            "pause_reason": PauseReason.RUNTIME_CAP,
+            "guard_reason": PauseReason.RUNTIME_CAP,
         },
     )
     logger.info(
@@ -427,7 +427,7 @@ def evaluate_wall_clock(simulation_id: int) -> GuardState | None:
                 "guard.state.updated",
                 {
                     "guard_state": GuardState.ENDED,
-                    "pause_reason": PauseReason.WALL_CLOCK_EXPIRY,
+                    "guard_reason": PauseReason.WALL_CLOCK_EXPIRY,
                 },
             )
             logger.info("guards.wall_clock_expired", simulation_id=simulation_id)
@@ -480,7 +480,7 @@ def resume_guard_state(simulation_id: int) -> GuardDecision:
     _emit_guard_event(
         simulation_id,
         "guard.state.updated",
-        {"guard_state": GuardState.ACTIVE, "pause_reason": PauseReason.NONE},
+        {"guard_state": GuardState.ACTIVE, "guard_reason": PauseReason.NONE},
     )
     return GuardDecision.allow()
 
@@ -781,7 +781,7 @@ def get_guard_state_for_simulation(
 
     return {
         "guard_state": presence.guard_state,
-        "guard_reason": presence.pause_reason,
+        "guard_reason": presence.pause_reason,  # model field → public API key
         "engine_runnable": presence.engine_runnable,
         "active_elapsed_seconds": active_elapsed,
         "runtime_cap_seconds": policy.runtime_cap_seconds,

@@ -6,6 +6,7 @@ These tests require the Django ORM (integration tests).
 from __future__ import annotations
 
 from datetime import timedelta
+import unittest.mock
 
 from django.utils import timezone
 import pytest
@@ -534,3 +535,48 @@ class TestGetGuardState:
         assert "guard_reason" in denial["metadata"]
         assert "pause_reason" not in denial["metadata"]
         assert denial["metadata"]["guard_reason"] == PauseReason.USAGE_LIMIT
+
+
+class TestGuardEventPayloadNaming:
+    """Guard event payloads must use ``guard_reason``, not ``pause_reason``."""
+
+    def test_inactivity_event_uses_guard_reason(self, simulation, trainerlab_presence):
+        trainerlab_presence.last_presence_at = timezone.now() - timedelta(seconds=310)
+        trainerlab_presence.save()
+
+        with unittest.mock.patch("apps.guards.services._emit_guard_event") as mock_emit:
+            evaluate_inactivity(simulation.pk)
+
+        mock_emit.assert_called_once()
+        payload = mock_emit.call_args[0][2]
+        assert payload["guard_state"] == GuardState.PAUSED_INACTIVITY
+        assert payload["guard_reason"] == PauseReason.INACTIVITY
+        assert "pause_reason" not in payload
+
+    def test_wall_clock_ended_event_uses_guard_reason(self, simulation, trainerlab_presence):
+        trainerlab_presence.wall_clock_expires_at = timezone.now() - timedelta(minutes=1)
+        trainerlab_presence.save()
+
+        with unittest.mock.patch("apps.guards.services._emit_guard_event") as mock_emit:
+            evaluate_wall_clock(simulation.pk)
+
+        mock_emit.assert_called_once()
+        payload = mock_emit.call_args[0][2]
+        assert payload["guard_state"] == GuardState.ENDED
+        assert payload["guard_reason"] == PauseReason.WALL_CLOCK_EXPIRY
+        assert "pause_reason" not in payload
+
+    def test_resume_event_uses_guard_reason(self, simulation, trainerlab_presence):
+        trainerlab_presence.guard_state = GuardState.PAUSED_INACTIVITY
+        trainerlab_presence.pause_reason = PauseReason.INACTIVITY
+        trainerlab_presence.engine_runnable = False
+        trainerlab_presence.save()
+
+        with unittest.mock.patch("apps.guards.services._emit_guard_event") as mock_emit:
+            resume_guard_state(simulation.pk)
+
+        mock_emit.assert_called_once()
+        payload = mock_emit.call_args[0][2]
+        assert payload["guard_state"] == GuardState.ACTIVE
+        assert payload["guard_reason"] == PauseReason.NONE
+        assert "pause_reason" not in payload

@@ -33,6 +33,10 @@ class SessionPresence(models.Model):
         choices=GuardState.choices,
         default=GuardState.ACTIVE,
     )
+    # Legacy internal name — exposed publicly as ``guard_reason`` in the API.
+    # Represents the cause of the current guard state (including terminal
+    # ended causes), not just pause causes.  Kept as ``pause_reason`` to
+    # avoid a DB column rename migration.
     pause_reason = models.CharField(
         max_length=32,
         choices=PauseReason.choices,
