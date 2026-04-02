@@ -134,25 +134,29 @@ is the single source of truth for the external API vocabulary.
 ### Guard-Denied 403 Responses
 
 When a ChatLab send is denied by the guard, the 403 response includes a
-structured `guard_denial` object in the error payload:
+structured `guard_denial` object in the error payload.  The denial carries
+the same canonical code and semantics as the guard-state endpoint:
 
 ```json
 {
   "type": "guard_denied",
   "title": "Guard denied",
   "status": 403,
-  "detail": "Usage limit approaching — sending is locked.",
+  "detail": "Session locked due to usage limits.",
   "instance": "/api/v1/simulations/123/conversations/456/messages/",
   "correlation_id": "...",
   "guard_denial": {
-    "code": "chat_send_locked",
+    "code": "usage_limit_reached",
     "severity": "error",
-    "title": "Action denied",
-    "message": "Usage limit approaching — sending is locked.",
-    "resumable": null,
-    "terminal": null,
+    "title": "Usage limit reached",
+    "message": "Session locked due to usage limits.",
+    "resumable": true,
+    "terminal": false,
     "expires_in_seconds": null,
-    "metadata": {}
+    "metadata": {
+      "guard_state": "locked_usage",
+      "pause_reason": "usage_limit"
+    }
   }
 }
 ```

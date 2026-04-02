@@ -572,23 +572,23 @@ def _guard_chat_send(sim) -> None:
     """
     from api.v1.errors import GuardDeniedError
     from apps.guards.models import SessionPresence
-    from apps.guards.presentation import build_denial_signal, denial_for_state
+    from apps.guards.presentation import denial_for_state, denial_from_reason
     from apps.guards.services import check_chat_send_allowed
 
     decision = check_chat_send_allowed(sim.pk)
     if not decision.allowed:
         # Try state-aware signal first for canonical semantics.
+        signal = None
         try:
             presence = SessionPresence.objects.get(simulation_id=sim.pk)
             signal = denial_for_state(presence.guard_state, presence.pause_reason)
         except SessionPresence.DoesNotExist:
-            signal = None
+            pass
 
         if signal is None:
-            # Fallback: build from the decision's raw fields.
-            signal = build_denial_signal(
-                code=decision.denial_reason,
-                message=decision.denial_message or "Action denied by guard.",
-                title="Action denied",
+            # Non-state denial (e.g. budget exhaustion before state transition).
+            signal = denial_from_reason(
+                decision.denial_reason,
+                decision.denial_message,
             )
         raise GuardDeniedError(signal)

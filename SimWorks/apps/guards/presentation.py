@@ -146,6 +146,91 @@ def denial_for_state(
 
 
 # ───────────────────────────────────────────────────────────────────────
+# Non-state (reason-based) denial mapper
+#
+# For denials that happen before a guard-state transition (e.g. send-lock
+# from budget exhaustion, pre-session budget check), this mapper turns
+# the DenialReason code into a fully-specified signal with title,
+# resumable/terminal, and sensible defaults.
+# ───────────────────────────────────────────────────────────────────────
+
+_REASON_SIGNAL_MAP: dict[str, dict[str, Any]] = {
+    DenialReason.USAGE_LIMIT_REACHED: {
+        "title": "Usage limit reached",
+        "resumable": True,
+        "terminal": False,
+    },
+    DenialReason.INSUFFICIENT_TOKEN_BUDGET: {
+        "title": "Insufficient token budget",
+        "resumable": False,
+        "terminal": False,
+    },
+    DenialReason.SESSION_TOKEN_LIMIT: {
+        "title": "Session token limit reached",
+        "resumable": False,
+        "terminal": False,
+    },
+    DenialReason.USER_TOKEN_LIMIT: {
+        "title": "Usage limit reached",
+        "resumable": False,
+        "terminal": False,
+    },
+    DenialReason.ACCOUNT_TOKEN_LIMIT: {
+        "title": "Account usage limit reached",
+        "resumable": False,
+        "terminal": False,
+    },
+    DenialReason.RUNTIME_CAP_REACHED: {
+        "title": "Runtime limit reached",
+        "resumable": False,
+        "terminal": True,
+    },
+    DenialReason.SESSION_PAUSED: {
+        "title": "Session paused",
+        "resumable": True,
+        "terminal": False,
+    },
+    DenialReason.SESSION_ENDED: {
+        "title": "Session ended",
+        "resumable": False,
+        "terminal": True,
+    },
+    DenialReason.WALL_CLOCK_EXPIRED: {
+        "title": "Session expired",
+        "resumable": False,
+        "terminal": True,
+    },
+}
+
+
+def denial_from_reason(
+    denial_reason: str,
+    denial_message: str = "",
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a canonical denial signal from a ``DenialReason`` code.
+
+    Used when a ``GuardDecision`` is denied but no guard-state transition
+    has occurred yet (e.g. send-lock from budget exhaustion before the
+    session enters ``locked_usage``).
+
+    Unlike the generic ``build_denial_signal()`` fallback, this always
+    produces a fully-specified signal with canonical title, resumable,
+    and terminal values for known denial reasons.
+    """
+    spec = _REASON_SIGNAL_MAP.get(denial_reason, {})
+    return build_denial_signal(
+        code=denial_reason,
+        message=denial_message or "Action denied by guard.",
+        title=spec.get("title", "Action denied"),
+        resumable=spec.get("resumable"),
+        terminal=spec.get("terminal"),
+        metadata=metadata or {},
+    )
+
+
+# ───────────────────────────────────────────────────────────────────────
 # Warning builders
 # ───────────────────────────────────────────────────────────────────────
 

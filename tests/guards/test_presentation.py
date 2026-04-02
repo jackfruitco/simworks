@@ -135,6 +135,46 @@ class TestWarningInactivity:
         assert sig["metadata"]["seconds_until_pause"] == 30
 
 
+class TestDenialFromReason:
+    """denial_from_reason produces fully-specified signals for known codes."""
+
+    def test_usage_limit_reached(self):
+        from apps.guards.presentation import denial_from_reason
+
+        sig = denial_from_reason(DenialReason.USAGE_LIMIT_REACHED, "Sending is locked.")
+        assert sig["code"] == DenialReason.USAGE_LIMIT_REACHED
+        assert sig["severity"] == "error"
+        assert sig["title"] == "Usage limit reached"
+        assert sig["resumable"] is True
+        assert sig["terminal"] is False
+
+    def test_insufficient_token_budget(self):
+        from apps.guards.presentation import denial_from_reason
+
+        sig = denial_from_reason(DenialReason.INSUFFICIENT_TOKEN_BUDGET, "Not enough tokens.")
+        assert sig["code"] == DenialReason.INSUFFICIENT_TOKEN_BUDGET
+        assert sig["title"] == "Insufficient token budget"
+        assert sig["resumable"] is False
+        assert sig["terminal"] is False
+
+    def test_unknown_reason_falls_back_gracefully(self):
+        from apps.guards.presentation import denial_from_reason
+
+        sig = denial_from_reason("unknown_reason", "Something happened.")
+        assert sig["code"] == "unknown_reason"
+        assert sig["title"] == "Action denied"
+        assert sig["message"] == "Something happened."
+
+    def test_all_denial_reasons_are_covered(self):
+        """Every DenialReason should have an entry in _REASON_SIGNAL_MAP."""
+        from apps.guards.presentation import _REASON_SIGNAL_MAP
+
+        for reason in DenialReason:
+            assert reason.value in _REASON_SIGNAL_MAP, (
+                f"DenialReason.{reason.name} ({reason.value!r}) is missing from _REASON_SIGNAL_MAP"
+            )
+
+
 class TestCodeConsistency:
     """All denial codes from presentation.py must be DenialReason values."""
 
