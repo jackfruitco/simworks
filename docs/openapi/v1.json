@@ -6419,6 +6419,7 @@
           },
           "runtime_state": {
             "additionalProperties": true,
+            "description": "Internal engine/runtime state only. This is a transitional operational view, not the canonical clinical snapshot contract. Legacy clinical cache keys such as `current_snapshot`, `scenario_brief`, and `snapshot_annotations` are intentionally excluded.",
             "title": "Runtime State",
             "type": "object"
           },
@@ -6533,7 +6534,6 @@
           "simulation_id",
           "status",
           "scenario_spec",
-          "runtime_state",
           "initial_directives",
           "tick_interval_seconds",
           "run_started_at",
@@ -6721,6 +6721,7 @@
         "type": "object"
       },
       "EventTimelineOut": {
+        "description": "RuntimeEvent-backed event read model for /state/ in this phase.",
         "properties": {
           "events": {
             "items": {

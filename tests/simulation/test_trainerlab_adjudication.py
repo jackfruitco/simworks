@@ -9,12 +9,21 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Intervention,
+    PatientStatusState,
     Problem,
     PulseAssessment,
+    RecommendedIntervention,
+    ScenarioBrief,
 )
 from apps.trainerlab.recommendations import validate_and_normalize_recommendation
 from apps.trainerlab.runtime_llm import build_runtime_llm_context, compact_runtime_reasons
 from apps.trainerlab.services import create_session, get_runtime_state, project_current_snapshot
+from apps.trainerlab.viewmodels import (
+    build_scenario_snapshot,
+    build_trainer_rest_view_model,
+    build_trainer_watch_view_model,
+    load_trainer_engine_aggregate,
+)
 
 
 @pytest.fixture
@@ -395,6 +404,166 @@ class TestTrainerLabAdjudication:
         assert snapshot["problems"]
         assert snapshot["recommended_interventions"]
         assert len(context) <= 20
+
+    def test_patient_status_state_persists_only_structured_clinical_flags(self):
+        field_names = {field.name for field in PatientStatusState._meta.fields}
+
+        assert "avpu" in field_names
+        assert "respiratory_distress" in field_names
+        assert "hemodynamic_instability" in field_names
+        assert "impending_pneumothorax" in field_names
+        assert "tension_pneumothorax" in field_names
+        assert "narrative" not in field_names
+        assert "teaching_flags" not in field_names
+
+    def test_load_trainer_engine_aggregate_and_builders_stay_query_bounded(self, simulation):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        cause = _injury(
+            session.simulation,
+            description="GSW left thigh",
+            location=Injury.InjuryLocation.LEG_LEFT_UPPER,
+            kind=Injury.InjuryKind.GSW,
+        )
+        problem = _problem(
+            session.simulation,
+            cause_injury=cause,
+            kind="hemorrhage",
+            title="Massive hemorrhage",
+            march_category=Problem.MARCHCategory.M,
+            anatomical_location="Left thigh",
+        )
+        normalized = validate_and_normalize_recommendation(
+            problem=problem,
+            raw_kind="tourniquet",
+            raw_title="Tourniquet",
+            raw_site="left_leg",
+        )
+        RecommendedIntervention.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            kind=normalized.kind,
+            code=normalized.code,
+            slug=normalized.slug,
+            title=normalized.title,
+            display_name=normalized.display_name,
+            target_problem=problem,
+            target_injury=cause,
+            recommendation_source=normalized.recommendation_source,
+            validation_status=normalized.validation_status,
+            normalized_kind=normalized.kind,
+            normalized_code=normalized.code,
+            site_code=normalized.site_code,
+            site_label=normalized.site_label,
+        )
+        HeartRate.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            min_value=120,
+            max_value=128,
+        )
+        ScenarioBrief.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            read_aloud_brief="Casualty is bleeding from the left thigh in an exposed alley.",
+        )
+
+        with CaptureQueriesContext(connection) as context:
+            aggregate = load_trainer_engine_aggregate(session=session)
+
+        assert len(context) <= 20
+
+        with CaptureQueriesContext(connection) as context:
+            rest_view_model = build_trainer_rest_view_model(aggregate)
+        assert len(context) == 0
+        assert rest_view_model.scenario_snapshot.causes
+
+        with CaptureQueriesContext(connection) as context:
+            watch_view_model = build_trainer_watch_view_model(aggregate)
+        assert len(context) == 0
+        assert watch_view_model.scenario_snapshot.problems
+
+    def test_scenario_snapshot_patient_status_derives_from_active_problems_without_backfill(
+        self, simulation
+    ):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        cause = _injury(
+            session.simulation,
+            description="GSW left chest",
+            location=Injury.InjuryLocation.THORAX_LEFT_ANTERIOR,
+            kind=Injury.InjuryKind.GSW,
+        )
+        _problem(
+            session.simulation,
+            cause_injury=cause,
+            kind="open_chest_wound",
+            title="Open chest wound",
+            march_category=Problem.MARCHCategory.R,
+            anatomical_location="Left chest",
+        )
+
+        aggregate = load_trainer_engine_aggregate(session=session)
+        snapshot = build_scenario_snapshot(aggregate)
+
+        assert aggregate.patient_status is None
+        assert aggregate.runtime_state.get("current_snapshot") is None
+        assert snapshot.patient_status.impending_pneumothorax is True
+        assert snapshot.patient_status.respiratory_distress is False
+        assert snapshot.patient_status.narrative == "Patient status is being actively reassessed."
+
+    def test_scenario_snapshot_patient_status_uses_narrow_legacy_fallback_for_old_sessions(
+        self, simulation
+    ):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        cause = _injury(
+            session.simulation,
+            description="GSW left chest",
+            location=Injury.InjuryLocation.THORAX_LEFT_ANTERIOR,
+            kind=Injury.InjuryKind.GSW,
+        )
+        _problem(
+            session.simulation,
+            cause_injury=cause,
+            kind="open_chest_wound",
+            title="Open chest wound",
+            march_category=Problem.MARCHCategory.R,
+            anatomical_location="Left chest",
+        )
+        state = get_runtime_state(session)
+        state["snapshot_annotations"] = {
+            "patient_status": {
+                "avpu": "verbal",
+                "narrative": "Legacy cached narrative from a pre-refactor session.",
+                "teaching_flags": ["watch chest rise"],
+            }
+        }
+
+        aggregate = load_trainer_engine_aggregate(session=session, runtime_state_override=state)
+        snapshot = build_scenario_snapshot(aggregate)
+
+        assert PatientStatusState.objects.filter(simulation=session.simulation).count() == 0
+        assert aggregate.runtime_state.get("current_snapshot") is None
+        assert snapshot.patient_status.avpu == "verbal"
+        assert snapshot.patient_status.impending_pneumothorax is True
+        assert (
+            snapshot.patient_status.narrative
+            == "Legacy cached narrative from a pre-refactor session."
+        )
+        assert snapshot.patient_status.teaching_flags == ["watch chest rise"]
 
     def test_project_current_snapshot_logs_deprecated_wrapper(self, simulation, caplog):
         session = create_session(

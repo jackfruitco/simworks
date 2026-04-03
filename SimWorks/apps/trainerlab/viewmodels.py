@@ -110,6 +110,12 @@ class EventTimelineEntry(StrictBaseModel):
 
 
 class EventTimeline(StrictBaseModel):
+    """RuntimeEvent-backed timeline for the current EventState read path.
+
+    In this phase, EventState is represented by RuntimeEvent rows for snapshot/watch
+    consumption. It is not a complete reconstruction of every audit/provenance store.
+    """
+
     events: list[EventTimelineEntry] = Field(default_factory=list)
     total_events: int = 0
 
@@ -219,6 +225,14 @@ class TrainerWatchViewModel(StrictBaseModel):
 
 
 @dataclass(frozen=True)
+class TrainerDerivedViews:
+    scenario_snapshot: ScenarioSnapshot
+    runtime_snapshot: RuntimeSnapshot
+    event_timeline: EventTimeline
+    watch_snapshot: WatchSnapshot | None = None
+
+
+@dataclass(frozen=True)
 class TrainerEngineAggregate:
     session: TrainerSession
     runtime_state: dict[str, Any]
@@ -255,7 +269,7 @@ def load_trainer_engine_aggregate(
             .filter(simulation_id=simulation_id)
             .first()
         )
-    else:
+    elif "simulation" not in session._state.fields_cache:
         session = TrainerSession.objects.select_related("simulation").get(pk=session.pk)
 
     if session is None:
@@ -286,9 +300,7 @@ def load_trainer_engine_aggregate(
         Injury.objects.filter(simulation=simulation, is_active=True).order_by("timestamp", "id")
     )
     illnesses = tuple(
-        Illness.objects.prefetch_related("recommended_interventions")
-        .filter(simulation=simulation, is_active=True)
-        .order_by("timestamp", "id")
+        Illness.objects.filter(simulation=simulation, is_active=True).order_by("timestamp", "id")
     )
     interventions = tuple(
         Intervention.objects.select_related("target_problem")
@@ -482,6 +494,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
 
 
 def build_event_timeline(aggregate: TrainerEngineAggregate) -> EventTimeline:
+    """Build the RuntimeEvent-backed timeline read model for the current phase."""
     events = [
         EventTimelineEntry(
             event_id=str(item.id),
@@ -493,6 +506,23 @@ def build_event_timeline(aggregate: TrainerEngineAggregate) -> EventTimeline:
         for item in aggregate.runtime_events
     ]
     return EventTimeline(events=events, total_events=len(events))
+
+
+def build_trainer_derived_views(
+    aggregate: TrainerEngineAggregate,
+    *,
+    include_watch_snapshot: bool = False,
+) -> TrainerDerivedViews:
+    scenario_snapshot = build_scenario_snapshot(aggregate)
+    runtime_snapshot = build_runtime_snapshot(aggregate)
+    event_timeline = build_event_timeline(aggregate)
+    watch_snapshot = build_watch_snapshot(aggregate) if include_watch_snapshot else None
+    return TrainerDerivedViews(
+        scenario_snapshot=scenario_snapshot,
+        runtime_snapshot=runtime_snapshot,
+        event_timeline=event_timeline,
+        watch_snapshot=watch_snapshot,
+    )
 
 
 def build_watch_snapshot(aggregate: TrainerEngineAggregate) -> WatchSnapshot:
@@ -547,49 +577,58 @@ def build_trainer_agent_view_model(
     aggregate: TrainerEngineAggregate,
     *,
     reasons: list[dict[str, Any]] | None = None,
+    derived_views: TrainerDerivedViews | None = None,
 ) -> TrainerAgentViewModel:
-    scenario_snapshot = build_scenario_snapshot(aggregate)
-    runtime_snapshot = build_runtime_snapshot(aggregate)
-    event_timeline = build_event_timeline(aggregate)
+    derived_views = derived_views or build_trainer_derived_views(aggregate)
     return TrainerAgentViewModel(
         simulation_id=aggregate.session.simulation_id,
         session_id=aggregate.session.id,
         status=aggregate.session.status,
-        scenario_snapshot=scenario_snapshot,
-        runtime_snapshot=runtime_snapshot,
-        event_timeline=event_timeline,
+        scenario_snapshot=derived_views.scenario_snapshot,
+        runtime_snapshot=derived_views.runtime_snapshot,
+        event_timeline=derived_views.event_timeline,
         trigger_reasons=list(reasons or []),
         metadata=TrainerAgentViewModelMetadata(snapshot_cache=aggregate.snapshot_cache),
     )
 
 
-def build_trainer_rest_view_model(aggregate: TrainerEngineAggregate) -> TrainerRestViewModel:
-    scenario_snapshot = build_scenario_snapshot(aggregate)
-    runtime_snapshot = build_runtime_snapshot(aggregate)
-    event_timeline = build_event_timeline(aggregate)
+def build_trainer_rest_view_model(
+    aggregate: TrainerEngineAggregate,
+    *,
+    derived_views: TrainerDerivedViews | None = None,
+) -> TrainerRestViewModel:
+    derived_views = derived_views or build_trainer_derived_views(aggregate)
     return TrainerRestViewModel(
         simulation_id=aggregate.session.simulation_id,
         session_id=aggregate.session.id,
         status=aggregate.session.status,
-        scenario_snapshot=scenario_snapshot,
-        runtime_snapshot=runtime_snapshot,
-        event_timeline=event_timeline,
+        scenario_snapshot=derived_views.scenario_snapshot,
+        runtime_snapshot=derived_views.runtime_snapshot,
+        event_timeline=derived_views.event_timeline,
         metadata=TrainerRestMetadata(
             snapshot_cache=aggregate.snapshot_cache,
-            event_timeline_count=event_timeline.total_events,
+            event_timeline_count=derived_views.event_timeline.total_events,
         ),
     )
 
 
-def build_trainer_watch_view_model(aggregate: TrainerEngineAggregate) -> TrainerWatchViewModel:
+def build_trainer_watch_view_model(
+    aggregate: TrainerEngineAggregate,
+    *,
+    derived_views: TrainerDerivedViews | None = None,
+) -> TrainerWatchViewModel:
+    derived_views = derived_views or build_trainer_derived_views(
+        aggregate,
+        include_watch_snapshot=True,
+    )
     return TrainerWatchViewModel(
         simulation_id=aggregate.session.simulation_id,
         session_id=aggregate.session.id,
         status=aggregate.session.status,
-        watch_snapshot=build_watch_snapshot(aggregate),
-        scenario_snapshot=build_scenario_snapshot(aggregate),
-        runtime_snapshot=build_runtime_snapshot(aggregate),
-        event_timeline=build_event_timeline(aggregate),
+        watch_snapshot=derived_views.watch_snapshot or build_watch_snapshot(aggregate),
+        scenario_snapshot=derived_views.scenario_snapshot,
+        runtime_snapshot=derived_views.runtime_snapshot,
+        event_timeline=derived_views.event_timeline,
     )
 
 
@@ -640,33 +679,35 @@ def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
 
 
 def _build_patient_status_snapshot(aggregate: TrainerEngineAggregate) -> RuntimePatientStatus:
+    base_status = _legacy_patient_status_fallback_payload(aggregate)
     if aggregate.patient_status is not None:
-        return RuntimePatientStatus.model_validate(
-            {
-                "avpu": aggregate.patient_status.avpu or None,
-                "respiratory_distress": aggregate.patient_status.respiratory_distress,
-                "hemodynamic_instability": aggregate.patient_status.hemodynamic_instability,
-                "impending_pneumothorax": aggregate.patient_status.impending_pneumothorax,
-                "tension_pneumothorax": aggregate.patient_status.tension_pneumothorax,
-                "narrative": aggregate.patient_status.narrative,
-                "teaching_flags": list(aggregate.patient_status.teaching_flags or []),
-            }
+        base_status = {
+            **base_status,
+            "avpu": aggregate.patient_status.avpu or None,
+            "respiratory_distress": aggregate.patient_status.respiratory_distress,
+            "hemodynamic_instability": aggregate.patient_status.hemodynamic_instability,
+            "impending_pneumothorax": aggregate.patient_status.impending_pneumothorax,
+            "tension_pneumothorax": aggregate.patient_status.tension_pneumothorax,
+        }
+    return RuntimePatientStatus.model_validate(
+        _derive_patient_status_from_problem_kinds(
+            active_kinds={problem.kind for problem in aggregate.problems},
+            base_status=base_status,
         )
+    )
+
+
+def _legacy_patient_status_fallback_payload(aggregate: TrainerEngineAggregate) -> dict[str, Any]:
     legacy_status = dict(
         (aggregate.runtime_state.get("snapshot_annotations") or {}).get("patient_status") or {}
     )
-    if legacy_status:
+    if legacy_status and aggregate.patient_status is None:
         logger.debug(
             "trainerlab.patient_status.legacy_fallback_used",
             session_id=aggregate.session.id,
             simulation_id=aggregate.session.simulation_id,
         )
-    return RuntimePatientStatus.model_validate(
-        _derive_patient_status_from_problem_kinds(
-            active_kinds={problem.kind for problem in aggregate.problems},
-            base_status=legacy_status,
-        )
-    )
+    return legacy_status
 
 
 def _seed_recommendation_prefetch_cache(aggregate: TrainerEngineAggregate) -> None:

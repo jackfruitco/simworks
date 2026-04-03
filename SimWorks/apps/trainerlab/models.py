@@ -1419,15 +1419,13 @@ class ScenarioBrief(BaseDomainEvent):
 
 
 class PatientStatusState(BaseDomainEvent):
-    """Canonical persisted clinical status summary used to derive scenario snapshots."""
+    """Canonical persisted structured clinical status flags for scenario snapshots."""
 
     avpu = models.CharField(max_length=24, blank=True, default="")
     respiratory_distress = models.BooleanField(default=False)
     hemodynamic_instability = models.BooleanField(default=False)
     impending_pneumothorax = models.BooleanField(default=False)
     tension_pneumothorax = models.BooleanField(default=False)
-    narrative = models.TextField(blank=True, default="")
-    teaching_flags = models.JSONField(default=list, blank=True)
     supersedes = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -1437,8 +1435,11 @@ class PatientStatusState(BaseDomainEvent):
     )
 
     def __str__(self):
-        narrative_preview = (self.narrative or "")[:50]
-        return f"PatientStatusState at {self.timestamp:%H:%M:%S}: {narrative_preview}..."
+        return (
+            "PatientStatusState at "
+            f"{self.timestamp:%H:%M:%S}: avpu={self.avpu or 'unknown'} "
+            f"rd={self.respiratory_distress} hd={self.hemodynamic_instability}"
+        )
 
 
 # ---------------------------------------------------------------------------

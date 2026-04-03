@@ -685,6 +685,9 @@ class TestTrainerLabSessionLifecycle:
         )
 
         assert captured["simulation_id"] == created["simulation_id"]
+        assert "current_snapshot" not in created["runtime_state"]
+        assert "scenario_brief" not in created["runtime_state"]
+        assert "snapshot_annotations" not in created["runtime_state"]
 
     def test_create_session_returns_seeding_and_blocks_mutations_until_ready(
         self,
@@ -1777,6 +1780,11 @@ class TestTrainerLabDictionaries:
         body = response.json()
         assert body["simulation_id"] == session["simulation_id"]
         assert body["status"] == "seeded"
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
+        assert "pending_runtime_reasons" not in body
+        assert "currently_processing_reasons" not in body
         assert body["runtime_snapshot"]["state_revision"] == 0
         assert body["scenario_snapshot"]["causes"] == []
         assert body["scenario_snapshot"]["problems"] == []
@@ -1816,7 +1824,15 @@ class TestTrainerLabDictionaries:
         instructor_user,
         instructor_membership,
     ):
-        from apps.trainerlab.models import EventSource, HeartRate, ScenarioBrief, TrainerSession
+        from apps.trainerlab.models import (
+            EventSource,
+            HeartRate,
+            PulseAssessment,
+            RecommendedIntervention,
+            ScenarioBrief,
+            TrainerSession,
+        )
+        from apps.trainerlab.recommendations import validate_and_normalize_recommendation
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="state-no-cache-session")
@@ -1851,6 +1867,24 @@ class TestTrainerLabDictionaries:
         )
         assert problem_resp.status_code == 200
 
+        from apps.trainerlab.models import Injury, Problem
+
+        injury = Injury.objects.get(
+            simulation_id=simulation_id,
+            injury_description="GSW to the left chest",
+        )
+        problem = Problem.objects.get(
+            simulation_id=simulation_id,
+            cause_injury=injury,
+            kind="open_chest_wound",
+        )
+        normalization = validate_and_normalize_recommendation(
+            problem=problem,
+            raw_kind="chest_seal",
+            raw_title="Apply chest seal",
+            raw_site="left_anterior_chest",
+        )
+
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
         ScenarioBrief.objects.create(
             simulation=trainer_session.simulation,
@@ -1863,6 +1897,36 @@ class TestTrainerLabDictionaries:
             source=EventSource.SYSTEM,
             min_value=132,
             max_value=138,
+        )
+        PulseAssessment.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            location=PulseAssessment.Location.PEDAL_LEFT,
+            present=False,
+            description=PulseAssessment.Description.ABSENT,
+            color_normal=False,
+            color_description=PulseAssessment.ColorDescription.PALE,
+            condition_normal=False,
+            condition_description=PulseAssessment.ConditionDescription.CLAMMY,
+            temperature_normal=False,
+            temperature_description=PulseAssessment.TemperatureDescription.COOL,
+        )
+        RecommendedIntervention.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            kind=normalization.kind,
+            code=normalization.code,
+            slug=normalization.slug,
+            title=normalization.title,
+            display_name=normalization.display_name,
+            target_problem=problem,
+            target_injury=injury,
+            recommendation_source=normalization.recommendation_source,
+            validation_status=normalization.validation_status,
+            normalized_kind=normalization.kind,
+            normalized_code=normalization.code,
+            site_code=normalization.site_code,
+            site_label=normalization.site_label,
         )
 
         start_response = client.post(
@@ -1882,6 +1946,10 @@ class TestTrainerLabDictionaries:
         body = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
 
         assert body["status"] == "running"
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
+        assert "pending_runtime_reasons" not in body
         assert body["metadata"]["snapshot_cache"]["legacy_keys_present"] == []
         assert any(
             problem["kind"] == "open_chest_wound"
@@ -1893,6 +1961,8 @@ class TestTrainerLabDictionaries:
         assert any(
             vital["vital_type"] == "heart_rate" for vital in body["scenario_snapshot"]["vitals"]
         )
+        assert body["scenario_snapshot"]["pulses"]
+        assert body["scenario_snapshot"]["recommended_interventions"]
         assert body["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
 
     def test_intervention_event_captures_structured_fields_and_queues_reason(

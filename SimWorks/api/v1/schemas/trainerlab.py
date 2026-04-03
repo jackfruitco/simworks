@@ -44,7 +44,15 @@ class TrainerRunOut(BaseModel):
     simulation_id: int
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_spec: dict[str, Any]
-    runtime_state: dict[str, Any]
+    runtime_state: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Internal engine/runtime state only. This is a transitional operational view, "
+            "not the canonical clinical snapshot contract. Legacy clinical cache keys such as "
+            "`current_snapshot`, `scenario_brief`, and `snapshot_annotations` are intentionally "
+            "excluded."
+        ),
+    )
     initial_directives: str | None
     tick_interval_seconds: int
     run_started_at: datetime | None
@@ -565,6 +573,8 @@ class EventTimelineEntryOut(BaseModel):
 
 
 class EventTimelineOut(BaseModel):
+    """RuntimeEvent-backed event read model for /state/ in this phase."""
+
     events: list[EventTimelineEntryOut] = Field(default_factory=list)
     total_events: int = 0
 
@@ -888,9 +898,17 @@ class ScenarioBriefDetailOut(BaseModel):
     special_considerations: list[str]
 
 
+def _serialize_public_runtime_state(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(state or {}).items()
+        if key not in {"current_snapshot", "scenario_brief", "snapshot_annotations"}
+    }
+
+
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     simulation = session.simulation
-    state = session.runtime_state_json or {}
+    state = _serialize_public_runtime_state(session.runtime_state_json or {})
     terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
     terminal_reason_text = getattr(simulation, "terminal_reason_text", "") or None
     retryable = None
@@ -907,7 +925,7 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         simulation_id=session.simulation_id,
         status=session.status,
         scenario_spec=session.scenario_spec_json or {},
-        runtime_state=session.runtime_state_json or {},
+        runtime_state=state,
         initial_directives=session.initial_directives or None,
         tick_interval_seconds=session.tick_interval_seconds,
         run_started_at=session.run_started_at,

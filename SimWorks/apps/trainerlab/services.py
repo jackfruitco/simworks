@@ -71,6 +71,7 @@ from .viewmodels import (
     SCHEMA_VERSION as VIEWMODEL_SCHEMA_VERSION,
     build_scenario_snapshot,
     build_trainer_agent_view_model,
+    build_trainer_derived_views,
     build_trainer_rest_view_model,
     load_trainer_engine_aggregate,
 )
@@ -128,41 +129,6 @@ def build_runtime_state_defaults(
         "initial_generation_retryable": None,
         "active_elapsed_seconds": 0,
         "active_elapsed_anchor_started_at": None,
-        # TODO(trainerlab-refactor): remove this legacy snapshot cache mirror once all
-        # callers have moved to ScenarioSnapshot / TrainerRestViewModel.
-        "scenario_brief": {
-            "read_aloud_brief": (
-                "Initial scenario is generating."
-                if phase == "seeding"
-                else "Scenario brief pending."
-            ),
-            "environment": "",
-            "location_overview": "",
-            "threat_context": "",
-            "evacuation_options": [],
-            "evacuation_time": "",
-            "special_considerations": [],
-        },
-        # TODO(trainerlab-refactor): remove this legacy snapshot cache mirror once all
-        # callers have moved to ScenarioSnapshot / TrainerRestViewModel.
-        # legacy: formerly exposed as TrainerRuntimeStateOut.current_snapshot
-        "current_snapshot": {
-            "causes": [],
-            "problems": [],
-            "recommended_interventions": [],
-            "interventions": [],
-            "assessment_findings": [],
-            "diagnostic_results": [],
-            "resources": [],
-            "disposition": None,
-            "vitals": [],
-            "pulses": [],
-            "patient_status": {},
-            "scenario_brief": None,
-        },
-        # TODO(trainerlab-refactor): remove this legacy patient-status cache mirror once
-        # PatientStatusState is the only source used by all remaining callers.
-        "snapshot_annotations": {"patient_status": {}},
         "ai_plan": {
             "summary": "",
             "rationale": "",
@@ -202,21 +168,9 @@ def build_runtime_state_defaults(
     merged = dict(baseline)
     if state:
         merged.update(state)
-        merged["current_snapshot"] = {
-            **baseline["current_snapshot"],
-            **dict(state.get("current_snapshot") or {}),
-        }
-        merged["snapshot_annotations"] = {
-            **baseline["snapshot_annotations"],
-            **dict(state.get("snapshot_annotations") or {}),
-        }
         merged["ai_plan"] = {
             **baseline["ai_plan"],
             **dict(state.get("ai_plan") or {}),
-        }
-        merged["scenario_brief"] = {
-            **baseline["scenario_brief"],
-            **dict(state.get("scenario_brief") or {}),
         }
     return merged
 
@@ -269,21 +223,6 @@ def _log_deprecated_snapshot_wrapper(name: str, *, session: TrainerSession) -> N
     )
 
 
-def _mirror_legacy_snapshot_cache(
-    *,
-    state: dict[str, Any],
-    scenario_snapshot: dict[str, Any],
-) -> dict[str, Any]:
-    mirrored = dict(state)
-    mirrored["current_snapshot"] = dict(scenario_snapshot)
-    mirrored["scenario_brief"] = dict(scenario_snapshot.get("scenario_brief") or {})
-    mirrored["snapshot_annotations"] = {
-        **dict(mirrored.get("snapshot_annotations") or {}),
-        "patient_status": dict(scenario_snapshot.get("patient_status") or {}),
-    }
-    return mirrored
-
-
 def _current_patient_status_payload(session: TrainerSession) -> dict[str, Any]:
     existing = (
         PatientStatusState.objects.filter(simulation=session.simulation, is_active=True)
@@ -298,8 +237,38 @@ def _current_patient_status_payload(session: TrainerSession) -> dict[str, Any]:
         "hemodynamic_instability": existing.hemodynamic_instability,
         "impending_pneumothorax": existing.impending_pneumothorax,
         "tension_pneumothorax": existing.tension_pneumothorax,
-        "narrative": existing.narrative,
-        "teaching_flags": list(existing.teaching_flags or []),
+    }
+
+
+def _derive_patient_status_truth(
+    *,
+    session: TrainerSession,
+    base_status: dict[str, Any] | None,
+) -> dict[str, Any]:
+    normalized_payload = RuntimePatientStatus.model_validate(base_status or {})
+    active_problems = list(
+        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
+    active_kinds = {problem.kind for problem in active_problems}
+    return {
+        "avpu": normalized_payload.avpu or None,
+        "respiratory_distress": bool(
+            normalized_payload.respiratory_distress
+            or {"respiratory_distress", "tension_pneumothorax", "hypoxia"} & active_kinds
+        ),
+        "hemodynamic_instability": bool(
+            normalized_payload.hemodynamic_instability
+            or {"hemorrhage", "hypoperfusion_shock"} & active_kinds
+        ),
+        "tension_pneumothorax": bool(
+            normalized_payload.tension_pneumothorax or "tension_pneumothorax" in active_kinds
+        ),
+        "impending_pneumothorax": bool(
+            normalized_payload.impending_pneumothorax
+            or ("open_chest_wound" in active_kinds and "tension_pneumothorax" not in active_kinds)
+        ),
     }
 
 
@@ -309,9 +278,7 @@ def _persist_patient_status_state(
     base_status: dict[str, Any] | None,
     source: str = EventSource.SYSTEM,
 ) -> PatientStatusState:
-    normalized_payload = RuntimePatientStatus.model_validate(
-        _derive_patient_status_annotations(session=session, base_status=base_status)
-    ).model_dump(mode="json")
+    normalized_payload = _derive_patient_status_truth(session=session, base_status=base_status)
     existing = (
         PatientStatusState.objects.filter(simulation=session.simulation, is_active=True)
         .order_by("-timestamp", "-id")
@@ -324,8 +291,6 @@ def _persist_patient_status_state(
             "hemodynamic_instability": existing.hemodynamic_instability,
             "impending_pneumothorax": existing.impending_pneumothorax,
             "tension_pneumothorax": existing.tension_pneumothorax,
-            "narrative": existing.narrative,
-            "teaching_flags": list(existing.teaching_flags or []),
         }
         if existing_payload == normalized_payload:
             return existing
@@ -340,8 +305,6 @@ def _persist_patient_status_state(
         hemodynamic_instability=bool(normalized_payload.get("hemodynamic_instability")),
         impending_pneumothorax=bool(normalized_payload.get("impending_pneumothorax")),
         tension_pneumothorax=bool(normalized_payload.get("tension_pneumothorax")),
-        narrative=str(normalized_payload.get("narrative") or ""),
-        teaching_flags=list(normalized_payload.get("teaching_flags") or []),
     )
     logger.info(
         "trainerlab.scenario_state.patient_status.updated",
@@ -351,11 +314,6 @@ def _persist_patient_status_state(
         source=source,
     )
     return patient_status
-
-
-def _build_trainer_rest_view_model_for_session(session: TrainerSession):
-    aggregate = load_trainer_engine_aggregate(session=session)
-    return build_trainer_rest_view_model(aggregate)
 
 
 def _build_scenario_snapshot_for_session(
@@ -371,6 +329,25 @@ def _build_scenario_snapshot_for_session(
     )
     snapshot = build_scenario_snapshot(aggregate)
     return snapshot.model_dump(mode="json")
+
+
+def _persist_runtime_state_and_load_aggregate(
+    *,
+    session: TrainerSession,
+    state: dict[str, Any],
+    now: datetime,
+    update_tick_timestamp: bool,
+):
+    session.runtime_state_json = state
+    update_fields = ["runtime_state_json", "modified_at"]
+    if update_tick_timestamp:
+        session.last_ai_tick_at = now
+        update_fields.append("last_ai_tick_at")
+    session.save(update_fields=update_fields)
+    return load_trainer_engine_aggregate(
+        session=session,
+        runtime_state_override=state,
+    )
 
 
 def get_active_elapsed_seconds(
@@ -464,6 +441,7 @@ def emit_domain_runtime_event(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RuntimeEvent:
+    """Emit a domain-centric event payload from a concrete TrainerLab state object."""
     return emit_runtime_event(
         session=session,
         event_type=event_type,
@@ -653,6 +631,8 @@ def refresh_runtime_projection(
 ) -> dict[str, Any]:
     # TODO(trainerlab-refactor): remove this deprecated wrapper after all internal callers
     # have moved to build_*_view_model(load_trainer_engine_aggregate(...)).
+    # Transitional snapshot/update events are derived from the shared read model. Domain
+    # events continue to be emitted from serialize_domain_event(...) payloads.
     _log_deprecated_snapshot_wrapper("refresh_runtime_projection", session=session)
     now = timezone.now()
     state = get_runtime_state(session)
@@ -663,10 +643,7 @@ def refresh_runtime_projection(
             session_id=session.id,
             simulation_id=session.simulation_id,
         )
-        state["snapshot_annotations"] = {
-            **dict(state.get("snapshot_annotations") or {}),
-            **snapshot_annotations,
-        }
+        state["snapshot_annotations"] = dict(snapshot_annotations)
     if ai_plan is not None:
         state["ai_plan"] = {
             **dict(state.get("ai_plan") or {}),
@@ -684,22 +661,16 @@ def refresh_runtime_projection(
     state["state_revision"] = int(state.get("state_revision", 0) or 0) + 1
     state["last_runtime_completed_at"] = now.astimezone(UTC).isoformat()
 
-    scenario_snapshot = _build_scenario_snapshot_for_session(
-        session,
-        runtime_state_override=state,
+    aggregate = _persist_runtime_state_and_load_aggregate(
+        session=session,
+        state=state,
+        now=now,
+        update_tick_timestamp=update_tick_timestamp,
     )
-    state = _mirror_legacy_snapshot_cache(state=state, scenario_snapshot=scenario_snapshot)
-
-    session.runtime_state_json = state
-    update_fields = ["runtime_state_json", "modified_at"]
-    if update_tick_timestamp:
-        session.last_ai_tick_at = now
-        update_fields.append("last_ai_tick_at")
-    session.save(update_fields=update_fields)
-
-    rest_view_model = _build_trainer_rest_view_model_for_session(session)
-    runtime_snapshot = rest_view_model.runtime_snapshot.model_dump(mode="json")
-    scenario_snapshot_payload = rest_view_model.scenario_snapshot.model_dump(mode="json")
+    derived_views = build_trainer_derived_views(aggregate)
+    rest_view_model = build_trainer_rest_view_model(aggregate, derived_views=derived_views)
+    runtime_snapshot = derived_views.runtime_snapshot.model_dump(mode="json")
+    scenario_snapshot_payload = derived_views.scenario_snapshot.model_dump(mode="json")
 
     emit_runtime_event(
         session=session,
@@ -2584,50 +2555,6 @@ def recompute_active_recommendations(
         )
 
 
-def _derive_patient_status_annotations(
-    *,
-    session: TrainerSession,
-    base_status: dict[str, Any] | None,
-) -> dict[str, Any]:
-    patient_status = dict(base_status or {})
-    active_problems = list(
-        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
-            "timestamp", "id"
-        )
-    )
-    active_kinds = {problem.kind for problem in active_problems}
-    patient_status["respiratory_distress"] = bool(
-        patient_status.get("respiratory_distress")
-        or {"respiratory_distress", "tension_pneumothorax", "hypoxia"} & active_kinds
-    )
-    patient_status["hemodynamic_instability"] = bool(
-        patient_status.get("hemodynamic_instability")
-        or {"hemorrhage", "hypoperfusion_shock"} & active_kinds
-    )
-    patient_status["tension_pneumothorax"] = bool(
-        patient_status.get("tension_pneumothorax") or "tension_pneumothorax" in active_kinds
-    )
-    patient_status["impending_pneumothorax"] = bool(
-        patient_status.get("impending_pneumothorax")
-        or ("open_chest_wound" in active_kinds and "tension_pneumothorax" not in active_kinds)
-    )
-    if not patient_status.get("narrative"):
-        if "hypoperfusion_shock" in active_kinds:
-            patient_status["narrative"] = (
-                "Patient is decompensating with evolving shock physiology."
-            )
-        elif "tension_pneumothorax" in active_kinds:
-            patient_status["narrative"] = (
-                "Patient is in critical respiratory compromise with tension physiology."
-            )
-        elif "infectious_process" in active_kinds:
-            patient_status["narrative"] = "Patient remains ill with an active infectious process."
-        else:
-            patient_status["narrative"] = "Patient status is being actively reassessed."
-    patient_status.setdefault("teaching_flags", [])
-    return patient_status
-
-
 def _apply_vital_change(
     *,
     session: TrainerSession,
@@ -2927,7 +2854,7 @@ def apply_runtime_turn_output(
                 }
             )
         # Deterministic step 4: narrative worker runs last and consumes canonical state.
-        patient_status = _derive_patient_status_annotations(
+        patient_status = _derive_patient_status_truth(
             session=session,
             base_status=dict(
                 output_payload.get("patient_status") or _current_patient_status_payload(session)
