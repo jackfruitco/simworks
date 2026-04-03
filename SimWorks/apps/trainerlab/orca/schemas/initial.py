@@ -146,6 +146,7 @@ class InitialScenarioSchema(StrictBaseModel):
         recommendation_ids = [item.temp_id for item in self.recommended_interventions]
         if len(recommendation_ids) != len(set(recommendation_ids)):
             raise ValueError("Recommended intervention temp_id values must be unique.")
+        recommendation_id_set = set(recommendation_ids)
 
         finding_ids = [item.temp_id for item in self.assessment_findings]
         if len(finding_ids) != len(set(finding_ids)):
@@ -172,22 +173,11 @@ class InitialScenarioSchema(StrictBaseModel):
                 for recommendation in self.recommended_interventions
                 if recommendation.target_problem_ref == problem.temp_id
             ]
-            available_temp_ids = ", ".join(owned_recommendation_ids) if owned_recommendation_ids else "none"
+            available_temp_ids = (
+                ", ".join(owned_recommendation_ids) if owned_recommendation_ids else "none"
+            )
             for raw_ref in problem.recommendation_refs:
-                if raw_ref not in recommendation_ids:
-                    matching_global = [
-                        recommendation
-                        for recommendation in self.recommended_interventions
-                        if recommendation.temp_id == raw_ref
-                    ]
-                    if len(matching_global) == 1:
-                        source = matching_global[0]
-                        raise ValueError(
-                            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} resolves to "
-                            f"recommendation {source.temp_id!r}, but that recommendation belongs to "
-                            f"problem {source.target_problem_ref!r}. Available recommendation temp_ids "
-                            f"for this problem: {available_temp_ids}."
-                        )
+                if raw_ref not in recommendation_id_set:
                     raise ValueError(
                         f"Problem {problem.temp_id!r} references unknown recommendation {raw_ref!r}. "
                         f"Available recommendation temp_ids for this problem: {available_temp_ids}."

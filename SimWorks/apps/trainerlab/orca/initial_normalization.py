@@ -245,7 +245,10 @@ def normalize_initial_scenario_payload(payload: dict[str, Any]) -> dict[str, Any
                 source_candidate = global_matches[0]
                 source_problem_ref = source_candidate.target_problem_ref
                 source_problem = problems_by_ref.get(source_problem_ref)
-                if source_problem and str(source_problem.get("cause_ref") or "") == problem_cause_ref:
+                if (
+                    source_problem
+                    and str(source_problem.get("cause_ref") or "") == problem_cause_ref
+                ):
                     cloned = _build_cloned_recommendation(
                         source=source_candidate.recommendation,
                         problem=problem,
