@@ -300,6 +300,67 @@ def _initial_payload(*, include_performed: bool = False) -> dict:
     return payload
 
 
+def _chest_trauma_payload() -> dict:
+    payload = _initial_payload()
+    payload["causes"][0].update(
+        {
+            "title": "GSW left chest",
+            "display_name": "GSW left chest",
+            "description": "Penetrating gunshot wound to the left anterior chest",
+            "anatomical_location": "Left anterior chest",
+            "laterality": "left",
+            "injury_location": "TLA",
+            "injury_description": "GSW left chest",
+        }
+    )
+    payload["problems"][0]["recommendation_refs"] = []
+    payload["problems"][1].update(
+        {
+            "kind": "open_chest_wound",
+            "code": "open_chest_wound",
+            "title": "Open chest wound left chest",
+            "display_name": "Open chest wound left chest",
+            "description": "Open chest wound causing air leak and worsening ventilation",
+            "severity": "high",
+            "march_category": "R",
+            "anatomical_location": "Left anterior chest",
+            "laterality": "left",
+            "recommendation_refs": ["rec_chest_seal"],
+        }
+    )
+    payload["problems"][2]["recommendation_refs"] = []
+    payload["problems"][3]["recommendation_refs"] = []
+    payload["problems"].append(
+        {
+            "temp_id": "problem_resp_distress",
+            "kind": "respiratory_distress",
+            "code": "respiratory_distress",
+            "title": "Respiratory distress from open chest wound",
+            "display_name": "Respiratory distress from open chest wound",
+            "description": "Progressive respiratory compromise from chest trauma",
+            "severity": "high",
+            "march_category": "R",
+            "anatomical_location": "Left chest",
+            "laterality": "left",
+            "cause_ref": "cause_gsw_left_thigh",
+            "recommendation_refs": ["rec_chest_seal"],
+        }
+    )
+    payload["recommended_interventions"] = [
+        {
+            "temp_id": "rec_chest_seal",
+            "intervention_kind": "chest_seal",
+            "title": "Chest seal to left anterior chest",
+            "target_problem_ref": "problem_open_wound",
+            "target_cause_ref": "cause_gsw_left_thigh",
+            "rationale": "Seal the open chest wound and improve ventilation.",
+            "priority": 1,
+            "site": "left_anterior_chest",
+        }
+    ]
+    return payload
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 class TestTrainerLabInitialPersistence:
@@ -601,6 +662,83 @@ def test_missing_recommendation_refs_fail_with_available_temp_ids():
     message = str(exc_info.value)
     assert "references unknown recommendation 'not_a_real_recommendation'" in message
     assert "Available recommendation temp_ids for this problem: rec_tq" in message
+
+
+def test_cross_problem_exact_recommendation_refs_are_cloned_for_same_cause():
+    payload = _chest_trauma_payload()
+
+    schema = InitialScenarioSchema.model_validate(payload)
+
+    recommendations_by_problem = {
+        recommendation.target_problem_ref: recommendation for recommendation in schema.recommended_interventions
+    }
+    assert schema.problems[1].recommendation_refs == ["rec_chest_seal"]
+    repaired_ref = schema.problems[4].recommendation_refs[0]
+    assert repaired_ref != "rec_chest_seal"
+    assert repaired_ref == recommendations_by_problem["problem_resp_distress"].temp_id
+    repaired_recommendation = recommendations_by_problem["problem_resp_distress"]
+    assert repaired_recommendation.intervention_kind == "chest_seal"
+    assert repaired_recommendation.target_cause_ref == "cause_gsw_left_thigh"
+    assert repaired_recommendation.metadata["ownership_repair"] == {
+        "repair_type": "cloned_from_cross_problem_reference",
+        "source_temp_id": "rec_chest_seal",
+        "source_problem_ref": "problem_open_wound",
+        "source_cause_ref": "cause_gsw_left_thigh",
+        "raw_ref": "rec_chest_seal",
+        "repaired_problem_ref": "problem_resp_distress",
+    }
+
+
+def test_cross_problem_symbolic_recommendation_refs_are_cloned_for_same_cause():
+    payload = _chest_trauma_payload()
+    payload["problems"][4]["recommendation_refs"] = ["chest_seal"]
+
+    schema = InitialScenarioSchema.model_validate(payload)
+
+    repaired_ref = schema.problems[4].recommendation_refs[0]
+    assert repaired_ref != "rec_chest_seal"
+    repaired_recommendation = next(
+        recommendation
+        for recommendation in schema.recommended_interventions
+        if recommendation.temp_id == repaired_ref
+    )
+    assert repaired_recommendation.target_problem_ref == "problem_resp_distress"
+    assert repaired_recommendation.metadata["ownership_repair"]["raw_ref"] == "chest_seal"
+
+
+def test_cross_problem_recommendation_reuse_across_different_causes_fails_clearly():
+    payload = _chest_trauma_payload()
+    payload["problems"][2]["recommendation_refs"] = ["rec_chest_seal"]
+
+    with pytest.raises(ValidationError) as exc_info:
+        InitialScenarioSchema.model_validate(payload)
+
+    message = str(exc_info.value)
+    assert "Problem 'problem_infection' recommendation ref 'rec_chest_seal' resolves to recommendation 'rec_chest_seal'" in message
+    assert "belongs to problem 'problem_open_wound'" in message
+    assert "Available recommendation temp_ids for this problem: none" in message
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_repaired_cross_problem_recommendations_persist_as_distinct_problem_records(context):
+    schema = InitialScenarioSchema.model_validate(_chest_trauma_payload())
+
+    await persist_schema(schema, context)
+
+    recommendations = [
+        recommendation
+        async for recommendation in RecommendedIntervention.objects.filter(
+            simulation_id=context.simulation_id
+        )
+        .select_related("target_problem")
+        .order_by("target_problem__kind", "id")
+    ]
+    assert len(recommendations) == 2
+    assert {recommendation.target_problem.kind for recommendation in recommendations} == {
+        "open_chest_wound",
+        "respiratory_distress",
+    }
 
 
 def test_rejects_unknown_problem_references():
