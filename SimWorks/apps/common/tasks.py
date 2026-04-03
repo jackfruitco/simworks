@@ -39,7 +39,7 @@ def drain_outbox(self):
     from channels.layers import get_channel_layer
 
     from apps.common.models import OutboxEvent
-    from apps.common.outbox import build_ws_envelope
+    from apps.common.outbox import build_canonical_envelope
 
     channel_layer = get_channel_layer()
     if not channel_layer:
@@ -67,8 +67,8 @@ def drain_outbox(self):
 
         for event in pending_events:
             try:
-                # Build the WebSocket envelope
-                envelope = build_ws_envelope(event)
+                # Build the canonical envelope (identical across all transports)
+                envelope = build_canonical_envelope(event)
 
                 # Send to the simulation's channel group
                 group_name = f"simulation_{event.simulation_id}"

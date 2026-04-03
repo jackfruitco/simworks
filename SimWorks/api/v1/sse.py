@@ -1,9 +1,22 @@
-"""Shared SSE helpers for API v1 event streaming."""
+"""Shared SSE helpers for API v1 event streaming.
+
+Stream semantics
+----------------
+* ``cursor=None`` (omitted) **without** ``replay=True`` → **tail-only**.
+  The stream starts after the current latest outbox event; only events
+  created *after* the connection opens will be delivered.
+* ``cursor=<event_id>`` → **resume** after that event.
+* ``cursor=<stale/missing>`` → HTTP **410 Gone** so the client knows to
+  re-bootstrap.
+* ``replay=True`` (explicit) → stream from the very beginning.
+
+Delivery semantics are **at-least-once**.  Clients must deduplicate by
+``event_id``.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC
 import json
 import time
 from typing import Any
@@ -12,29 +25,61 @@ import uuid
 from django.http import StreamingHttpResponse
 from ninja.errors import HttpError
 
-from api.v1.schemas.events import EventEnvelope
-from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
+from apps.common.outbox.outbox import (
+    apply_outbox_cursor,
+    build_canonical_envelope,
+    order_outbox_queryset,
+)
 from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def build_transport_envelope(event) -> dict[str, Any]:
-    """Build a common transport envelope for streamed outbox events."""
-    envelope = EventEnvelope(
-        event_id=str(event.id),
-        event_type=event.event_type,
-        created_at=event.created_at,
-        correlation_id=event.correlation_id,
-        payload=event.payload,
-    )
-    return envelope.model_dump(mode="json")
+def build_transport_envelope(event, *, enrich_payload=None) -> dict[str, Any]:
+    """Build a canonical transport envelope for streamed outbox events.
+
+    Delegates to :func:`~apps.common.outbox.outbox.build_canonical_envelope`.
+    """
+    return build_canonical_envelope(event, enrich_payload=enrich_payload)
+
+
+def _make_message_media_enricher(simulation_id: int):
+    """Return a payload-enricher callback for ``message.item.created`` events.
+
+    The enricher fetches the related :class:`Message` with prefetched media
+    and merges ``media_list`` / ``mediaList`` keys into the payload.
+    """
+    from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
+    from apps.chatlab.models import Message
+    from apps.common.outbox import event_types as outbox_events
+
+    async def _enrich(event):
+        if outbox_events.canonical_event_type(event.event_type) != outbox_events.MESSAGE_CREATED:
+            return None  # no enrichment needed
+        payload = dict(event.payload or {})
+        msg_id = payload_message_id(payload)
+        if msg_id is None:
+            payload.setdefault("media_list", [])
+            payload.setdefault("mediaList", [])
+            return payload
+        try:
+            message = await Message.objects.prefetch_related("media").aget(
+                id=msg_id, simulation_id=simulation_id
+            )
+            payload.update(build_message_media_payload(message))
+        except Message.DoesNotExist:
+            payload.setdefault("media_list", [])
+            payload.setdefault("mediaList", [])
+        return payload
+
+    return _enrich
 
 
 def stream_outbox_events(
     *,
     simulation_id: int,
     cursor: str | None = None,
+    replay: bool = False,
     event_type_prefix: str | None = None,
     sse_event_name: str = "simulation",
     heartbeat_interval_seconds: float | None = None,
@@ -42,7 +87,15 @@ def stream_outbox_events(
     heartbeat_comment: str = ": keep-alive\n\n",
     emit_named_heartbeat: bool = False,
 ) -> StreamingHttpResponse:
-    """Create a StreamingHttpResponse for simulation outbox events."""
+    """Create a ``StreamingHttpResponse`` for simulation outbox events.
+
+    Stream semantics:
+
+    * **cursor omitted + replay=False** → tail-only from current tip.
+    * **cursor omitted + replay=True** → replay from the beginning.
+    * **cursor=<uuid>** → resume strictly after that event.
+    * **cursor=<stale/missing uuid>** → HTTP 410 Gone.
+    """
     from apps.common.models import OutboxEvent
 
     if poll_interval_seconds <= 0:
@@ -58,22 +111,42 @@ def stream_outbox_events(
         except ValueError:
             raise HttpError(400, "Invalid cursor format") from None
 
+    media_enricher = _make_message_media_enricher(simulation_id)
+
     async def event_stream():
-        # Resolve cursor event inside the async generator so the DB lookup is async.
-        # A stale/missing cursor silently streams from the beginning — no 400 to clients
-        # reconnecting after an event has been pruned.
         last_event = None
+
         if cursor_uuid is not None:
+            # Explicit cursor — resolve the bookmark event.
             base_qs = OutboxEvent.objects.filter(simulation_id=simulation_id)
             if event_type_prefix:
                 base_qs = base_qs.filter(event_type__startswith=event_type_prefix)
             base_qs = order_outbox_queryset(base_qs)
             last_event = await base_qs.filter(id=cursor_uuid).afirst()
+            if last_event is None:
+                # Stale / pruned cursor — tell the client to re-bootstrap.
+                logger.warning(
+                    "sse_stale_cursor",
+                    simulation_id=simulation_id,
+                    cursor=str(cursor_uuid),
+                )
+                yield 'event: error\ndata: {"error": "stale_cursor", "status": 410}\n\n'
+                return
+        elif not replay:
+            # No cursor, no replay → tail-only: start after the latest event.
+            base_qs = OutboxEvent.objects.filter(simulation_id=simulation_id)
+            if event_type_prefix:
+                base_qs = base_qs.filter(event_type__startswith=event_type_prefix)
+            base_qs = order_outbox_queryset(base_qs)
+            last_event = await base_qs.alast()
+        # else: replay=True with no cursor → last_event stays None → full replay
 
         logger.info(
             "sse_stream_opened",
             simulation_id=simulation_id,
             cursor=str(cursor_uuid) if cursor_uuid else None,
+            replay=replay,
+            tail_from=str(last_event.id) if last_event else None,
         )
 
         # Send the first byte immediately so nginx / Cloudflare see an active upstream
@@ -104,8 +177,14 @@ def stream_outbox_events(
                     break
 
                 for event in events:
-                    data = build_transport_envelope(event)
-                    data["created_at"] = event.created_at.astimezone(UTC).isoformat()
+                    enriched_payload = await media_enricher(event)
+                    if enriched_payload is not None:
+                        data = build_transport_envelope(
+                            event,
+                            enrich_payload=lambda _p, _ep=enriched_payload: _ep,
+                        )
+                    else:
+                        data = build_transport_envelope(event)
 
                     yield f"id: {event.id}\n"
                     yield f"event: {sse_event_name}\n"

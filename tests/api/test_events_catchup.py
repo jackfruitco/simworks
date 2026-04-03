@@ -356,7 +356,11 @@ class TestStreamEvents:
     def test_stream_events_returns_sse_envelope(self, auth_client, simulation, outbox_events):
         from tests.helpers.sse import collect_streaming_chunks
 
-        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
+        # Use replay=true so pre-existing events are delivered
+        # (default tail-only mode skips historical events).
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?replay=true"
+        )
 
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
@@ -387,8 +391,10 @@ class TestStreamEvents:
             idempotency_key=f"{MESSAGE_CREATED}:{simulation.pk}:{uuid.uuid4()}",
         )
 
+        # Use replay=true so pre-existing events are delivered.
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=simulation.status."
+            f"/api/v1/simulations/{simulation.pk}/events/stream/"
+            f"?event_prefix=simulation.status.&replay=true"
         )
 
         assert response.status_code == 200

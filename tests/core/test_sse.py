@@ -143,8 +143,11 @@ class TestStreamOutboxEvents:
             idempotency_key="simulation.status.updated:seeded:test",
         )
 
+        # Use replay=True so the pre-existing event is delivered
+        # (default tail-only mode would skip it).
         response = await _stream(
             simulation_id=8,
+            replay=True,
             heartbeat_interval_seconds=10.0,
             poll_interval_seconds=1.0,
         )

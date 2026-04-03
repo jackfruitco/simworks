@@ -30,11 +30,14 @@ def _require_chatlab_access(request: HttpRequest):
 @router.get(
     "/{simulation_id}/events/",
     response=PaginatedResponse[EventEnvelope],
-    summary="List events for catch-up",
+    summary="List events for explicit catch-up / replay",
     description=(
-        "Returns events for a simulation, enabling clients to catch up on missed "
-        "WebSocket events after reconnection. Uses cursor-based pagination with "
-        "UUID event IDs as cursors."
+        "Returns outbox events for a simulation using cursor-based pagination.\n\n"
+        "Use this endpoint for **explicit** catch-up after reconnection or for\n"
+        "replaying historical events.  The live SSE stream (``/events/stream/``)\n"
+        "defaults to tail-only and does **not** replay.\n\n"
+        "Delivery semantics are at-least-once.  Clients must deduplicate by\n"
+        "``event_id``."
     ),
 )
 @api_rate_limit
@@ -155,8 +158,16 @@ def list_events(
     "/{simulation_id}/events/stream/",
     summary="SSE stream for simulation events",
     description=(
-        "Streams outbox events for a simulation using a common transport envelope. "
-        "Optionally filter by event type prefix."
+        "Streams outbox events for a simulation using a canonical transport envelope.\n\n"
+        "**Default (tail-only):** Omit ``cursor`` to receive only events created\n"
+        "after the current tip — no historical replay.\n\n"
+        "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
+        "that checkpoint.  A stale or pruned cursor returns an SSE error frame\n"
+        "with ``status: 410``; the client should re-bootstrap.\n\n"
+        "**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\n"
+        "all events from the beginning.\n\n"
+        "Delivery semantics are **at-least-once**.  Clients must deduplicate by\n"
+        "``event_id``."
     ),
 )
 @api_rate_limit
@@ -164,6 +175,10 @@ def stream_events(
     request: HttpRequest,
     simulation_id: int,
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
+    replay: bool = Query(
+        default=False,
+        description="When true (and cursor is omitted), replay all events from the beginning.",
+    ),
     event_prefix: str | None = Query(
         default=None,
         description="Optional event_type prefix filter (e.g. patient. or simulation.)",
@@ -175,6 +190,7 @@ def stream_events(
     return stream_outbox_events(
         simulation_id=simulation_id,
         cursor=cursor,
+        replay=replay,
         event_type_prefix=event_prefix,
         sse_event_name="simulation",
         heartbeat_interval_seconds=10.0,

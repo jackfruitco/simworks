@@ -1,6 +1,7 @@
 """Event schemas for API v1.
 
-Defines the WebSocket event envelope format used for catch-up API.
+Defines the canonical event envelope used across **all** transports:
+REST catch-up, SSE streaming, and WebSocket delivery.
 """
 
 from datetime import datetime
@@ -12,14 +13,44 @@ from apps.common.outbox import event_types
 
 
 class EventEnvelope(BaseModel):
-    """WebSocket event envelope format.
+    """Canonical event envelope — identical across every transport.
 
-    Matches the standardized envelope format defined in CLAUDE.md.
-    Used for both WebSocket delivery and catch-up API responses.
+    This schema is the single source of truth for event serialization.
+    The same ``EventEnvelope`` is used by:
 
-    Canonical outbox event types now follow a strict three-segment contract:
+    * **REST catch-up** (``GET /simulations/{id}/events/``)
+    * **SSE streaming** (``GET /simulations/{id}/events/stream/``)
+    * **WebSocket delivery** (outbox drain → channel layer)
+
+    Delivery semantics
+    ------------------
+    * **At-least-once**: duplicates are expected.  Clients must
+      deduplicate by ``event_id`` (which is the outbox row UUID and
+      therefore stable across retries).
+    * **Cursor-based ordering**: events are ordered by
+      ``(created_at, id)`` with a stable tie-breaker.
+
+    SSE stream contract
+    -------------------
+    * **Tail-only** (default): omitting ``cursor`` starts after the
+      current tip — no historical replay.
+    * **Resume**: ``cursor=<event_id>`` delivers events strictly after
+      that checkpoint.
+    * **Explicit replay**: ``replay=true`` (without cursor) replays
+      from the beginning.
+    * **Stale cursor**: returns an SSE error frame with ``status: 410``
+      — the client should re-bootstrap.
+
+    Bootstrap integration
+    ---------------------
+    The ``TrainerRuntimeStateOut`` response includes a
+    ``latest_event_cursor`` field.  After loading state via REST, pass
+    that cursor to the SSE stream so only newer events arrive.
+
+    Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.
-    Domains are limited to ``simulation``, ``patient``, ``message``, and ``feedback``.
+    Domains are limited to ``simulation``, ``patient``, ``message``,
+    ``feedback``, and ``guard``.
     Canonical API output emits only those registry-defined names.
 
     **Supported Event Types**:

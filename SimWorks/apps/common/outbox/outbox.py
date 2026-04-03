@@ -2,8 +2,9 @@
 
 This module provides functions to:
 1. Create outbox events atomically with domain changes
-2. Build WebSocket event envelopes from outbox events
+2. Build canonical event envelopes for all transports (REST, SSE, WebSocket)
 3. Trigger immediate drain for low-latency delivery
+4. Query the latest cursor/checkpoint for safe SSE connection
 
 Usage:
     from apps.common.outbox import enqueue_event, poke_drain
@@ -186,34 +187,49 @@ def enqueue_event_sync(
         return None
 
 
+def build_canonical_envelope(
+    event: OutboxEvent,
+    *,
+    enrich_payload: Any | None = None,
+) -> dict[str, Any]:
+    """Build a canonical transport envelope from an OutboxEvent.
+
+    This is the **single** envelope builder for all transports (REST catch-up,
+    SSE streaming, and WebSocket delivery).  It uses the ``EventEnvelope``
+    Pydantic model so datetime serialization is identical everywhere.
+
+    Args:
+        event: The OutboxEvent to convert.
+        enrich_payload: Optional callable ``(payload: dict) -> dict`` that
+            returns an enriched copy of the payload (e.g. to inject resolved
+            media URLs).  The original outbox payload is never mutated.
+
+    Returns:
+        A JSON-safe dict matching the ``EventEnvelope`` schema.
+    """
+    from api.v1.schemas.events import EventEnvelope
+
+    payload = dict(event.payload or {})
+    if enrich_payload is not None:
+        payload = enrich_payload(payload)
+
+    envelope = EventEnvelope(
+        event_id=str(event.id),
+        event_type=event.event_type,
+        created_at=event.created_at or datetime.now(UTC),
+        correlation_id=event.correlation_id,
+        payload=payload,
+    )
+    return envelope.model_dump(mode="json")
+
+
 def build_ws_envelope(event: OutboxEvent) -> dict[str, Any]:
     """Build a WebSocket event envelope from an OutboxEvent.
 
-    The envelope format follows the standardized structure defined in CLAUDE.md:
-
-    {
-        "event_id": "<uuid>",
-        "event_type": "message.item.created",
-        "created_at": "2024-01-01T12:00:00Z",
-        "correlation_id": "<uuid>|null",
-        "payload": { ... }
-    }
-
-    Args:
-        event: The OutboxEvent to convert
-
-    Returns:
-        A dict suitable for sending via WebSocket
+    Delegates to :func:`build_canonical_envelope` so that all transports
+    produce identical envelope shapes.
     """
-    return {
-        "event_id": str(event.id),
-        "event_type": event.event_type,
-        "created_at": event.created_at.isoformat()
-        if event.created_at
-        else datetime.now(UTC).isoformat(),
-        "correlation_id": event.correlation_id,
-        "payload": event.payload,
-    }
+    return build_canonical_envelope(event)
 
 
 def order_outbox_queryset(queryset):
@@ -227,6 +243,44 @@ def apply_outbox_cursor(queryset, cursor_event):
         Q(created_at__gt=cursor_event.created_at)
         | Q(created_at=cursor_event.created_at, id__gt=cursor_event.id)
     )
+
+
+def get_latest_cursor_sync(
+    simulation_id: int,
+    *,
+    event_type_prefix: str | None = None,
+) -> str | None:
+    """Return the ID of the most recent outbox event for a simulation.
+
+    The returned value is suitable for passing as the ``cursor`` parameter
+    to the SSE stream endpoint so the client starts in **tail-only** mode
+    (only events created *after* this point will be delivered).
+
+    Returns ``None`` when no events exist for the simulation.
+    """
+    from django.apps import apps
+
+    OutboxEventModel = apps.get_model("common", "OutboxEvent")
+    qs = OutboxEventModel.objects.filter(simulation_id=simulation_id)
+    if event_type_prefix:
+        qs = qs.filter(event_type__startswith=event_type_prefix)
+    qs = order_outbox_queryset(qs)
+    latest = qs.last()
+    return str(latest.id) if latest else None
+
+
+async def get_latest_cursor(
+    simulation_id: int,
+    *,
+    event_type_prefix: str | None = None,
+) -> str | None:
+    """Async version of :func:`get_latest_cursor_sync`."""
+
+    @sync_to_async
+    def _query():
+        return get_latest_cursor_sync(simulation_id, event_type_prefix=event_type_prefix)
+
+    return await _query()
 
 
 async def poke_drain() -> None:
