@@ -66,6 +66,8 @@ class TestGenerateInitialScenarioService:
         assert "evacuation options" in instruction
         assert "recommendation_refs" in instruction
         assert "must exactly equal" in instruction
+        assert "belongs to exactly one problem" in instruction
+        assert "Do not reuse a recommendation `temp_id` across multiple problems" in instruction
 
     def test_service_instantiates_in_fresh_thread(self):
         service = _instantiate_service_in_thread(

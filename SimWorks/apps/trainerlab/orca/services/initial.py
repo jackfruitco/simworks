@@ -27,6 +27,6 @@ class GenerateInitialScenario(DjangoBaseService):
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 
-    from ..schemas import InitialScenarioSchema
+    from ..schemas.initial import InitialScenarioOutputSchema
 
-    response_schema = InitialScenarioSchema
+    response_schema = InitialScenarioOutputSchema
