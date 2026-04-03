@@ -43,9 +43,15 @@ class EventEnvelope(BaseModel):
 
     Bootstrap integration
     ---------------------
-    The ``TrainerRuntimeStateOut`` response includes a
-    ``latest_event_cursor`` field.  After loading state via REST, pass
-    that cursor to the SSE stream so only newer events arrive.
+    Bootstrap responses include a ``latest_event_cursor`` field:
+
+    * **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)
+    * **TrainerLab**: ``TrainerRuntimeStateOut``
+      (``GET /trainerlab/simulations/{id}/state/``)
+
+    After loading state via REST, pass the cursor to the SSE stream
+    (``GET /simulations/{id}/events/stream/?cursor=<cursor>``) so only
+    events created after that point are delivered.
 
     Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.

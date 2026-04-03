@@ -1313,7 +1313,7 @@
     "/api/v1/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_events_list_events",
-        "summary": "List events for catch-up",
+        "summary": "List events for explicit catch-up / replay",
         "parameters": [
           {
             "in": "path",
@@ -1369,7 +1369,7 @@
             }
           }
         },
-        "description": "Returns events for a simulation, enabling clients to catch up on missed WebSocket events after reconnection. Uses cursor-based pagination with UUID event IDs as cursors.",
+        "description": "Returns outbox events for a simulation using cursor-based pagination.\n\nUse this endpoint for **explicit** catch-up after reconnection or for\nreplaying historical events.  The live SSE stream (``/events/stream/``)\ndefaults to tail-only and does **not** replay.\n\nDelivery semantics are at-least-once.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "events"
         ],
@@ -1414,6 +1414,18 @@
           },
           {
             "in": "query",
+            "name": "replay",
+            "schema": {
+              "default": false,
+              "description": "When true (and cursor is omitted), replay all events from the beginning.",
+              "title": "Replay",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "When true (and cursor is omitted), replay all events from the beginning."
+          },
+          {
+            "in": "query",
             "name": "event_prefix",
             "schema": {
               "anyOf": [
@@ -1436,7 +1448,7 @@
             "description": "OK"
           }
         },
-        "description": "Streams outbox events for a simulation using a common transport envelope. Optionally filter by event type prefix.",
+        "description": "Streams outbox events for a simulation using a canonical transport envelope.\n\n**Default (tail-only):** Omit ``cursor`` to receive only events created\nafter the current tip \u2014 no historical replay.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.  A stale or pruned cursor returns an SSE error frame\nwith ``status: 410``; the client should re-bootstrap.\n\n**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\nall events from the beginning.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "events"
         ],
@@ -4499,7 +4511,7 @@
         "type": "object"
       },
       "SimulationOut": {
-        "description": "Output schema for a simulation.",
+        "description": "Output schema for a simulation.\n\nThis is the primary bootstrap response for ChatLab clients.  After loading\nthis snapshot, the client should connect the SSE event stream using\n``latest_event_cursor`` so only events created *after* this point are\ndelivered.",
         "properties": {
           "id": {
             "description": "Simulation ID",
@@ -4624,6 +4636,18 @@
             ],
             "description": "Whether the failed simulation can be retried by the user",
             "title": "Retryable"
+          },
+          "latest_event_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the ``cursor`` parameter when connecting to the SSE event stream (``/events/stream/``) so only events created after this point are delivered.  ``null`` when no events exist yet.",
+            "title": "Latest Event Cursor"
           }
         },
         "required": [
@@ -5130,7 +5154,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\nCanonical outbox event types now follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``, and ``feedback``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **REST catch-up** (``GET /simulations/{id}/events/``)\n* **SSE streaming** (``GET /simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nSSE stream contract\n-------------------\n* **Tail-only** (default): omitting ``cursor`` starts after the\n  current tip \u2014 no historical replay.\n* **Resume**: ``cursor=<event_id>`` delivers events strictly after\n  that checkpoint.\n* **Explicit replay**: ``replay=true`` (without cursor) replays\n  from the beginning.\n* **Stale cursor**: returns an SSE error frame with ``status: 410``\n  \u2014 the client should re-bootstrap.\n\nBootstrap integration\n---------------------\nBootstrap responses include a ``latest_event_cursor`` field:\n\n* **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)\n* **TrainerLab**: ``TrainerRuntimeStateOut``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nAfter loading state via REST, pass the cursor to the SSE stream\n(``GET /simulations/{id}/events/stream/?cursor=<cursor>``) so only\nevents created after that point are delivered.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -8190,6 +8214,18 @@
               }
             ],
             "title": "Last Ai Tick At"
+          },
+          "latest_event_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the ``cursor`` parameter when connecting to the SSE stream so only events created after this point are delivered. ``null`` when no events exist yet.",
+            "title": "Latest Event Cursor"
           }
         },
         "required": [
