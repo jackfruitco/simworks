@@ -82,10 +82,3 @@ class SignOrdersIn(BaseModel):
         default_factory=list,
         description="Lab orders to sign and enqueue",
     )
-
-
-class SignOrdersOut(BaseModel):
-    """Response for lab order signing."""
-
-    status: Literal["ok"] = Field(default="ok", description="Request status")
-    orders: list[str] = Field(default_factory=list, description="Orders accepted for processing")
