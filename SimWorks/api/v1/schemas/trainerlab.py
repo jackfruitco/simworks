@@ -44,15 +44,6 @@ class TrainerRunOut(BaseModel):
     simulation_id: int
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_spec: dict[str, Any]
-    runtime_state: dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Internal engine/runtime state only. This is a transitional operational view, "
-            "not the canonical clinical snapshot contract. Legacy clinical cache keys such as "
-            "`current_snapshot`, `scenario_brief`, and `snapshot_annotations` are intentionally "
-            "excluded."
-        ),
-    )
     initial_directives: str | None
     tick_interval_seconds: int
     run_started_at: datetime | None
@@ -561,7 +552,6 @@ class SnapshotCacheStatusOut(BaseModel):
     authoritative: bool = False
     source: str = "disabled"
     state_revision: int | None = None
-    legacy_keys_present: list[str] = Field(default_factory=list)
 
 
 class EventTimelineEntryOut(BaseModel):
@@ -898,22 +888,13 @@ class ScenarioBriefDetailOut(BaseModel):
     special_considerations: list[str]
 
 
-def _serialize_public_runtime_state(state: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in dict(state or {}).items()
-        if key not in {"current_snapshot", "scenario_brief", "snapshot_annotations"}
-    }
-
-
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     simulation = session.simulation
-    state = _serialize_public_runtime_state(session.runtime_state_json or {})
     terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
     terminal_reason_text = getattr(simulation, "terminal_reason_text", "") or None
     retryable = None
     if terminal_reason_code:
-        stored_retryable = state.get("initial_generation_retryable")
+        stored_retryable = (session.runtime_state_json or {}).get("initial_generation_retryable")
         if terminal_reason_code.startswith("trainerlab_initial_generation_"):
             if stored_retryable is None:
                 retryable = has_user_retries_remaining(simulation.initial_retry_count)
@@ -925,7 +906,6 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         simulation_id=session.simulation_id,
         status=session.status,
         scenario_spec=session.scenario_spec_json or {},
-        runtime_state=state,
         initial_directives=session.initial_directives or None,
         tick_interval_seconds=session.tick_interval_seconds,
         run_started_at=session.run_started_at,

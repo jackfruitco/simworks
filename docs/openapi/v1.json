@@ -6402,12 +6402,6 @@
             "title": "Scenario Spec",
             "type": "object"
           },
-          "runtime_state": {
-            "additionalProperties": true,
-            "description": "Internal engine/runtime state only. This is a transitional operational view, not the canonical clinical snapshot contract. Legacy clinical cache keys such as `current_snapshot`, `scenario_brief`, and `snapshot_annotations` are intentionally excluded.",
-            "title": "Runtime State",
-            "type": "object"
-          },
           "initial_directives": {
             "anyOf": [
               {
@@ -8385,13 +8379,6 @@
               }
             ],
             "title": "State Revision"
-          },
-          "legacy_keys_present": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Legacy Keys Present",
-            "type": "array"
           }
         },
         "title": "SnapshotCacheStatusOut",

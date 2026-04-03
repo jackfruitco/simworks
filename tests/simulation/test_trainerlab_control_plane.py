@@ -10,7 +10,6 @@ from apps.trainerlab.services import (
     enqueue_runtime_turn_service_call,
     get_runtime_state,
     process_runtime_turn_queue,
-    refresh_runtime_projection,
 )
 from orchestrai_django.models import CallStatus, ServiceCall
 from orchestrai_django.signals import ai_response_failed
@@ -173,7 +172,6 @@ def test_runtime_enqueue_context_uses_compact_state_and_no_previous_response(mon
                         "status": "disabled",
                         "authoritative": False,
                         "source": "disabled",
-                        "legacy_keys_present": [],
                     },
                 },
             },
@@ -196,30 +194,6 @@ def test_runtime_enqueue_context_uses_compact_state_and_no_previous_response(mon
     assert "PreviousResponseMixin" not in {
         cls.__name__ for cls in GenerateTrainerRuntimeTurn.__mro__
     }
-
-
-@pytest.mark.django_db
-def test_refresh_runtime_projection_logs_deprecated_wrapper(django_user_model, caplog):
-    role = UserRole.objects.create(title="TrainerLab Deprecated Wrapper Role")
-    user = django_user_model.objects.create_user(
-        email="deprecated-wrapper@example.com",
-        password="pass12345",
-        role=role,
-    )
-    session = create_session(
-        user=user,
-        scenario_spec={},
-        directives="",
-        modifiers=[],
-    )
-
-    with caplog.at_level("WARNING"):
-        refresh_runtime_projection(session=session)
-
-    assert any(
-        "trainerlab.deprecated.refresh_runtime_projection" in record.getMessage()
-        for record in caplog.records
-    )
 
 
 @pytest.mark.django_db

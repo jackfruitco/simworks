@@ -638,7 +638,6 @@ export interface TrainerLabSnapshotCacheStatus {
     authoritative: boolean;
     source?: string;
     state_revision?: number | null;
-    legacy_keys_present?: string[];
 }
 
 export interface TrainerLabRuntimeSnapshot {

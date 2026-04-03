@@ -51,6 +51,9 @@ logger = get_logger(__name__)
 BUILDER_VERSION = "v1"
 SCHEMA_VERSION = "v1"
 DEFAULT_EVENT_TIMELINE_LIMIT = 100
+RUNTIME_STATE_EXCLUDED_KEYS = frozenset(
+    {"current_snapshot", "scenario_brief", "snapshot_annotations"}
+)
 
 VITAL_TYPE_MODEL_MAP = {
     "heart_rate": HeartRate,
@@ -79,6 +82,14 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     return parsed
 
 
+def _sanitize_runtime_state_payload(state: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(state or {}).items()
+        if key not in RUNTIME_STATE_EXCLUDED_KEYS
+    }
+
+
 def compute_active_elapsed_seconds(
     *,
     session: TrainerSession,
@@ -98,7 +109,6 @@ class SnapshotCacheStatus(StrictBaseModel):
     authoritative: bool = False
     source: str = "disabled"
     state_revision: int | None = None
-    legacy_keys_present: list[str] = Field(default_factory=list)
 
 
 class EventTimelineEntry(StrictBaseModel):
@@ -170,7 +180,6 @@ class RuntimeStateSummary(StrictBaseModel):
     pending_reason_count: int = 0
     currently_processing_count: int = 0
     last_runtime_error: str = ""
-    legacy_keys_present: list[str] = Field(default_factory=list)
     raw_runtime_state: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -277,9 +286,9 @@ def load_trainer_engine_aggregate(
 
     simulation = session.simulation
     runtime_state = (
-        dict(runtime_state_override)
+        _sanitize_runtime_state_payload(runtime_state_override)
         if runtime_state_override is not None
-        else dict(session.runtime_state_json or {})
+        else _sanitize_runtime_state_payload(session.runtime_state_json or {})
     )
 
     recommendations = tuple(
@@ -352,17 +361,11 @@ def load_trainer_engine_aggregate(
         RuntimeEvent.objects.filter(session=session).order_by("-created_at", "-id")[:event_limit]
     )
 
-    legacy_keys_present = [
-        key
-        for key in ("current_snapshot", "scenario_brief", "snapshot_annotations")
-        if runtime_state.get(key) not in (None, "", [], {})
-    ]
     snapshot_cache = SnapshotCacheStatus(
         status="disabled",
         authoritative=False,
         source="disabled",
         state_revision=int(runtime_state.get("state_revision", 0) or 0),
-        legacy_keys_present=legacy_keys_present,
     )
 
     return TrainerEngineAggregate(
@@ -566,7 +569,6 @@ def build_watch_snapshot(aggregate: TrainerEngineAggregate) -> WatchSnapshot:
                 aggregate.runtime_state.get("currently_processing_reasons") or []
             ),
             last_runtime_error=str(aggregate.runtime_state.get("last_runtime_error") or ""),
-            legacy_keys_present=list(aggregate.snapshot_cache.legacy_keys_present),
             raw_runtime_state=dict(aggregate.runtime_state),
         ),
         snapshot_cache=aggregate.snapshot_cache,
@@ -679,10 +681,9 @@ def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
 
 
 def _build_patient_status_snapshot(aggregate: TrainerEngineAggregate) -> RuntimePatientStatus:
-    base_status = _legacy_patient_status_fallback_payload(aggregate)
+    base_status: dict[str, Any] = {}
     if aggregate.patient_status is not None:
         base_status = {
-            **base_status,
             "avpu": aggregate.patient_status.avpu or None,
             "respiratory_distress": aggregate.patient_status.respiratory_distress,
             "hemodynamic_instability": aggregate.patient_status.hemodynamic_instability,
@@ -695,19 +696,6 @@ def _build_patient_status_snapshot(aggregate: TrainerEngineAggregate) -> Runtime
             base_status=base_status,
         )
     )
-
-
-def _legacy_patient_status_fallback_payload(aggregate: TrainerEngineAggregate) -> dict[str, Any]:
-    legacy_status = dict(
-        (aggregate.runtime_state.get("snapshot_annotations") or {}).get("patient_status") or {}
-    )
-    if legacy_status and aggregate.patient_status is None:
-        logger.debug(
-            "trainerlab.patient_status.legacy_fallback_used",
-            session_id=aggregate.session.id,
-            simulation_id=aggregate.session.simulation_id,
-        )
-    return legacy_status
 
 
 def _seed_recommendation_prefetch_cache(aggregate: TrainerEngineAggregate) -> None:

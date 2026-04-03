@@ -685,9 +685,7 @@ class TestTrainerLabSessionLifecycle:
         )
 
         assert captured["simulation_id"] == created["simulation_id"]
-        assert "current_snapshot" not in created["runtime_state"]
-        assert "scenario_brief" not in created["runtime_state"]
-        assert "snapshot_annotations" not in created["runtime_state"]
+        assert "runtime_state" not in created
 
     def test_create_session_returns_seeding_and_blocks_mutations_until_ready(
         self,
@@ -1798,6 +1796,7 @@ class TestTrainerLabDictionaries:
         assert body["runtime_snapshot"]["pending_runtime_reasons"] == []
         assert body["metadata"]["snapshot_cache"]["status"] == "disabled"
         assert body["metadata"]["snapshot_cache"]["authoritative"] is False
+        assert "legacy_keys_present" not in body["metadata"]["snapshot_cache"]
 
     def test_control_plane_debug_endpoint_returns_defaults(
         self,
@@ -1950,7 +1949,7 @@ class TestTrainerLabDictionaries:
         assert "scenario_brief" not in body
         assert "patient_status" not in body
         assert "pending_runtime_reasons" not in body
-        assert body["metadata"]["snapshot_cache"]["legacy_keys_present"] == []
+        assert "legacy_keys_present" not in body["metadata"]["snapshot_cache"]
         assert any(
             problem["kind"] == "open_chest_wound"
             for problem in body["scenario_snapshot"]["problems"]

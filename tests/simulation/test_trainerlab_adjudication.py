@@ -17,7 +17,7 @@ from apps.trainerlab.models import (
 )
 from apps.trainerlab.recommendations import validate_and_normalize_recommendation
 from apps.trainerlab.runtime_llm import build_runtime_llm_context, compact_runtime_reasons
-from apps.trainerlab.services import create_session, get_runtime_state, project_current_snapshot
+from apps.trainerlab.services import create_session, get_runtime_state
 from apps.trainerlab.viewmodels import (
     build_scenario_snapshot,
     build_trainer_rest_view_model,
@@ -346,9 +346,8 @@ class TestTrainerLabAdjudication:
             == "'tourniquet' is not a valid recommendation for 'hypoperfusion_shock'"
         )
 
-    def test_project_current_snapshot_does_not_regress_into_n_plus_one(self, simulation):
+    def test_scenario_snapshot_builder_does_not_regress_into_n_plus_one(self, simulation):
         from apps.trainerlab.recommendations import validate_and_normalize_recommendation
-        from apps.trainerlab.services import create_session, project_current_snapshot
 
         session = create_session(
             user=simulation.user,
@@ -398,7 +397,8 @@ class TestTrainerLabAdjudication:
             )
 
         with CaptureQueriesContext(connection) as context:
-            snapshot = project_current_snapshot(session)
+            aggregate = load_trainer_engine_aggregate(session=session)
+            snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
 
         assert snapshot["causes"]
         assert snapshot["problems"]
@@ -415,6 +415,45 @@ class TestTrainerLabAdjudication:
         assert "tension_pneumothorax" in field_names
         assert "narrative" not in field_names
         assert "teaching_flags" not in field_names
+
+    def test_scenario_snapshot_patient_status_uses_canonical_state_plus_problem_derivation(
+        self, simulation
+    ):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        cause = _injury(
+            session.simulation,
+            description="GSW left thigh",
+            location=Injury.InjuryLocation.LEG_LEFT_UPPER,
+            kind=Injury.InjuryKind.GSW,
+        )
+        _problem(
+            session.simulation,
+            cause_injury=cause,
+            kind="hemorrhage",
+            title="Massive hemorrhage",
+            march_category=Problem.MARCHCategory.M,
+            anatomical_location="Left thigh",
+        )
+        PatientStatusState.objects.create(
+            simulation=session.simulation,
+            source=EventSource.SYSTEM,
+            avpu="verbal",
+            respiratory_distress=False,
+            hemodynamic_instability=False,
+            impending_pneumothorax=False,
+            tension_pneumothorax=False,
+        )
+
+        snapshot = build_scenario_snapshot(load_trainer_engine_aggregate(session=session))
+
+        assert snapshot.patient_status.avpu == "verbal"
+        assert snapshot.patient_status.hemodynamic_instability is True
+        assert snapshot.patient_status.respiratory_distress is False
 
     def test_load_trainer_engine_aggregate_and_builders_stay_query_bounded(self, simulation):
         session = create_session(
@@ -515,14 +554,11 @@ class TestTrainerLabAdjudication:
         snapshot = build_scenario_snapshot(aggregate)
 
         assert aggregate.patient_status is None
-        assert aggregate.runtime_state.get("current_snapshot") is None
         assert snapshot.patient_status.impending_pneumothorax is True
         assert snapshot.patient_status.respiratory_distress is False
         assert snapshot.patient_status.narrative == "Patient status is being actively reassessed."
 
-    def test_scenario_snapshot_patient_status_uses_narrow_legacy_fallback_for_old_sessions(
-        self, simulation
-    ):
+    def test_scenario_snapshot_patient_status_ignores_legacy_runtime_blobs(self, simulation):
         session = create_session(
             user=simulation.user,
             scenario_spec={},
@@ -556,31 +592,11 @@ class TestTrainerLabAdjudication:
         snapshot = build_scenario_snapshot(aggregate)
 
         assert PatientStatusState.objects.filter(simulation=session.simulation).count() == 0
-        assert aggregate.runtime_state.get("current_snapshot") is None
-        assert snapshot.patient_status.avpu == "verbal"
+        assert aggregate.runtime_state == get_runtime_state(session)
+        assert snapshot.patient_status.avpu is None
         assert snapshot.patient_status.impending_pneumothorax is True
-        assert (
-            snapshot.patient_status.narrative
-            == "Legacy cached narrative from a pre-refactor session."
-        )
-        assert snapshot.patient_status.teaching_flags == ["watch chest rise"]
-
-    def test_project_current_snapshot_logs_deprecated_wrapper(self, simulation, caplog):
-        session = create_session(
-            user=simulation.user,
-            scenario_spec={},
-            directives="",
-            modifiers=[],
-        )
-
-        with caplog.at_level("WARNING"):
-            snapshot = project_current_snapshot(session)
-
-        assert snapshot["causes"] == []
-        assert any(
-            "trainerlab.deprecated.project_current_snapshot" in record.getMessage()
-            for record in caplog.records
-        )
+        assert snapshot.patient_status.narrative == "Patient status is being actively reassessed."
+        assert snapshot.patient_status.teaching_flags == []
 
     def test_runtime_llm_context_keeps_relevant_state_but_excludes_raw_snapshot_noise(
         self, simulation
@@ -653,7 +669,9 @@ class TestTrainerLabAdjudication:
                 "notes": "Observe distal perfusion.",
             }
         }
-        snapshot = project_current_snapshot(session, state=state)
+        snapshot = build_scenario_snapshot(
+            load_trainer_engine_aggregate(session=session, runtime_state_override=state)
+        ).model_dump(mode="json")
         context = build_runtime_llm_context(
             session,
             scenario_snapshot=snapshot,
