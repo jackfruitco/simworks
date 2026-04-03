@@ -1,6 +1,6 @@
 """Tests for simulation tools API endpoints."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.test import Client
 import pytest
@@ -21,6 +21,26 @@ def test_user(django_user_model, user_role):
         password="testpass123",
         email="toolsuser@example.com",
         role=user_role,
+    )
+
+
+@pytest.fixture(autouse=True)
+def chatlab_access(test_user):
+    """Grant entitlement-based ChatLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
+
+    personal_account = get_personal_account_for_user(test_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:chatlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=test_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
     )
 
 
@@ -170,17 +190,88 @@ class TestToolEndpoints:
             data={"submitted_orders": []},
             content_type="application/json",
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
+        assert "submitted_orders" in response.json()["detail"]
 
-    @patch("api.v1.endpoints.tools.async_to_sync")
-    def test_sign_orders_success(self, mock_async_to_sync, auth_client, simulation):
-        mock_async_to_sync.return_value = lambda: "call-id-123"
+    def test_sign_orders_rejects_too_many_orders(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"submitted_orders": [f"Order {index}" for index in range(51)]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 50 items" in response.json()["detail"]
+
+    def test_sign_orders_rejects_overlong_order(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"submitted_orders": ["C" * 256]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 255 characters" in response.json()["detail"]
+
+    def test_sign_orders_requires_submitted_orders_field(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"orders": ["CBC"]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "submitted_orders" in response.json()["detail"]
+
+    @patch("apps.simcore.orca.services.GenerateInitialFeedback.task")
+    @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")
+    def test_sign_orders_success(
+        self,
+        mock_lab_results_task,
+        mock_feedback_task,
+        auth_client,
+        simulation,
+    ):
+        mock_feedback_task.using.side_effect = AssertionError(
+            "Feedback generation should not be used for tool lab orders"
+        )
+        mock_enqueue = MagicMock()
+        mock_enqueue.aenqueue = AsyncMock(return_value="call-id-123")
+        mock_lab_results_task.using.return_value = mock_enqueue
+
         response = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
             data={"submitted_orders": ["CBC", "CMP"]},
             content_type="application/json",
         )
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["status"] == "accepted"
+        assert data["call_id"] == "call-id-123"
         assert data["orders"] == ["CBC", "CMP"]
+        mock_lab_results_task.using.assert_called_once()
+        assert mock_lab_results_task.using.call_args.kwargs["context"] == {
+            "simulation_id": simulation.id,
+            "orders": ["CBC", "CMP"],
+        }
+        assert "lab_orders" not in mock_lab_results_task.using.call_args.kwargs["context"]
+        mock_feedback_task.using.assert_not_called()
+
+    @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")
+    def test_sign_orders_normalizes_orders(self, mock_lab_results_task, auth_client, simulation):
+        mock_enqueue = MagicMock()
+        mock_enqueue.aenqueue = AsyncMock(return_value="call-id-456")
+        mock_lab_results_task.using.return_value = mock_enqueue
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"submitted_orders": [" CBC ", "BMP", "CBC", "   "]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 202
+        assert response.json()["orders"] == ["CBC", "BMP"]
+        assert mock_lab_results_task.using.call_args.kwargs["context"]["orders"] == [
+            "CBC",
+            "BMP",
+        ]

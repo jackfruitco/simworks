@@ -1569,18 +1569,18 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK",
+          "202": {
+            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignOrdersOut"
+                  "$ref": "#/components/schemas/LabOrdersOut"
                 }
               }
             }
           }
         },
-        "description": "Signs requested lab orders and enqueues feedback generation.",
+        "description": "Signs requested lab orders and enqueues lab results generation.",
         "tags": [
           "tools"
         ],
@@ -5572,43 +5572,6 @@
         "title": "ToolOut",
         "type": "object"
       },
-      "SignOrdersOut": {
-        "description": "Response for lab order signing.",
-        "properties": {
-          "status": {
-            "const": "ok",
-            "default": "ok",
-            "description": "Request status",
-            "title": "Status",
-            "type": "string"
-          },
-          "orders": {
-            "description": "Orders accepted for processing",
-            "items": {
-              "type": "string"
-            },
-            "title": "Orders",
-            "type": "array"
-          }
-        },
-        "title": "SignOrdersOut",
-        "type": "object"
-      },
-      "SignOrdersIn": {
-        "description": "Input schema for lab order signing.",
-        "properties": {
-          "submitted_orders": {
-            "description": "Lab orders to sign and enqueue",
-            "items": {
-              "type": "string"
-            },
-            "title": "Submitted Orders",
-            "type": "array"
-          }
-        },
-        "title": "SignOrdersIn",
-        "type": "object"
-      },
       "LabOrdersOut": {
         "description": "Response returned after lab orders are accepted for processing.",
         "properties": {
@@ -5646,12 +5609,34 @@
         "title": "LabOrdersOut",
         "type": "object"
       },
+      "SignOrdersIn": {
+        "description": "Input schema for lab order signing.",
+        "properties": {
+          "submitted_orders": {
+            "description": "Lab orders to sign and enqueue. Maximum 50 orders per request.",
+            "items": {
+              "maxLength": 255,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Submitted Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "submitted_orders"
+        ],
+        "title": "SignOrdersIn",
+        "type": "object"
+      },
       "LabOrderSubmit": {
         "description": "Input schema for submitting signed lab orders.",
         "properties": {
           "orders": {
             "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty. Maximum 50 orders per request.",
             "items": {
+              "maxLength": 255,
               "type": "string"
             },
             "maxItems": 50,
