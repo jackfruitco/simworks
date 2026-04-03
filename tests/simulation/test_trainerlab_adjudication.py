@@ -13,6 +13,7 @@ from apps.trainerlab.models import (
     Problem,
     PulseAssessment,
     RecommendedIntervention,
+    RuntimeEvent,
     ScenarioBrief,
 )
 from apps.trainerlab.recommendations import validate_and_normalize_recommendation
@@ -514,7 +515,7 @@ class TestTrainerLabAdjudication:
         with CaptureQueriesContext(connection) as context:
             aggregate = load_trainer_engine_aggregate(session=session)
 
-        assert len(context) <= 20
+        assert len(context) <= 21
 
         with CaptureQueriesContext(connection) as context:
             rest_view_model = build_trainer_rest_view_model(aggregate)
@@ -525,6 +526,45 @@ class TestTrainerLabAdjudication:
             watch_view_model = build_trainer_watch_view_model(aggregate)
         assert len(context) == 0
         assert watch_view_model.scenario_snapshot.problems
+
+    def test_runtime_event_timeline_window_is_chronological_with_true_total_count(self, simulation):
+        from datetime import UTC, datetime, timedelta
+
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        base_time = datetime(2030, 1, 1, tzinfo=UTC)
+        total_events = 105
+        baseline_events = RuntimeEvent.objects.filter(session=session).count()
+
+        for sequence in range(total_events):
+            runtime_event = RuntimeEvent.objects.create(
+                session=session,
+                simulation=session.simulation,
+                event_type="trainerlab.runtime.note",
+                payload={"sequence": sequence},
+            )
+            RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
+                created_at=base_time + timedelta(seconds=sequence)
+            )
+
+        aggregate = load_trainer_engine_aggregate(session=session, event_limit=100)
+
+        with CaptureQueriesContext(connection) as context:
+            rest_view_model = build_trainer_rest_view_model(aggregate)
+        assert len(context) == 0
+
+        sequences = [
+            entry.payload["sequence"]
+            for entry in rest_view_model.event_timeline.events
+            if "sequence" in entry.payload
+        ]
+        assert len(sequences) == 100
+        assert sequences == list(range(5, 105))
+        assert rest_view_model.event_timeline.total_events == baseline_events + total_events
 
     def test_scenario_snapshot_patient_status_derives_from_active_problems_without_backfill(
         self, simulation

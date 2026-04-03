@@ -1964,6 +1964,49 @@ class TestTrainerLabDictionaries:
         assert body["scenario_snapshot"]["recommended_interventions"]
         assert body["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
 
+    def test_state_endpoint_returns_chronological_event_timeline_with_true_total_count(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import RuntimeEvent, TrainerSession
+        from apps.trainerlab.viewmodels import DEFAULT_EVENT_TIMELINE_LIMIT
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="state-event-timeline-session")
+        trainer_session = TrainerSession.objects.get(simulation_id=session["simulation_id"])
+        base_time = datetime(2030, 1, 1, tzinfo=UTC)
+        total_events = DEFAULT_EVENT_TIMELINE_LIMIT + 5
+        baseline_events = RuntimeEvent.objects.filter(session=trainer_session).count()
+
+        for sequence in range(total_events):
+            runtime_event = RuntimeEvent.objects.create(
+                session=trainer_session,
+                simulation=trainer_session.simulation,
+                event_type="trainerlab.runtime.note",
+                payload={"sequence": sequence},
+                correlation_id=f"timeline-{sequence}",
+            )
+            RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
+                created_at=base_time + timedelta(seconds=sequence)
+            )
+
+        body = client.get(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/state/"
+        ).json()
+
+        assert body["event_timeline"]["total_events"] == baseline_events + total_events
+        assert len(body["event_timeline"]["events"]) == DEFAULT_EVENT_TIMELINE_LIMIT
+        assert [
+            event["payload"]["sequence"]
+            for event in body["event_timeline"]["events"]
+            if "sequence" in event["payload"]
+        ] == list(range(5, 105))
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
+
     def test_intervention_event_captures_structured_fields_and_queues_reason(
         self,
         auth_client_factory,

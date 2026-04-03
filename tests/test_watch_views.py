@@ -1,3 +1,6 @@
+from datetime import UTC, datetime, timedelta
+import json
+
 from django.http import QueryDict
 from django.urls import reverse
 import pytest
@@ -6,6 +9,7 @@ from apps.common.models import OutboxEvent
 from apps.common.outbox.event_types import PATIENT_PULSE_CREATED, PATIENT_VITAL_UPDATED
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import parse_watch_page_state, serialize_outbox_events
+from apps.trainerlab.models import RuntimeEvent
 from apps.trainerlab.services import create_session
 from orchestrai_django.models import ServiceCall
 
@@ -309,3 +313,45 @@ def test_trainerlab_watch_view_renders_truth_snapshot_and_cache_sections(
     assert "EventTimeline" in content
     assert "SnapshotCache" in content
     assert '"status": "disabled"' in response.context["trainer_watch_snapshot_cache_json"]
+
+
+@pytest.mark.django_db
+def test_trainerlab_watch_view_uses_chronological_event_timeline(
+    client, trainer_member, trainer_membership
+):
+    session = create_session(
+        user=trainer_member,
+        scenario_spec={},
+        directives="",
+        modifiers=[],
+    )
+    base_time = datetime(2030, 1, 1, tzinfo=UTC)
+    baseline_events = RuntimeEvent.objects.filter(session=session).count()
+
+    for sequence in range(3):
+        runtime_event = RuntimeEvent.objects.create(
+            session=session,
+            simulation=session.simulation,
+            event_type="trainerlab.runtime.note",
+            payload={"sequence": sequence},
+        )
+        RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
+            created_at=base_time + timedelta(seconds=sequence)
+        )
+
+    client.force_login(trainer_member)
+    response = client.get(
+        reverse(
+            "trainerlab:watch_simulation",
+            kwargs={"simulation_id": session.simulation_id},
+        )
+    )
+
+    assert response.status_code == 200
+    timeline = json.loads(response.context["trainer_watch_event_timeline_json"])
+    assert timeline["total_events"] == baseline_events + 3
+    assert [
+        event["payload"]["sequence"]
+        for event in timeline["events"]
+        if "sequence" in event["payload"]
+    ] == [0, 1, 2]

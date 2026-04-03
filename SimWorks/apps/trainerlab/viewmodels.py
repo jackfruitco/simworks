@@ -259,6 +259,7 @@ class TrainerEngineAggregate:
     vitals_by_type: dict[str, Any]
     pulses: tuple[PulseAssessment, ...]
     runtime_events: tuple[RuntimeEvent, ...]
+    runtime_event_total_count: int
     snapshot_cache: SnapshotCacheStatus
 
 
@@ -360,6 +361,7 @@ def load_trainer_engine_aggregate(
     runtime_events = tuple(
         RuntimeEvent.objects.filter(session=session).order_by("-created_at", "-id")[:event_limit]
     )
+    runtime_event_total_count = RuntimeEvent.objects.filter(session=session).count()
 
     snapshot_cache = SnapshotCacheStatus(
         status="disabled",
@@ -385,6 +387,7 @@ def load_trainer_engine_aggregate(
         vitals_by_type=vitals_by_type,
         pulses=pulses,
         runtime_events=runtime_events,
+        runtime_event_total_count=runtime_event_total_count,
         snapshot_cache=snapshot_cache,
     )
 
@@ -506,9 +509,12 @@ def build_event_timeline(aggregate: TrainerEngineAggregate) -> EventTimeline:
             correlation_id=item.correlation_id,
             payload=dict(item.payload or {}),
         )
-        for item in aggregate.runtime_events
+        for item in reversed(aggregate.runtime_events)
     ]
-    return EventTimeline(events=events, total_events=len(events))
+    return EventTimeline(
+        events=events,
+        total_events=aggregate.runtime_event_total_count,
+    )
 
 
 def build_trainer_derived_views(
@@ -683,6 +689,8 @@ def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
 def _build_patient_status_snapshot(aggregate: TrainerEngineAggregate) -> RuntimePatientStatus:
     base_status: dict[str, Any] = {}
     if aggregate.patient_status is not None:
+        # Canonical patient-status truth is limited to structured clinical flags.
+        # Narrative and teaching guidance remain snapshot-level derived output.
         base_status = {
             "avpu": aggregate.patient_status.avpu or None,
             "respiratory_distress": aggregate.patient_status.respiratory_distress,
