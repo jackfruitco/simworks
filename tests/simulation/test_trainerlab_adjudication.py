@@ -396,6 +396,23 @@ class TestTrainerLabAdjudication:
         assert snapshot["recommended_interventions"]
         assert len(context) <= 20
 
+    def test_project_current_snapshot_logs_deprecated_wrapper(self, simulation, caplog):
+        session = create_session(
+            user=simulation.user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+
+        with caplog.at_level("WARNING"):
+            snapshot = project_current_snapshot(session)
+
+        assert snapshot["causes"] == []
+        assert any(
+            "trainerlab.deprecated.project_current_snapshot" in record.getMessage()
+            for record in caplog.records
+        )
+
     def test_runtime_llm_context_keeps_relevant_state_but_excludes_raw_snapshot_noise(
         self, simulation
     ):
@@ -470,7 +487,7 @@ class TestTrainerLabAdjudication:
         snapshot = project_current_snapshot(session, state=state)
         context = build_runtime_llm_context(
             session,
-            current_snapshot=snapshot,
+            scenario_snapshot=snapshot,
             runtime_reasons=[
                 {
                     "reason_kind": "intervention_recorded",

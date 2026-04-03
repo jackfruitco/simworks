@@ -202,11 +202,11 @@ def compact_runtime_reasons(
 def project_runtime_llm_snapshot(
     session: TrainerSession,
     *,
-    current_snapshot: dict[str, Any] | None,
+    scenario_snapshot: dict[str, Any] | None,
     active_elapsed_seconds: int,
     trim_level: int = 0,
 ) -> dict[str, Any]:
-    snapshot = dict(current_snapshot or {})
+    snapshot = dict(scenario_snapshot or {})
     now = timezone.now()
     active_problem_ages = {
         problem_id: max(0, int((now - timestamp).total_seconds()))
@@ -355,7 +355,7 @@ def project_runtime_llm_snapshot(
 def build_runtime_llm_context(
     session: TrainerSession,
     *,
-    current_snapshot: dict[str, Any] | None,
+    scenario_snapshot: dict[str, Any] | None,
     runtime_reasons: Sequence[dict[str, Any]] | None,
     active_elapsed_seconds: int,
     max_reasons: int | None = None,
@@ -363,7 +363,7 @@ def build_runtime_llm_context(
 ) -> dict[str, Any]:
     projected = project_runtime_llm_snapshot(
         session,
-        current_snapshot=current_snapshot,
+        scenario_snapshot=scenario_snapshot,
         active_elapsed_seconds=active_elapsed_seconds,
         trim_level=trim_level,
     )
@@ -412,7 +412,7 @@ def enforce_runtime_token_budget(
     *,
     service_cls,
     session: TrainerSession,
-    current_snapshot: dict[str, Any] | None,
+    scenario_snapshot: dict[str, Any] | None,
     runtime_reasons: Sequence[dict[str, Any]] | None,
     active_elapsed_seconds: int,
     user_message: str,
@@ -424,7 +424,7 @@ def enforce_runtime_token_budget(
     prompt_limit = max_prompt_tokens or get_runtime_max_prompt_tokens()
     output_limit = max_output_tokens or get_runtime_max_output_tokens()
     max_reason_count = max_reasons or get_runtime_max_batch_reasons()
-    snapshot_payload = dict(current_snapshot or {})
+    snapshot_payload = dict(scenario_snapshot or {})
     raw_reasons = list(runtime_reasons or [])
     snapshot_bytes = json_byte_length(snapshot_payload)
     runtime_reasons_bytes = json_byte_length(raw_reasons)
@@ -438,13 +438,13 @@ def enforce_runtime_token_budget(
     budget_triggered = False
     last_result: RuntimeBudgetResult | None = None
 
-    # The old runtime path bloated prompts with three large inputs: the full current_snapshot,
+    # The old runtime path bloated prompts with three large inputs: the full scenario snapshot,
     # raw runtime reasons, and hidden previous-response carryover. This builder keeps only the
     # compact, authoritative state projection the runtime adjudicator actually needs.
     for trim_level, attempt_max_reasons in attempts:
         runtime_llm_context = build_runtime_llm_context(
             session,
-            current_snapshot=snapshot_payload,
+            scenario_snapshot=snapshot_payload,
             runtime_reasons=raw_reasons,
             active_elapsed_seconds=active_elapsed_seconds,
             max_reasons=attempt_max_reasons,

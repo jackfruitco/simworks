@@ -390,7 +390,12 @@
     ></div>
 
     <div class="min-w-0 flex-1 overflow-auto p-4">
-      {% include "partials/watch_service_calls.html" %}
+      <div class="space-y-4">
+        {% if watch_detail_partial %}
+        {% include watch_detail_partial %}
+        {% endif %}
+        {% include "partials/watch_service_calls.html" %}
+      </div>
     </div>
   </div>
 </div>

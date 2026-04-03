@@ -50,8 +50,8 @@ from api.v1.schemas.trainerlab import (
     SimulationNoteCreateIn,
     SteerPromptIn,
     TrainerCommandAck,
+    TrainerRestViewModelOut,
     TrainerRunOut,
-    TrainerRuntimeStateOut,
     TrainerSessionCreateIn,
     VitalCreateIn,
     annotation_to_out,
@@ -758,11 +758,11 @@ def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunO
 
 @router.get(
     "/simulations/{simulation_id}/state/",
-    response=TrainerRuntimeStateOut,
+    response=TrainerRestViewModelOut,
     summary="Get authoritative TrainerLab runtime state snapshot",
 )
 @api_rate_limit
-def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRuntimeStateOut:
+def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRestViewModelOut:
     _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return trainer_state_to_out(session)

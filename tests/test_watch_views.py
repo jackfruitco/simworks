@@ -6,6 +6,7 @@ from apps.common.models import OutboxEvent
 from apps.common.outbox.event_types import PATIENT_PULSE_CREATED, PATIENT_VITAL_UPDATED
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import parse_watch_page_state, serialize_outbox_events
+from apps.trainerlab.services import create_session
 from orchestrai_django.models import ServiceCall
 
 
@@ -275,3 +276,36 @@ def test_trainerlab_watch_button_and_run_view_reflect_membership(
     assert f'href="{run_url}"' not in non_member_content
     assert "You do not have access to this simulation run view." in non_member_content
     assert client.get(run_url).status_code == 403
+
+
+@pytest.mark.django_db
+def test_trainerlab_watch_view_renders_truth_snapshot_and_cache_sections(
+    client, trainer_member, trainer_membership
+):
+    session = create_session(
+        user=trainer_member,
+        scenario_spec={},
+        directives="",
+        modifiers=[],
+    )
+
+    client.force_login(trainer_member)
+    response = client.get(
+        reverse(
+            "trainerlab:watch_simulation",
+            kwargs={"simulation_id": session.simulation_id},
+        )
+    )
+
+    assert response.status_code == 200
+    assert response.context["watch_detail_partial"] == "trainerlab/partials/watch_details.html"
+    assert response.context["trainer_watch_snapshot_cache_json"]
+    content = response.content.decode()
+    assert "TrainerLab Truth And Snapshots" in content
+    assert "ScenarioState Summary" in content
+    assert "RuntimeState Summary" in content
+    assert "ScenarioSnapshot" in content
+    assert "RuntimeSnapshot" in content
+    assert "EventTimeline" in content
+    assert "SnapshotCache" in content
+    assert '"status": "disabled"' in response.context["trainer_watch_snapshot_cache_json"]

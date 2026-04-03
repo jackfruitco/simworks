@@ -2443,7 +2443,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerRuntimeStateOut"
+                  "$ref": "#/components/schemas/TrainerRestViewModelOut"
                 }
               }
             }
@@ -6613,6 +6613,131 @@
         "title": "PaginatedResponse[TrainerRunOut]",
         "type": "object"
       },
+      "ControlPlaneDebugOut": {
+        "properties": {
+          "execution_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execution Plan",
+            "type": "array"
+          },
+          "current_step_index": {
+            "default": 0,
+            "title": "Current Step Index",
+            "type": "integer"
+          },
+          "queued_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queued Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_processed_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Last Processed Reasons",
+            "type": "array"
+          },
+          "last_failed_step": {
+            "default": "",
+            "title": "Last Failed Step",
+            "type": "string"
+          },
+          "last_failed_error": {
+            "default": "",
+            "title": "Last Failed Error",
+            "type": "string"
+          },
+          "last_patch_evaluation_summary": {
+            "additionalProperties": true,
+            "title": "Last Patch Evaluation Summary",
+            "type": "object"
+          },
+          "last_rejected_or_normalized_summary": {
+            "additionalProperties": true,
+            "title": "Last Rejected Or Normalized Summary",
+            "type": "object"
+          },
+          "status_flags": {
+            "additionalProperties": true,
+            "title": "Status Flags",
+            "type": "object"
+          }
+        },
+        "title": "ControlPlaneDebugOut",
+        "type": "object"
+      },
+      "EventTimelineEntryOut": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at"
+        ],
+        "title": "EventTimelineEntryOut",
+        "type": "object"
+      },
+      "EventTimelineOut": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventTimelineEntryOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "total_events": {
+            "default": 0,
+            "title": "Total Events",
+            "type": "integer"
+          }
+        },
+        "title": "EventTimelineOut",
+        "type": "object"
+      },
       "RecommendedInterventionStateOut": {
         "properties": {
           "recommendation_id": {
@@ -7857,6 +7982,158 @@
         "title": "RuntimeResourceStateOut",
         "type": "object"
       },
+      "RuntimeSnapshotOut": {
+        "properties": {
+          "status": {
+            "enum": [
+              "seeding",
+              "seeded",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "phase": {
+            "default": "",
+            "title": "Phase",
+            "type": "string"
+          },
+          "state_revision": {
+            "default": 0,
+            "title": "State Revision",
+            "type": "integer"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "tick_count": {
+            "default": 0,
+            "title": "Tick Count",
+            "type": "integer"
+          },
+          "tick_interval_seconds": {
+            "default": 15,
+            "title": "Tick Interval Seconds",
+            "type": "integer"
+          },
+          "next_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Tick At"
+          },
+          "runtime_processing": {
+            "default": false,
+            "title": "Runtime Processing",
+            "type": "boolean"
+          },
+          "pending_runtime_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Runtime Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "ai_plan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeInstructorIntent"
+              }
+            ]
+          },
+          "ai_rationale_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "llm_conditions_check": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Llm Conditions Check",
+            "type": "array"
+          },
+          "last_runtime_error": {
+            "default": "",
+            "title": "Last Runtime Error",
+            "type": "string"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          },
+          "last_runtime_enqueued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Enqueued At"
+          },
+          "last_runtime_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Completed At"
+          },
+          "control_plane_debug": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ControlPlaneDebugOut"
+              }
+            ]
+          },
+          "request_metadata": {
+            "additionalProperties": true,
+            "title": "Request Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RuntimeSnapshotOut",
+        "type": "object"
+      },
       "RuntimeVitalStateOut": {
         "properties": {
           "domain_event_id": {
@@ -7998,7 +8275,7 @@
         "title": "ScenarioBriefOut",
         "type": "object"
       },
-      "TrainerRuntimeSnapshotOut": {
+      "ScenarioSnapshotOut": {
         "properties": {
           "causes": {
             "items": {
@@ -8092,10 +8369,76 @@
             ]
           }
         },
-        "title": "TrainerRuntimeSnapshotOut",
+        "title": "ScenarioSnapshotOut",
         "type": "object"
       },
-      "TrainerRuntimeStateOut": {
+      "SnapshotCacheStatusOut": {
+        "properties": {
+          "status": {
+            "default": "disabled",
+            "title": "Status",
+            "type": "string"
+          },
+          "authoritative": {
+            "default": false,
+            "title": "Authoritative",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "disabled",
+            "title": "Source",
+            "type": "string"
+          },
+          "state_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Revision"
+          },
+          "legacy_keys_present": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Legacy Keys Present",
+            "type": "array"
+          }
+        },
+        "title": "SnapshotCacheStatusOut",
+        "type": "object"
+      },
+      "TrainerRestMetadataOut": {
+        "properties": {
+          "builder_version": {
+            "default": "v1",
+            "title": "Builder Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_cache": {
+            "$ref": "#/components/schemas/SnapshotCacheStatusOut"
+          },
+          "event_timeline_count": {
+            "default": 0,
+            "title": "Event Timeline Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_cache"
+        ],
+        "title": "TrainerRestMetadataOut",
+        "type": "object"
+      },
+      "TrainerRestViewModelOut": {
         "properties": {
           "simulation_id": {
             "title": "Simulation Id",
@@ -8117,173 +8460,29 @@
             "title": "Status",
             "type": "string"
           },
-          "state_revision": {
-            "title": "State Revision",
-            "type": "integer"
+          "scenario_snapshot": {
+            "$ref": "#/components/schemas/ScenarioSnapshotOut"
           },
-          "active_elapsed_seconds": {
-            "title": "Active Elapsed Seconds",
-            "type": "integer"
+          "runtime_snapshot": {
+            "$ref": "#/components/schemas/RuntimeSnapshotOut"
           },
-          "tick_interval_seconds": {
-            "default": 15,
-            "title": "Tick Interval Seconds",
-            "type": "integer"
+          "event_timeline": {
+            "$ref": "#/components/schemas/EventTimelineOut"
           },
-          "next_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Tick At"
-          },
-          "scenario_brief": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScenarioBriefOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_snapshot": {
-            "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
-          },
-          "ai_plan": {
-            "$ref": "#/components/schemas/RuntimeInstructorIntent"
-          },
-          "ai_rationale_notes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Ai Rationale Notes",
-            "type": "array"
-          },
-          "pending_runtime_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Runtime Reasons",
-            "type": "array"
-          },
-          "pending_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_runtime_error": {
-            "default": "",
-            "title": "Last Runtime Error",
-            "type": "string"
-          },
-          "last_ai_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Ai Tick At"
+          "metadata": {
+            "$ref": "#/components/schemas/TrainerRestMetadataOut"
           }
         },
         "required": [
           "simulation_id",
           "session_id",
           "status",
-          "state_revision",
-          "active_elapsed_seconds",
-          "current_snapshot",
-          "ai_plan"
+          "scenario_snapshot",
+          "runtime_snapshot",
+          "event_timeline",
+          "metadata"
         ],
-        "title": "TrainerRuntimeStateOut",
-        "type": "object"
-      },
-      "ControlPlaneDebugOut": {
-        "properties": {
-          "execution_plan": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Execution Plan",
-            "type": "array"
-          },
-          "current_step_index": {
-            "default": 0,
-            "title": "Current Step Index",
-            "type": "integer"
-          },
-          "queued_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Queued Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_processed_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Last Processed Reasons",
-            "type": "array"
-          },
-          "last_failed_step": {
-            "default": "",
-            "title": "Last Failed Step",
-            "type": "string"
-          },
-          "last_failed_error": {
-            "default": "",
-            "title": "Last Failed Error",
-            "type": "string"
-          },
-          "last_patch_evaluation_summary": {
-            "additionalProperties": true,
-            "title": "Last Patch Evaluation Summary",
-            "type": "object"
-          },
-          "last_rejected_or_normalized_summary": {
-            "additionalProperties": true,
-            "title": "Last Rejected Or Normalized Summary",
-            "type": "object"
-          },
-          "status_flags": {
-            "additionalProperties": true,
-            "title": "Status Flags",
-            "type": "object"
-          }
-        },
-        "title": "ControlPlaneDebugOut",
+        "title": "TrainerRestViewModelOut",
         "type": "object"
       },
       "ErrorResponse": {

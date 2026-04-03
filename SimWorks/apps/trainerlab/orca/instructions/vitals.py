@@ -44,13 +44,13 @@ class VitalsProgressionContractInstruction(NsMixin, BaseInstruction):
 @orca.instruction(order=40)
 class VitalsProgressionContextInstruction(NsMixin, BaseInstruction):
     def render_instruction(self) -> str:
-        snapshot = json.dumps(self.context.get("current_snapshot", {}), sort_keys=True)
+        snapshot = json.dumps(self.context.get("scenario_snapshot", {}), sort_keys=True)
         elapsed = self.context.get("active_elapsed_seconds", 0)
         reasons = json.dumps(self.context.get("runtime_reasons", []), sort_keys=True)
         return (
             "Current patient context:\n"
             f"- Active elapsed seconds: {elapsed}\n"
-            f"- Current snapshot JSON: {snapshot}\n"
+            f"- Current scenario snapshot JSON: {snapshot}\n"
             f"- Pending runtime reasons: {reasons}\n"
             "Update all six vital sign types to reflect the patient's current physiological state. "
             "Only change values that are clinically justified by the active problems, relevant "
