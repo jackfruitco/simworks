@@ -66,6 +66,36 @@ def simulation(test_user):
 
 @pytest.mark.django_db
 class TestLabOrderEndpoints:
+    def test_submit_lab_orders_rejects_empty_list(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/lab-orders/",
+            data={"orders": []},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "orders" in response.json()["detail"]
+
+    def test_submit_lab_orders_rejects_too_many_orders(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/lab-orders/",
+            data={"orders": [f"Order {index}" for index in range(51)]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 50 items" in response.json()["detail"]
+
+    def test_submit_lab_orders_rejects_overlong_order(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/lab-orders/",
+            data={"orders": ["C" * 256]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 255 characters" in response.json()["detail"]
+
     @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")
     def test_submit_lab_orders_success(self, mock_lab_results_task, auth_client, simulation):
         mock_enqueue = MagicMock()
@@ -154,12 +184,3 @@ class TestLabOrderEndpoints:
         assert response.status_code == 400
         assert response.json()["detail"] == "orders must contain at least one non-empty item"
         mock_lab_results_task.using.assert_not_called()
-
-    def test_submit_lab_orders_rejects_empty_list(self, auth_client, simulation):
-        response = auth_client.post(
-            f"/api/v1/simulations/{simulation.pk}/lab-orders/",
-            data={"orders": []},
-            content_type="application/json",
-        )
-
-        assert response.status_code == 422

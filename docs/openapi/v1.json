@@ -5613,14 +5613,20 @@
         "description": "Input schema for lab order signing.",
         "properties": {
           "submitted_orders": {
-            "description": "Lab orders to sign and enqueue",
+            "description": "Lab orders to sign and enqueue. Maximum 50 orders per request.",
             "items": {
+              "maxLength": 255,
               "type": "string"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "title": "Submitted Orders",
             "type": "array"
           }
         },
+        "required": [
+          "submitted_orders"
+        ],
         "title": "SignOrdersIn",
         "type": "object"
       },
@@ -5630,6 +5636,7 @@
           "orders": {
             "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty. Maximum 50 orders per request.",
             "items": {
+              "maxLength": 255,
               "type": "string"
             },
             "maxItems": 50,

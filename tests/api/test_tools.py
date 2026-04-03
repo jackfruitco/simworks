@@ -190,7 +190,38 @@ class TestToolEndpoints:
             data={"submitted_orders": []},
             content_type="application/json",
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
+        assert "submitted_orders" in response.json()["detail"]
+
+    def test_sign_orders_rejects_too_many_orders(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"submitted_orders": [f"Order {index}" for index in range(51)]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 50 items" in response.json()["detail"]
+
+    def test_sign_orders_rejects_overlong_order(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"submitted_orders": ["C" * 256]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "at most 255 characters" in response.json()["detail"]
+
+    def test_sign_orders_requires_submitted_orders_field(self, auth_client, simulation):
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/tools/patient_results/orders/",
+            data={"orders": ["CBC"]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert "submitted_orders" in response.json()["detail"]
 
     @patch("apps.simcore.orca.services.GenerateInitialFeedback.task")
     @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")

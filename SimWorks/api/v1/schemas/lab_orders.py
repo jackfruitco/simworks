@@ -1,28 +1,32 @@
 """API schemas for lab order submission and response."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
+
+LAB_ORDER_MAX_ITEMS = 50
+LAB_ORDER_MAX_ITEM_LENGTH = 255
+LAB_ORDER_LIST_DESCRIPTION = (
+    "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). "
+    "Each string must be non-empty. Maximum 50 orders per request."
+)
+LabOrderItem = Annotated[str, Field(max_length=LAB_ORDER_MAX_ITEM_LENGTH)]
+
+
+def lab_order_list_field(*, description: str = LAB_ORDER_LIST_DESCRIPTION):
+    """Return shared field metadata for lab-order request payloads."""
+    return Field(
+        ...,
+        min_length=1,
+        max_length=LAB_ORDER_MAX_ITEMS,
+        description=description,
+    )
 
 
 class LabOrderSubmit(BaseModel):
     """Input schema for submitting signed lab orders."""
 
-    orders: list[str] = Field(
-        ...,
-        min_length=1,
-        max_length=50,
-        description="List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). "
-        "Each string must be non-empty. Maximum 50 orders per request.",
-    )
-
-    @field_validator("orders", mode="before")
-    @classmethod
-    def validate_order_lengths(cls, v: list) -> list:
-        for item in v:
-            if isinstance(item, str) and len(item) > 255:
-                raise ValueError("Each order string must be at most 255 characters")
-        return v
+    orders: list[LabOrderItem] = lab_order_list_field()
 
 
 class LabOrdersOut(BaseModel):
