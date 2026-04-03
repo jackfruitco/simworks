@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field, model_validator
-from slugify import slugify
 
 from apps.common.outbox import event_types as outbox_events
 from apps.trainerlab.adjudication import adjudicate_intervention
@@ -17,6 +15,7 @@ from apps.trainerlab.recommendations import validate_and_normalize_recommendatio
 from apps.trainerlab.schemas import ScenarioBrief
 from orchestrai.types import StrictBaseModel
 
+from ..initial_normalization import normalize_initial_scenario_payload
 from .types import (
     ETCO2,
     SPO2,
@@ -38,26 +37,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["InitialScenarioSchema"]
-
-_RECOMMENDATION_REF_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "after",
-        "for",
-        "if",
-        "of",
-        "on",
-        "or",
-        "recommendation",
-        "recommendations",
-        "recommended",
-        "the",
-        "to",
-    }
-)
+__all__ = ["InitialScenarioOutputSchema", "InitialScenarioSchema"]
 
 
 if TYPE_CHECKING:
@@ -66,111 +46,6 @@ if TYPE_CHECKING:
 
 async def _passthrough(value: Any, _context: PersistContext) -> Any:
     return value
-
-
-def _normalize_ref_text(value: str) -> str:
-    return slugify(value or "", separator="_")
-
-
-def _meaningful_ref_tokens(value: str) -> frozenset[str]:
-    return frozenset(
-        token
-        for token in _normalize_ref_text(value).split("_")
-        if token and token not in _RECOMMENDATION_REF_STOPWORDS
-    )
-
-
-@dataclass(frozen=True)
-class _RecommendationCandidate:
-    seed: RecommendedInterventionSeed
-    aliases: frozenset[str]
-    token_sets: tuple[frozenset[str], ...]
-
-
-def _build_recommendation_candidate(
-    recommendation: RecommendedInterventionSeed,
-) -> _RecommendationCandidate:
-    alias_sources = {
-        recommendation.temp_id,
-        recommendation.title,
-        recommendation.intervention_kind,
-        f"{recommendation.intervention_kind} {recommendation.title}",
-        f"{recommendation.intervention_kind} {recommendation.site}",
-        f"{recommendation.intervention_kind} {recommendation.site} {recommendation.title}",
-        f"{recommendation.title} {recommendation.site}",
-    }
-    aliases = frozenset(
-        normalized
-        for normalized in (_normalize_ref_text(value) for value in alias_sources)
-        if normalized
-    )
-    token_sets = tuple(
-        sorted_token_sets
-        for sorted_token_sets in {
-            _meaningful_ref_tokens(value)
-            for value in alias_sources
-            if _meaningful_ref_tokens(value)
-        }
-    )
-    return _RecommendationCandidate(
-        seed=recommendation,
-        aliases=aliases,
-        token_sets=token_sets,
-    )
-
-
-def _format_available_temp_ids(candidates: list[_RecommendationCandidate]) -> str:
-    temp_ids = [candidate.seed.temp_id for candidate in candidates]
-    return ", ".join(temp_ids) if temp_ids else "none"
-
-
-def _resolve_recommendation_ref(
-    *,
-    problem: ProblemSeed,
-    raw_ref: str,
-    candidates: list[_RecommendationCandidate],
-) -> str:
-    available_temp_ids = _format_available_temp_ids(candidates)
-    normalized_ref = _normalize_ref_text(raw_ref)
-    if not normalized_ref:
-        raise ValueError(
-            f"Problem {problem.temp_id!r} has a blank recommendation ref. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-
-    exact_matches = [candidate for candidate in candidates if normalized_ref in candidate.aliases]
-    if len(exact_matches) == 1:
-        return exact_matches[0].seed.temp_id
-    if len(exact_matches) > 1:
-        matching_temp_ids = ", ".join(candidate.seed.temp_id for candidate in exact_matches)
-        raise ValueError(
-            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} is ambiguous. "
-            f"Matching recommendation temp_ids: {matching_temp_ids}. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-
-    raw_tokens = _meaningful_ref_tokens(raw_ref)
-    token_matches = [
-        candidate
-        for candidate in candidates
-        if any(
-            len(token_set) >= 2 and token_set <= raw_tokens for token_set in candidate.token_sets
-        )
-    ]
-    if len(token_matches) == 1:
-        return token_matches[0].seed.temp_id
-    if len(token_matches) > 1:
-        matching_temp_ids = ", ".join(candidate.seed.temp_id for candidate in token_matches)
-        raise ValueError(
-            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} is ambiguous after "
-            f"normalization. Matching recommendation temp_ids: {matching_temp_ids}. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-
-    raise ValueError(
-        f"Problem {problem.temp_id!r} references unknown recommendation {raw_ref!r}. "
-        f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-    )
 
 
 def _initial_extra(context: PersistContext) -> dict[str, Any]:
@@ -271,6 +146,7 @@ class InitialScenarioSchema(StrictBaseModel):
         recommendation_ids = [item.temp_id for item in self.recommended_interventions]
         if len(recommendation_ids) != len(set(recommendation_ids)):
             raise ValueError("Recommended intervention temp_id values must be unique.")
+        recommendation_id_set = set(recommendation_ids)
 
         finding_ids = [item.temp_id for item in self.assessment_findings]
         if len(finding_ids) != len(set(finding_ids)):
@@ -286,33 +162,38 @@ class InitialScenarioSchema(StrictBaseModel):
 
         cause_refs = {item.temp_id for item in self.causes}
         problem_refs = {item.temp_id for item in self.problems}
-        recommendations_by_problem: dict[str, list[_RecommendationCandidate]] = {}
-        for recommendation in self.recommended_interventions:
-            recommendations_by_problem.setdefault(recommendation.target_problem_ref, []).append(
-                _build_recommendation_candidate(recommendation)
-            )
 
         for problem in self.problems:
             if problem.cause_ref not in cause_refs:
                 raise ValueError(
                     f"Problem {problem.temp_id!r} references unknown cause {problem.cause_ref!r}."
                 )
-            normalized_refs: list[str] = []
+            owned_recommendation_ids = [
+                recommendation.temp_id
+                for recommendation in self.recommended_interventions
+                if recommendation.target_problem_ref == problem.temp_id
+            ]
+            available_temp_ids = (
+                ", ".join(owned_recommendation_ids) if owned_recommendation_ids else "none"
+            )
             for raw_ref in problem.recommendation_refs:
-                resolved_ref = _resolve_recommendation_ref(
-                    problem=problem,
-                    raw_ref=raw_ref,
-                    candidates=recommendations_by_problem.get(problem.temp_id, []),
-                )
-                if resolved_ref != raw_ref:
-                    logger.info(
-                        "Normalized TrainerLab recommendation ref for problem %s: %s -> %s",
-                        problem.temp_id,
-                        raw_ref,
-                        resolved_ref,
+                if raw_ref not in recommendation_id_set:
+                    raise ValueError(
+                        f"Problem {problem.temp_id!r} references unknown recommendation {raw_ref!r}. "
+                        f"Available recommendation temp_ids for this problem: {available_temp_ids}."
                     )
-                normalized_refs.append(resolved_ref)
-            problem.recommendation_refs = normalized_refs
+                owner_problem_refs = [
+                    recommendation.target_problem_ref
+                    for recommendation in self.recommended_interventions
+                    if recommendation.temp_id == raw_ref
+                ]
+                if owner_problem_refs and owner_problem_refs[0] != problem.temp_id:
+                    raise ValueError(
+                        f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} resolves to "
+                        f"recommendation {raw_ref!r}, but that recommendation belongs to problem "
+                        f"{owner_problem_refs[0]!r}. Available recommendation temp_ids for this "
+                        f"problem: {available_temp_ids}."
+                    )
 
         for recommendation in self.recommended_interventions:
             if recommendation.target_problem_ref not in problem_refs:
@@ -813,3 +694,14 @@ class InitialScenarioSchema(StrictBaseModel):
             await sync_to_async(_complete_initial_generation_after_persist, thread_sensitive=True)(
                 context
             )
+
+
+class InitialScenarioOutputSchema(InitialScenarioSchema):
+    """Service-facing schema that normalizes tactical ownership mismatches before validation."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_payload(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            return normalize_initial_scenario_payload(value)
+        return value

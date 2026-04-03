@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from api.v1.schemas.lab_orders import LabOrderItem, lab_order_list_field
+
 
 class ToolDataItemBase(BaseModel):
     """Base schema for typed tool payload items."""
@@ -78,14 +80,6 @@ class ToolListResponse(BaseModel):
 class SignOrdersIn(BaseModel):
     """Input schema for lab order signing."""
 
-    submitted_orders: list[str] = Field(
-        default_factory=list,
-        description="Lab orders to sign and enqueue",
+    submitted_orders: list[LabOrderItem] = lab_order_list_field(
+        description="Lab orders to sign and enqueue. Maximum 50 orders per request."
     )
-
-
-class SignOrdersOut(BaseModel):
-    """Response for lab order signing."""
-
-    status: Literal["ok"] = Field(default="ok", description="Request status")
-    orders: list[str] = Field(default_factory=list, description="Orders accepted for processing")

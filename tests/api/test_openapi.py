@@ -166,6 +166,24 @@ class TestOpenAPISchemaContent:
                 if method in ("get", "post", "put", "patch", "delete"):
                     assert "tags" in details, f"{method.upper()} {path} missing tags"
 
+    def test_lab_order_request_schemas_share_constraints(self, schema):
+        """Tools and canonical lab-order routes should expose matching validation constraints."""
+        lab_orders_schema = schema["components"]["schemas"]["LabOrderSubmit"]
+        tools_schema = schema["components"]["schemas"]["SignOrdersIn"]
+
+        assert lab_orders_schema["required"] == ["orders"]
+        assert tools_schema["required"] == ["submitted_orders"]
+
+        lab_orders_property = lab_orders_schema["properties"]["orders"]
+        submitted_orders_property = tools_schema["properties"]["submitted_orders"]
+
+        assert lab_orders_property["minItems"] == 1
+        assert submitted_orders_property["minItems"] == 1
+        assert lab_orders_property["maxItems"] == 50
+        assert submitted_orders_property["maxItems"] == 50
+        assert lab_orders_property["items"]["maxLength"] == 255
+        assert submitted_orders_property["items"]["maxLength"] == 255
+
 
 class TestCommittedSchema:
     """Tests to verify the committed schema matches the current API."""

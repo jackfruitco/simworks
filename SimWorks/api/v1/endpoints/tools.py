@@ -3,13 +3,14 @@
 Provides JSON tool payloads and tool actions for native clients.
 """
 
-from asgiref.sync import async_to_sync
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
 
 from api.v1.auth import DualAuth
-from api.v1.schemas.tools import SignOrdersIn, SignOrdersOut, ToolListResponse, ToolOut
+from api.v1.endpoints._lab_order_submission import submit_lab_orders_request
+from api.v1.schemas.lab_orders import LabOrdersOut
+from api.v1.schemas.tools import SignOrdersIn, ToolListResponse, ToolOut
 from api.v1.utils import get_simulation_for_user
 from apps.common.ratelimit import api_rate_limit
 
@@ -79,31 +80,14 @@ def get_simulation_tool(
 
 @router.post(
     "/{simulation_id}/tools/patient_results/orders/",
-    response=SignOrdersOut,
+    response={202: LabOrdersOut},
     summary="Sign lab orders",
-    description="Signs requested lab orders and enqueues feedback generation.",
+    description="Signs requested lab orders and enqueues lab results generation.",
 )
 @api_rate_limit
 def sign_lab_orders(
     request: HttpRequest,
     simulation_id: int,
     body: SignOrdersIn,
-) -> SignOrdersOut:
-    from apps.simcore.orca.services import GenerateInitialFeedback
-
-    if not body.submitted_orders:
-        raise HttpError(400, "submitted_orders must include at least one item")
-
-    user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user, request=request)
-
-    async def _enqueue():
-        return await GenerateInitialFeedback.task.using(
-            context={
-                "simulation_id": simulation.id,
-                "lab_orders": body.submitted_orders,
-            }
-        ).aenqueue()
-
-    async_to_sync(_enqueue)()
-    return SignOrdersOut(status="ok", orders=body.submitted_orders)
+) -> tuple[int, LabOrdersOut]:
+    return 202, submit_lab_orders_request(request, simulation_id, body.submitted_orders)
