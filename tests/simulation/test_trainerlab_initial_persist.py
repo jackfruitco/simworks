@@ -1,4 +1,3 @@
-import logging
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -29,6 +28,7 @@ from apps.trainerlab.models import (
     RespiratoryRate,
     ScenarioBrief,
 )
+from apps.trainerlab.orca.initial_normalization import normalize_initial_scenario_payload
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
 from orchestrai_django.persistence import PersistContext, persist_schema
 
@@ -304,6 +304,7 @@ def _chest_trauma_payload() -> dict:
     payload = _initial_payload()
     payload["causes"][0].update(
         {
+            "temp_id": "cause_gsw_left_chest",
             "title": "GSW left chest",
             "display_name": "GSW left chest",
             "description": "Penetrating gunshot wound to the left anterior chest",
@@ -313,9 +314,11 @@ def _chest_trauma_payload() -> dict:
             "injury_description": "GSW left chest",
         }
     )
+    payload["problems"][0]["cause_ref"] = "cause_gsw_left_chest"
     payload["problems"][0]["recommendation_refs"] = []
     payload["problems"][1].update(
         {
+            "temp_id": "problem_open_chest_wound",
             "kind": "open_chest_wound",
             "code": "open_chest_wound",
             "title": "Open chest wound left chest",
@@ -325,6 +328,7 @@ def _chest_trauma_payload() -> dict:
             "march_category": "R",
             "anatomical_location": "Left anterior chest",
             "laterality": "left",
+            "cause_ref": "cause_gsw_left_chest",
             "recommendation_refs": ["rec_chest_seal"],
         }
     )
@@ -342,7 +346,7 @@ def _chest_trauma_payload() -> dict:
             "march_category": "R",
             "anatomical_location": "Left chest",
             "laterality": "left",
-            "cause_ref": "cause_gsw_left_thigh",
+            "cause_ref": "cause_gsw_left_chest",
             "recommendation_refs": ["rec_chest_seal"],
         }
     )
@@ -351,8 +355,8 @@ def _chest_trauma_payload() -> dict:
             "temp_id": "rec_chest_seal",
             "intervention_kind": "chest_seal",
             "title": "Chest seal to left anterior chest",
-            "target_problem_ref": "problem_open_wound",
-            "target_cause_ref": "cause_gsw_left_thigh",
+            "target_problem_ref": "problem_open_chest_wound",
+            "target_cause_ref": "cause_gsw_left_chest",
             "rationale": "Seal the open chest wound and improve ventilation.",
             "priority": 1,
             "site": "left_anterior_chest",
@@ -609,20 +613,14 @@ def test_exact_recommendation_temp_ids_remain_unchanged():
     assert schema.problems[1].recommendation_refs == ["rec_pressure"]
 
 
-def test_symbolic_recommendation_refs_are_normalized_to_temp_ids(caplog):
+def test_symbolic_recommendation_refs_are_normalized_to_temp_ids():
     payload = _initial_payload()
     payload["problems"][0]["recommendation_refs"] = ["tourniquet_to_left_thigh_if_uncontrolled"]
 
-    with caplog.at_level(logging.INFO):
-        schema = InitialScenarioSchema.model_validate(payload)
+    normalized_payload = normalize_initial_scenario_payload(payload)
+    schema = InitialScenarioSchema.model_validate(normalized_payload)
 
     assert schema.problems[0].recommendation_refs == ["rec_tq"]
-    assert any(
-        "Normalized TrainerLab recommendation ref for problem problem_hemorrhage" in record.message
-        and "tourniquet_to_left_thigh_if_uncontrolled" in record.message
-        and "rec_tq" in record.message
-        for record in caplog.records
-    )
 
 
 def test_ambiguous_recommendation_refs_fail_with_clear_message():
@@ -644,8 +642,8 @@ def test_ambiguous_recommendation_refs_fail_with_clear_message():
     )
     payload["problems"][0]["recommendation_refs"] = ["tourniquet"]
 
-    with pytest.raises(ValidationError) as exc_info:
-        InitialScenarioSchema.model_validate(payload)
+    with pytest.raises(ValueError) as exc_info:
+        normalize_initial_scenario_payload(payload)
 
     message = str(exc_info.value)
     assert "recommendation ref 'tourniquet' is ambiguous" in message
@@ -667,10 +665,12 @@ def test_missing_recommendation_refs_fail_with_available_temp_ids():
 def test_cross_problem_exact_recommendation_refs_are_cloned_for_same_cause():
     payload = _chest_trauma_payload()
 
-    schema = InitialScenarioSchema.model_validate(payload)
+    normalized_payload = normalize_initial_scenario_payload(payload)
+    schema = InitialScenarioSchema.model_validate(normalized_payload)
 
     recommendations_by_problem = {
-        recommendation.target_problem_ref: recommendation for recommendation in schema.recommended_interventions
+        recommendation.target_problem_ref: recommendation
+        for recommendation in schema.recommended_interventions
     }
     assert schema.problems[1].recommendation_refs == ["rec_chest_seal"]
     repaired_ref = schema.problems[4].recommendation_refs[0]
@@ -678,12 +678,12 @@ def test_cross_problem_exact_recommendation_refs_are_cloned_for_same_cause():
     assert repaired_ref == recommendations_by_problem["problem_resp_distress"].temp_id
     repaired_recommendation = recommendations_by_problem["problem_resp_distress"]
     assert repaired_recommendation.intervention_kind == "chest_seal"
-    assert repaired_recommendation.target_cause_ref == "cause_gsw_left_thigh"
+    assert repaired_recommendation.target_cause_ref == "cause_gsw_left_chest"
     assert repaired_recommendation.metadata["ownership_repair"] == {
         "repair_type": "cloned_from_cross_problem_reference",
         "source_temp_id": "rec_chest_seal",
-        "source_problem_ref": "problem_open_wound",
-        "source_cause_ref": "cause_gsw_left_thigh",
+        "source_problem_ref": "problem_open_chest_wound",
+        "source_cause_ref": "cause_gsw_left_chest",
         "raw_ref": "rec_chest_seal",
         "repaired_problem_ref": "problem_resp_distress",
     }
@@ -693,7 +693,8 @@ def test_cross_problem_symbolic_recommendation_refs_are_cloned_for_same_cause():
     payload = _chest_trauma_payload()
     payload["problems"][4]["recommendation_refs"] = ["chest_seal"]
 
-    schema = InitialScenarioSchema.model_validate(payload)
+    normalized_payload = normalize_initial_scenario_payload(payload)
+    schema = InitialScenarioSchema.model_validate(normalized_payload)
 
     repaired_ref = schema.problems[4].recommendation_refs[0]
     assert repaired_ref != "rec_chest_seal"
@@ -706,23 +707,50 @@ def test_cross_problem_symbolic_recommendation_refs_are_cloned_for_same_cause():
     assert repaired_recommendation.metadata["ownership_repair"]["raw_ref"] == "chest_seal"
 
 
-def test_cross_problem_recommendation_reuse_across_different_causes_fails_clearly():
+def test_cross_problem_recommendation_reuse_requires_explicit_normalization():
     payload = _chest_trauma_payload()
-    payload["problems"][2]["recommendation_refs"] = ["rec_chest_seal"]
 
     with pytest.raises(ValidationError) as exc_info:
         InitialScenarioSchema.model_validate(payload)
 
     message = str(exc_info.value)
-    assert "Problem 'problem_infection' recommendation ref 'rec_chest_seal' resolves to recommendation 'rec_chest_seal'" in message
-    assert "belongs to problem 'problem_open_wound'" in message
+    assert (
+        "Problem 'problem_resp_distress' recommendation ref 'rec_chest_seal' resolves "
+        "to recommendation 'rec_chest_seal'"
+    ) in message
+    assert "belongs to problem 'problem_open_chest_wound'" in message
+
+
+def test_cross_problem_recommendation_reuse_across_different_causes_fails_clearly():
+    payload = _chest_trauma_payload()
+    payload["problems"][2]["recommendation_refs"] = ["rec_chest_seal"]
+
+    with pytest.raises(ValueError) as exc_info:
+        normalize_initial_scenario_payload(payload)
+
+    message = str(exc_info.value)
+    assert (
+        "Problem 'problem_infection' recommendation ref 'rec_chest_seal' resolves to "
+        "recommendation 'rec_chest_seal'"
+    ) in message
+    assert "belongs to problem 'problem_open_chest_wound'" in message
     assert "Available recommendation temp_ids for this problem: none" in message
+
+
+def test_normalize_initial_scenario_payload_is_idempotent():
+    payload = _chest_trauma_payload()
+
+    first = normalize_initial_scenario_payload(payload)
+    second = normalize_initial_scenario_payload(first)
+
+    assert first == second
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_repaired_cross_problem_recommendations_persist_as_distinct_problem_records(context):
-    schema = InitialScenarioSchema.model_validate(_chest_trauma_payload())
+    normalized_payload = normalize_initial_scenario_payload(_chest_trauma_payload())
+    schema = InitialScenarioSchema.model_validate(normalized_payload)
 
     await persist_schema(schema, context)
 

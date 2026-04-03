@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field, model_validator
-from slugify import slugify
 
 from apps.common.outbox import event_types as outbox_events
 from apps.trainerlab.adjudication import adjudicate_intervention
@@ -17,6 +15,7 @@ from apps.trainerlab.recommendations import validate_and_normalize_recommendatio
 from apps.trainerlab.schemas import ScenarioBrief
 from orchestrai.types import StrictBaseModel
 
+from ..initial_normalization import normalize_initial_scenario_payload
 from .types import (
     ETCO2,
     SPO2,
@@ -38,26 +37,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["InitialScenarioSchema"]
-
-_RECOMMENDATION_REF_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "after",
-        "for",
-        "if",
-        "of",
-        "on",
-        "or",
-        "recommendation",
-        "recommendations",
-        "recommended",
-        "the",
-        "to",
-    }
-)
+__all__ = ["InitialScenarioOutputSchema", "InitialScenarioSchema"]
 
 
 if TYPE_CHECKING:
@@ -66,223 +46,6 @@ if TYPE_CHECKING:
 
 async def _passthrough(value: Any, _context: PersistContext) -> Any:
     return value
-
-
-def _normalize_ref_text(value: str) -> str:
-    return slugify(value or "", separator="_")
-
-
-def _meaningful_ref_tokens(value: str) -> frozenset[str]:
-    return frozenset(
-        token
-        for token in _normalize_ref_text(value).split("_")
-        if token and token not in _RECOMMENDATION_REF_STOPWORDS
-    )
-
-
-@dataclass(frozen=True)
-class _RecommendationCandidate:
-    seed: RecommendedInterventionSeed
-    aliases: frozenset[str]
-    token_sets: tuple[frozenset[str], ...]
-
-
-def _build_recommendation_candidate(
-    recommendation: RecommendedInterventionSeed,
-) -> _RecommendationCandidate:
-    alias_sources = {
-        recommendation.temp_id,
-        recommendation.title,
-        recommendation.intervention_kind,
-        f"{recommendation.intervention_kind} {recommendation.title}",
-        f"{recommendation.intervention_kind} {recommendation.site}",
-        f"{recommendation.intervention_kind} {recommendation.site} {recommendation.title}",
-        f"{recommendation.title} {recommendation.site}",
-    }
-    aliases = frozenset(
-        normalized
-        for normalized in (_normalize_ref_text(value) for value in alias_sources)
-        if normalized
-    )
-    token_sets = tuple(
-        sorted_token_sets
-        for sorted_token_sets in {
-            _meaningful_ref_tokens(value)
-            for value in alias_sources
-            if _meaningful_ref_tokens(value)
-        }
-    )
-    return _RecommendationCandidate(
-        seed=recommendation,
-        aliases=aliases,
-        token_sets=token_sets,
-    )
-
-
-def _format_available_temp_ids(candidates: list[_RecommendationCandidate]) -> str:
-    temp_ids = [candidate.seed.temp_id for candidate in candidates]
-    return ", ".join(temp_ids) if temp_ids else "none"
-
-
-def _format_matching_candidates(candidates: list[_RecommendationCandidate]) -> str:
-    return ", ".join(
-        f"{candidate.seed.temp_id} -> {candidate.seed.target_problem_ref}"
-        for candidate in candidates
-    )
-
-
-def _find_recommendation_matches(
-    *,
-    raw_ref: str,
-    candidates: list[_RecommendationCandidate],
-) -> tuple[list[_RecommendationCandidate], bool]:
-    normalized_ref = _normalize_ref_text(raw_ref)
-    exact_matches = [candidate for candidate in candidates if normalized_ref in candidate.aliases]
-    if exact_matches:
-        return exact_matches, False
-
-    raw_tokens = _meaningful_ref_tokens(raw_ref)
-    token_matches = [
-        candidate
-        for candidate in candidates
-        if any(
-            len(token_set) >= 2 and token_set <= raw_tokens for token_set in candidate.token_sets
-        )
-    ]
-    return token_matches, True
-
-
-def _build_repaired_recommendation_seed(
-    *,
-    source: RecommendedInterventionSeed,
-    problem: ProblemSeed,
-    raw_ref: str,
-    existing_temp_ids: set[str],
-) -> RecommendedInterventionSeed:
-    base_temp_id = _normalize_ref_text(f"{source.temp_id}_{problem.temp_id}") or "recommendation"
-    temp_id = base_temp_id
-    suffix = 2
-    while temp_id in existing_temp_ids:
-        temp_id = f"{base_temp_id}_{suffix}"
-        suffix += 1
-
-    metadata = dict(source.metadata)
-    metadata["ownership_repair"] = {
-        "repair_type": "cloned_from_cross_problem_reference",
-        "source_temp_id": source.temp_id,
-        "source_problem_ref": source.target_problem_ref,
-        "source_cause_ref": source.target_cause_ref,
-        "raw_ref": raw_ref,
-        "repaired_problem_ref": problem.temp_id,
-    }
-    return source.model_copy(
-        deep=True,
-        update={
-            "temp_id": temp_id,
-            "target_problem_ref": problem.temp_id,
-            "target_cause_ref": problem.cause_ref,
-            "metadata": metadata,
-        },
-    )
-
-
-def _resolve_recommendation_ref(
-    *,
-    problem: ProblemSeed,
-    raw_ref: str,
-    candidates: list[_RecommendationCandidate],
-    all_candidates: list[_RecommendationCandidate],
-    problems_by_ref: dict[str, ProblemSeed],
-    existing_temp_ids: set[str],
-) -> tuple[str, RecommendedInterventionSeed | None]:
-    available_temp_ids = _format_available_temp_ids(candidates)
-    normalized_ref = _normalize_ref_text(raw_ref)
-    if not normalized_ref:
-        raise ValueError(
-            f"Problem {problem.temp_id!r} has a blank recommendation ref. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-
-    local_matches, _ = _find_recommendation_matches(
-        raw_ref=raw_ref,
-        candidates=candidates,
-    )
-    if len(local_matches) == 1:
-        return local_matches[0].seed.temp_id, None
-    if len(local_matches) > 1:
-        matching_temp_ids = ", ".join(candidate.seed.temp_id for candidate in local_matches)
-        raise ValueError(
-            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} is ambiguous. "
-            f"Matching recommendation temp_ids: {matching_temp_ids}. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-
-    non_local_candidates = [
-        candidate
-        for candidate in all_candidates
-        if candidate.seed.target_problem_ref != problem.temp_id
-    ]
-    global_matches, _ = _find_recommendation_matches(
-        raw_ref=raw_ref,
-        candidates=non_local_candidates,
-    )
-    if len(global_matches) > 1:
-        matching_candidates = _format_matching_candidates(global_matches)
-        raise ValueError(
-            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} is ambiguous across "
-            f"problems. Matching recommendations: {matching_candidates}. "
-            f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-        )
-    if len(global_matches) == 1:
-        source_candidate = global_matches[0]
-        source_problem_ref = source_candidate.seed.target_problem_ref
-        source_problem = problems_by_ref.get(source_problem_ref)
-        if source_problem is None:
-            raise ValueError(
-                f"Recommendation {source_candidate.seed.temp_id!r} references unknown problem "
-                f"{source_problem_ref!r}."
-            )
-        if source_problem.cause_ref == problem.cause_ref:
-            cloned_seed = _build_repaired_recommendation_seed(
-                source=source_candidate.seed,
-                problem=problem,
-                raw_ref=raw_ref,
-                existing_temp_ids=existing_temp_ids,
-            )
-            logger.info(
-                "TrainerLab repaired cross-problem recommendation ref for problem %s "
-                "raw_ref=%s available_for_problem=%s source_recommendation=%s "
-                "source_problem=%s action=cloned cloned_recommendation=%s",
-                problem.temp_id,
-                raw_ref,
-                available_temp_ids,
-                source_candidate.seed.temp_id,
-                source_problem_ref,
-                cloned_seed.temp_id,
-            )
-            return cloned_seed.temp_id, cloned_seed
-
-        logger.warning(
-            "TrainerLab rejected cross-problem recommendation ref for problem %s "
-            "raw_ref=%s available_for_problem=%s source_recommendation=%s "
-            "source_problem=%s action=rejected",
-            problem.temp_id,
-            raw_ref,
-            available_temp_ids,
-            source_candidate.seed.temp_id,
-            source_problem_ref,
-        )
-        raise ValueError(
-            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} resolves to "
-            f"recommendation {source_candidate.seed.temp_id!r}, but that recommendation belongs "
-            f"to problem {source_problem_ref!r}. Available recommendation temp_ids for this "
-            f"problem: {available_temp_ids}."
-        )
-
-    raise ValueError(
-        f"Problem {problem.temp_id!r} references unknown recommendation {raw_ref!r}. "
-        f"Available recommendation temp_ids for this problem: {available_temp_ids}."
-    )
 
 
 def _initial_extra(context: PersistContext) -> dict[str, Any]:
@@ -397,57 +160,50 @@ class InitialScenarioSchema(StrictBaseModel):
             raise ValueError("Resource temp_id values must be unique.")
 
         cause_refs = {item.temp_id for item in self.causes}
-        problems_by_ref = {item.temp_id: item for item in self.problems}
-        problem_refs = set(problems_by_ref)
-        recommendations_by_problem: dict[str, list[_RecommendationCandidate]] = {}
-        all_recommendation_candidates: list[_RecommendationCandidate] = []
-        existing_recommendation_ids = set(recommendation_ids)
-        for recommendation in self.recommended_interventions:
-            candidate = _build_recommendation_candidate(recommendation)
-            recommendations_by_problem.setdefault(recommendation.target_problem_ref, []).append(
-                candidate
-            )
-            all_recommendation_candidates.append(candidate)
+        problem_refs = {item.temp_id for item in self.problems}
 
         for problem in self.problems:
             if problem.cause_ref not in cause_refs:
                 raise ValueError(
                     f"Problem {problem.temp_id!r} references unknown cause {problem.cause_ref!r}."
                 )
-            normalized_refs: list[str] = []
-            resolved_cache: dict[str, str] = {}
+            owned_recommendation_ids = [
+                recommendation.temp_id
+                for recommendation in self.recommended_interventions
+                if recommendation.target_problem_ref == problem.temp_id
+            ]
+            available_temp_ids = ", ".join(owned_recommendation_ids) if owned_recommendation_ids else "none"
             for raw_ref in problem.recommendation_refs:
-                normalized_ref = _normalize_ref_text(raw_ref)
-                if normalized_ref and normalized_ref in resolved_cache:
-                    normalized_refs.append(resolved_cache[normalized_ref])
-                    continue
-                resolved_ref, cloned_seed = _resolve_recommendation_ref(
-                    problem=problem,
-                    raw_ref=raw_ref,
-                    candidates=recommendations_by_problem.get(problem.temp_id, []),
-                    all_candidates=all_recommendation_candidates,
-                    problems_by_ref=problems_by_ref,
-                    existing_temp_ids=existing_recommendation_ids,
-                )
-                if cloned_seed is not None:
-                    self.recommended_interventions.append(cloned_seed)
-                    existing_recommendation_ids.add(cloned_seed.temp_id)
-                    cloned_candidate = _build_recommendation_candidate(cloned_seed)
-                    recommendations_by_problem.setdefault(problem.temp_id, []).append(
-                        cloned_candidate
+                if raw_ref not in recommendation_ids:
+                    matching_global = [
+                        recommendation
+                        for recommendation in self.recommended_interventions
+                        if recommendation.temp_id == raw_ref
+                    ]
+                    if len(matching_global) == 1:
+                        source = matching_global[0]
+                        raise ValueError(
+                            f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} resolves to "
+                            f"recommendation {source.temp_id!r}, but that recommendation belongs to "
+                            f"problem {source.target_problem_ref!r}. Available recommendation temp_ids "
+                            f"for this problem: {available_temp_ids}."
+                        )
+                    raise ValueError(
+                        f"Problem {problem.temp_id!r} references unknown recommendation {raw_ref!r}. "
+                        f"Available recommendation temp_ids for this problem: {available_temp_ids}."
                     )
-                    all_recommendation_candidates.append(cloned_candidate)
-                if resolved_ref != raw_ref:
-                    logger.info(
-                        "Normalized TrainerLab recommendation ref for problem %s: %s -> %s",
-                        problem.temp_id,
-                        raw_ref,
-                        resolved_ref,
+                owner_problem_refs = [
+                    recommendation.target_problem_ref
+                    for recommendation in self.recommended_interventions
+                    if recommendation.temp_id == raw_ref
+                ]
+                if owner_problem_refs and owner_problem_refs[0] != problem.temp_id:
+                    raise ValueError(
+                        f"Problem {problem.temp_id!r} recommendation ref {raw_ref!r} resolves to "
+                        f"recommendation {raw_ref!r}, but that recommendation belongs to problem "
+                        f"{owner_problem_refs[0]!r}. Available recommendation temp_ids for this "
+                        f"problem: {available_temp_ids}."
                     )
-                if normalized_ref:
-                    resolved_cache[normalized_ref] = resolved_ref
-                normalized_refs.append(resolved_ref)
-            problem.recommendation_refs = normalized_refs
 
         for recommendation in self.recommended_interventions:
             if recommendation.target_problem_ref not in problem_refs:
@@ -948,3 +704,14 @@ class InitialScenarioSchema(StrictBaseModel):
             await sync_to_async(_complete_initial_generation_after_persist, thread_sensitive=True)(
                 context
             )
+
+
+class InitialScenarioOutputSchema(InitialScenarioSchema):
+    """Service-facing schema that normalizes tactical ownership mismatches before validation."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_payload(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            return normalize_initial_scenario_payload(value)
+        return value
