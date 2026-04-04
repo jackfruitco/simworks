@@ -38,9 +38,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-STALE_CURSOR_DETAIL = (
-    "Stale cursor: event no longer available; client must re-bootstrap"
-)
+STALE_CURSOR_DETAIL = "Stale cursor: event no longer available; client must re-bootstrap"
 
 
 def build_transport_envelope(event, *, enrich_payload=None) -> dict[str, Any]:

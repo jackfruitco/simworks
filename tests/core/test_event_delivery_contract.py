@@ -254,9 +254,10 @@ class TestStaleCursor:
             )
 
         assert exc_info.value.status_code == 410
-        assert "stale" in str(exc_info.value.message).lower() or "re-bootstrap" in str(
-            exc_info.value.message
-        ).lower()
+        assert (
+            "stale" in str(exc_info.value.message).lower()
+            or "re-bootstrap" in str(exc_info.value.message).lower()
+        )
 
     def test_stale_cursor_raises_before_stream_opens(self):
         """stream_outbox_events raises 410 before returning StreamingHttpResponse."""

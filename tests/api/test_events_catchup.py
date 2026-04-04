@@ -409,8 +409,7 @@ class TestStreamEvents:
         """A stale cursor returns HTTP 410 Gone before any stream bytes are sent."""
         nonexistent_cursor = str(uuid.uuid4())
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/"
-            f"?cursor={nonexistent_cursor}"
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?cursor={nonexistent_cursor}"
         )
         assert response.status_code == 410
 
@@ -428,9 +427,7 @@ class TestStreamEvents:
         )
 
         # Stream without cursor — tail-only mode.
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
 
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
