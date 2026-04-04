@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
-from api.v1.sse import stream_outbox_events
+from api.v1.sse import build_outbox_events_stream_response, resolve_outbox_stream_anchor
 from apps.accounts.context import resolve_request_account
 from apps.common.decorators import resolve_user
 from apps.common.models import OutboxEvent
@@ -173,8 +173,14 @@ def watch_stream(request, simulation_id):
     get_object_or_404(Simulation, id=simulation_id)
     cursor = request.GET.get("cursor") or None
     event_type_prefix = request.GET.get("event_prefix") or None
-    return stream_outbox_events(
+    last_event = resolve_outbox_stream_anchor(
         simulation_id=simulation_id,
+        cursor=cursor,
+        event_type_prefix=event_type_prefix,
+    )
+    return build_outbox_events_stream_response(
+        simulation_id=simulation_id,
+        last_event=last_event,
         cursor=cursor,
         event_type_prefix=event_type_prefix,
         heartbeat_interval_seconds=10.0,

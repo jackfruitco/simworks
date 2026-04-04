@@ -604,7 +604,16 @@ class RuntimeSnapshotOut(BaseModel):
     last_runtime_completed_at: str | None = None
     control_plane_debug: ControlPlaneDebugOut = Field(default_factory=ControlPlaneDebugOut)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
-
+    latest_event_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Cursor (UUID) of the most recent outbox event for this simulation. "
+            "Pass this value as the `cursor` parameter when connecting to the "
+            "SSE stream so only events created after this point are delivered. "
+            "`null` when no events exist yet."
+        ),
+    )
+      
 
 class TrainerRestMetadataOut(BaseModel):
     builder_version: str = "v1"

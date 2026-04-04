@@ -901,3 +901,104 @@ class TestRetryInitialSimulation:
 
         response = auth_client.post(f"/api/v1/simulations/{sim.pk}/retry-initial/")
         assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# ChatLab bootstrap checkpoint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestChatLabBootstrapCheckpoint:
+    """The simulation detail response must expose ``latest_event_cursor``
+    so ChatLab/iOS clients can connect SSE without historical replay.
+    """
+
+    def test_bootstrap_includes_latest_event_cursor_field(self, auth_client, simulation):
+        """GET /simulations/{id}/ always includes ``latest_event_cursor``."""
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert "latest_event_cursor" in data
+
+    def test_bootstrap_cursor_is_null_when_no_events(self, auth_client, simulation):
+        """Cursor is null when the simulation has no outbox events yet."""
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["latest_event_cursor"] is None
+
+    def test_bootstrap_cursor_matches_latest_event(self, auth_client, simulation):
+        """Cursor matches the UUID of the most recent outbox event."""
+        import uuid as uuid_module
+
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import MESSAGE_CREATED
+
+        events = []
+        for i in range(3):
+            events.append(
+                OutboxEvent.objects.create(
+                    event_type=MESSAGE_CREATED,
+                    simulation_id=simulation.pk,
+                    payload={"message_id": i, "content": f"msg {i}"},
+                    idempotency_key=f"bootstrap-test:{simulation.pk}:{uuid_module.uuid4()}",
+                )
+            )
+
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["latest_event_cursor"] == str(events[-1].id)
+
+    def test_bootstrap_cursor_ignores_other_simulations(self, auth_client, simulation):
+        """Cursor only reflects events for the requested simulation."""
+        import uuid as uuid_module
+
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import SIMULATION_STATUS_UPDATED
+
+        # Create event for a DIFFERENT simulation
+        OutboxEvent.objects.create(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.pk + 9999,
+            payload={"status": "running"},
+            idempotency_key=f"other-sim:{uuid_module.uuid4()}",
+        )
+
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["latest_event_cursor"] is None
+
+    def test_sse_from_bootstrap_cursor_does_not_replay(self, auth_client, simulation):
+        """Connecting SSE with the bootstrap cursor should not replay events."""
+        import uuid as uuid_module
+
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import MESSAGE_CREATED
+        from tests.helpers.sse import collect_streaming_chunks
+
+        for i in range(3):
+            OutboxEvent.objects.create(
+                event_type=MESSAGE_CREATED,
+                simulation_id=simulation.pk,
+                payload={"message_id": i},
+                idempotency_key=f"sse-resume:{simulation.pk}:{uuid_module.uuid4()}",
+            )
+
+        # 1. Bootstrap — get the cursor
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        cursor = response.json()["latest_event_cursor"]
+        assert cursor is not None
+
+        # 2. Connect SSE with that cursor — should get only heartbeats
+        sse_response = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?cursor={cursor}"
+        )
+        assert sse_response.status_code == 200
+        chunks = collect_streaming_chunks(sse_response, 3)
+        payload = "".join(chunks)
+        # Only heartbeats, no event data
+        assert "event: simulation" not in payload
+        assert ": keep-alive" in payload

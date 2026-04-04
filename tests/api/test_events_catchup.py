@@ -356,7 +356,11 @@ class TestStreamEvents:
     def test_stream_events_returns_sse_envelope(self, auth_client, simulation, outbox_events):
         from tests.helpers.sse import collect_streaming_chunks
 
-        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
+        # Use replay=true so pre-existing events are delivered
+        # (default tail-only mode skips historical events).
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?replay=true"
+        )
 
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
@@ -387,8 +391,10 @@ class TestStreamEvents:
             idempotency_key=f"{MESSAGE_CREATED}:{simulation.pk}:{uuid.uuid4()}",
         )
 
+        # Use replay=true so pre-existing events are delivered.
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=simulation.status."
+            f"/api/v1/simulations/{simulation.pk}/events/stream/"
+            f"?event_prefix=simulation.status.&replay=true"
         )
 
         assert response.status_code == 200
@@ -398,3 +404,36 @@ class TestStreamEvents:
         assert ": keep-alive" in payload or "event: simulation" in payload
         assert SIMULATION_STATUS_UPDATED in payload
         assert MESSAGE_CREATED not in payload
+
+    def test_stream_events_returns_http_410_for_stale_cursor(self, auth_client, simulation):
+        """A stale cursor returns HTTP 410 Gone before any stream bytes are sent."""
+        nonexistent_cursor = str(uuid.uuid4())
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?cursor={nonexistent_cursor}"
+        )
+        assert response.status_code == 410
+
+    def test_stream_events_without_cursor_live_tails(self, auth_client, simulation):
+        """Opening the stream with no cursor starts from the current tip (tail-only)."""
+        from apps.common.models import OutboxEvent
+        from tests.helpers.sse import collect_streaming_chunks
+
+        # Pre-existing event — should NOT appear in a tail-only stream.
+        OutboxEvent.objects.create(
+            event_type=MESSAGE_CREATED,
+            simulation_id=simulation.pk,
+            payload={"message_id": 1, "content": "pre-existing"},
+            idempotency_key=f"tail-only-api:pre:{uuid.uuid4()}",
+        )
+
+        # Stream without cursor — tail-only mode.
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
+
+        assert response.status_code == 200
+        assert response["Content-Type"].startswith("text/event-stream")
+
+        chunks = collect_streaming_chunks(response, 2)
+        payload = "".join(chunks)
+
+        # Only heartbeats — no historical events replayed.
+        assert "pre-existing" not in payload
