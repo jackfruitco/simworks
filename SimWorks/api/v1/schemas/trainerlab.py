@@ -613,7 +613,7 @@ class RuntimeSnapshotOut(BaseModel):
             "`null` when no events exist yet."
         ),
     )
-      
+
 
 class TrainerRestMetadataOut(BaseModel):
     builder_version: str = "v1"

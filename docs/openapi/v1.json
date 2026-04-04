@@ -8337,6 +8337,18 @@
             "additionalProperties": true,
             "title": "Request Metadata",
             "type": "object"
+          },
+          "latest_event_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the `cursor` parameter when connecting to the SSE stream so only events created after this point are delivered. `null` when no events exist yet.",
+            "title": "Latest Event Cursor"
           }
         },
         "required": [
@@ -8627,29 +8639,13 @@
             "title": "Schema Version",
             "type": "string"
           },
-          "last_ai_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Ai Tick At"
+          "snapshot_cache": {
+            "$ref": "#/components/schemas/SnapshotCacheStatusOut"
           },
-          "latest_event_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the ``cursor`` parameter when connecting to the SSE stream so only events created after this point are delivered. ``null`` when no events exist yet.",
-            "title": "Latest Event Cursor"
+          "event_timeline_count": {
+            "default": 0,
+            "title": "Event Timeline Count",
+            "type": "integer"
           }
         },
         "required": [
