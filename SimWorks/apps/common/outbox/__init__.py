@@ -1,14 +1,18 @@
 """Outbox pattern for durable event delivery.
 
 This module provides the outbox pattern implementation for SimWorks,
-ensuring reliable WebSocket event delivery with at-least-once guarantees.
+ensuring reliable event delivery with at-least-once guarantees across
+all transports (REST catch-up, SSE streaming, WebSocket).
 
 Public API:
-    enqueue_event()        - Create outbox event (async)
-    enqueue_event_sync()   - Create outbox event (sync, for Django signals)
-    poke_drain()           - Trigger immediate delivery (async)
-    poke_drain_sync()      - Trigger immediate delivery (sync)
-    build_ws_envelope()    - Build WebSocket envelope from outbox event
+    enqueue_event()            - Create outbox event (async)
+    enqueue_event_sync()       - Create outbox event (sync, for Django signals)
+    poke_drain()               - Trigger immediate delivery (async)
+    poke_drain_sync()          - Trigger immediate delivery (sync)
+    build_canonical_envelope() - Build transport envelope from outbox event
+    build_ws_envelope()        - Alias for build_canonical_envelope (compat)
+    get_latest_cursor_sync()   - Latest outbox cursor for a simulation (sync)
+    get_latest_cursor()        - Latest outbox cursor for a simulation (async)
     get_events_for_simulation() - Fetch events for catch-up API
 
 Usage:
@@ -40,10 +44,13 @@ Usage:
 from . import event_types
 from .outbox import (
     apply_outbox_cursor,
+    build_canonical_envelope,
     build_ws_envelope,
     enqueue_event,
     enqueue_event_sync,
     get_events_for_simulation,
+    get_latest_cursor,
+    get_latest_cursor_sync,
     order_outbox_queryset,
     poke_drain,
     poke_drain_sync,
@@ -56,12 +63,15 @@ from .outbox import (
 
 __all__ = [
     "apply_outbox_cursor",
+    "build_canonical_envelope",
     "build_ws_envelope",
     # common outbox functions
     "enqueue_event",
     "enqueue_event_sync",
     "event_types",
     "get_events_for_simulation",
+    "get_latest_cursor",
+    "get_latest_cursor_sync",
     "order_outbox_queryset",
     "poke_drain",
     "poke_drain_sync",

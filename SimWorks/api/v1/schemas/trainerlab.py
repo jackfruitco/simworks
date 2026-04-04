@@ -562,6 +562,15 @@ class TrainerRuntimeStateOut(BaseModel):
     currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
     last_runtime_error: str = ""
     last_ai_tick_at: datetime | None = None
+    latest_event_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Cursor (UUID) of the most recent outbox event for this simulation. "
+            "Pass this value as the ``cursor`` parameter when connecting to the "
+            "SSE stream so only events created after this point are delivered. "
+            "``null`` when no events exist yet."
+        ),
+    )
 
 
 class ControlPlaneDebugOut(BaseModel):
@@ -903,6 +912,8 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
     if session.last_ai_tick_at is not None and session.tick_interval_seconds:
         next_tick_at = session.last_ai_tick_at + timedelta(seconds=session.tick_interval_seconds)
 
+    from apps.common.outbox.outbox import get_latest_cursor_sync
+
     return TrainerRuntimeStateOut(
         simulation_id=session.simulation_id,
         session_id=session.id,
@@ -922,6 +933,7 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
         last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
         last_ai_tick_at=session.last_ai_tick_at,
+        latest_event_cursor=get_latest_cursor_sync(session.simulation_id),
     )
 
 
