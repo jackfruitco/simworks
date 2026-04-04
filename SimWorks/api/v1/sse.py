@@ -7,7 +7,8 @@ Stream semantics
   created *after* the connection opens will be delivered.
 * ``cursor=<event_id>`` → **resume** after that event.
 * ``cursor=<stale/missing>`` → HTTP **410 Gone** so the client knows to
-  re-bootstrap.
+  re-bootstrap.  The 410 is returned *before* any stream bytes are sent —
+  no successful ``200 OK`` stream is opened for stale or pruned cursors.
 * ``replay=True`` (explicit) → stream from the very beginning.
 
 Delivery semantics are **at-least-once**.  Clients must deduplicate by
@@ -19,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import uuid
 
 from django.http import StreamingHttpResponse
@@ -32,7 +33,14 @@ from apps.common.outbox.outbox import (
 )
 from config.logging import get_logger
 
+if TYPE_CHECKING:
+    from apps.common.models import OutboxEvent
+
 logger = get_logger(__name__)
+
+STALE_CURSOR_DETAIL = (
+    "Stale cursor: event no longer available; client must re-bootstrap"
+)
 
 
 def build_transport_envelope(event, *, enrich_payload=None) -> dict[str, Any]:
@@ -75,11 +83,108 @@ def _make_message_media_enricher(simulation_id: int):
     return _enrich
 
 
-def stream_outbox_events(
+def _build_outbox_base_queryset(*, simulation_id: int, event_type_prefix: str | None = None):
+    """Return a base (unordered) OutboxEvent queryset for the given simulation."""
+    from apps.common.models import OutboxEvent
+
+    qs = OutboxEvent.objects.filter(simulation_id=simulation_id)
+    if event_type_prefix:
+        qs = qs.filter(event_type__startswith=event_type_prefix)
+    return qs
+
+
+def _parse_cursor_uuid(cursor: str | None) -> uuid.UUID | None:
+    """Parse a cursor string to UUID, raising HttpError(400) on invalid format."""
+    if not cursor:
+        return None
+    try:
+        return uuid.UUID(cursor)
+    except ValueError:
+        raise HttpError(400, "Invalid cursor format") from None
+
+
+def resolve_outbox_stream_anchor(
     *,
     simulation_id: int,
     cursor: str | None = None,
     replay: bool = False,
+    event_type_prefix: str | None = None,
+) -> OutboxEvent | None:
+    """Resolve the initial stream anchor synchronously (runs BEFORE response is opened).
+
+    Returns:
+        The anchor event — the stream will deliver only events *after* this.
+        ``None`` means replay from the very beginning.
+
+    Raises:
+        HttpError(400): invalid cursor UUID format.
+        HttpError(410): cursor was a valid UUID but the event no longer exists.
+    """
+    cursor_uuid = _parse_cursor_uuid(cursor)
+    base_qs = _build_outbox_base_queryset(
+        simulation_id=simulation_id, event_type_prefix=event_type_prefix
+    )
+
+    if cursor_uuid is not None:
+        cursor_event = order_outbox_queryset(base_qs).filter(id=cursor_uuid).first()
+        if cursor_event is None:
+            logger.warning(
+                "sse_stale_cursor",
+                simulation_id=simulation_id,
+                cursor=str(cursor_uuid),
+            )
+            raise HttpError(410, STALE_CURSOR_DETAIL)
+        return cursor_event
+
+    if replay:
+        return None  # Full replay from beginning
+
+    # Default: tail-only — start after the current latest event.
+    return order_outbox_queryset(base_qs).last()
+
+
+async def aresolve_outbox_stream_anchor(
+    *,
+    simulation_id: int,
+    cursor: str | None = None,
+    replay: bool = False,
+    event_type_prefix: str | None = None,
+) -> OutboxEvent | None:
+    """Async variant of :func:`resolve_outbox_stream_anchor`.
+
+    Used by async endpoints (e.g. TrainerLab SSE) that need to await DB access.
+
+    Raises:
+        HttpError(400): invalid cursor UUID format.
+        HttpError(410): cursor was a valid UUID but the event no longer exists.
+    """
+    cursor_uuid = _parse_cursor_uuid(cursor)
+    base_qs = _build_outbox_base_queryset(
+        simulation_id=simulation_id, event_type_prefix=event_type_prefix
+    )
+
+    if cursor_uuid is not None:
+        cursor_event = await order_outbox_queryset(base_qs).filter(id=cursor_uuid).afirst()
+        if cursor_event is None:
+            logger.warning(
+                "sse_stale_cursor",
+                simulation_id=simulation_id,
+                cursor=str(cursor_uuid),
+            )
+            raise HttpError(410, STALE_CURSOR_DETAIL)
+        return cursor_event
+
+    if replay:
+        return None
+
+    return await order_outbox_queryset(base_qs).alast()
+
+
+def build_outbox_events_stream_response(
+    *,
+    simulation_id: int,
+    last_event: OutboxEvent | None,
+    cursor: str | None = None,
     event_type_prefix: str | None = None,
     sse_event_name: str = "simulation",
     heartbeat_interval_seconds: float | None = None,
@@ -87,79 +192,42 @@ def stream_outbox_events(
     heartbeat_comment: str = ": keep-alive\n\n",
     emit_named_heartbeat: bool = False,
 ) -> StreamingHttpResponse:
-    """Create a ``StreamingHttpResponse`` for simulation outbox events.
+    """Build the SSE ``StreamingHttpResponse`` for a pre-resolved stream anchor.
 
-    Stream semantics:
-
-    * **cursor omitted + replay=False** → tail-only from current tip.
-    * **cursor omitted + replay=True** → replay from the beginning.
-    * **cursor=<uuid>** → resume strictly after that event.
-    * **cursor=<stale/missing uuid>** → HTTP 410 Gone.
+    The caller is responsible for resolving ``last_event`` via
+    :func:`resolve_outbox_stream_anchor` (or its async counterpart) *before*
+    calling this function.  Any stale-cursor or format errors must be raised
+    before this call — this function always returns a ``200 OK`` stream.
     """
-    from apps.common.models import OutboxEvent
-
     if poll_interval_seconds <= 0:
         raise ValueError("poll_interval_seconds must be positive")
     if heartbeat_interval_seconds is not None and heartbeat_interval_seconds <= 0:
         raise ValueError("heartbeat_interval_seconds must be positive")
 
-    # Validate cursor UUID format eagerly (before the generator starts).
-    cursor_uuid: uuid.UUID | None = None
-    if cursor:
-        try:
-            cursor_uuid = uuid.UUID(cursor)
-        except ValueError:
-            raise HttpError(400, "Invalid cursor format") from None
-
     media_enricher = _make_message_media_enricher(simulation_id)
 
+    logger.info(
+        "sse_stream_opened",
+        simulation_id=simulation_id,
+        cursor=cursor,
+        tail_from=str(last_event.id) if last_event else None,
+    )
+
     async def event_stream():
-        last_event = None
+        nonlocal last_event
 
-        if cursor_uuid is not None:
-            # Explicit cursor — resolve the bookmark event.
-            base_qs = OutboxEvent.objects.filter(simulation_id=simulation_id)
-            if event_type_prefix:
-                base_qs = base_qs.filter(event_type__startswith=event_type_prefix)
-            base_qs = order_outbox_queryset(base_qs)
-            last_event = await base_qs.filter(id=cursor_uuid).afirst()
-            if last_event is None:
-                # Stale / pruned cursor — tell the client to re-bootstrap.
-                logger.warning(
-                    "sse_stale_cursor",
-                    simulation_id=simulation_id,
-                    cursor=str(cursor_uuid),
-                )
-                yield 'event: error\ndata: {"error": "stale_cursor", "status": 410}\n\n'
-                return
-        elif not replay:
-            # No cursor, no replay → tail-only: start after the latest event.
-            base_qs = OutboxEvent.objects.filter(simulation_id=simulation_id)
-            if event_type_prefix:
-                base_qs = base_qs.filter(event_type__startswith=event_type_prefix)
-            base_qs = order_outbox_queryset(base_qs)
-            last_event = await base_qs.alast()
-        # else: replay=True with no cursor → last_event stays None → full replay
-
-        logger.info(
-            "sse_stream_opened",
-            simulation_id=simulation_id,
-            cursor=str(cursor_uuid) if cursor_uuid else None,
-            replay=replay,
-            tail_from=str(last_event.id) if last_event else None,
-        )
-
-        # Send the first byte immediately so nginx / Cloudflare see an active upstream
-        # and time-to-first-byte is not delayed by the first poll interval.
+        # Send the first byte immediately so nginx / Cloudflare see an active
+        # upstream and time-to-first-byte is not delayed by the first poll.
         yield heartbeat_comment
         last_signal_at = time.monotonic()
 
         try:
             while True:
                 try:
-                    queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
-                    if event_type_prefix:
-                        queryset = queryset.filter(event_type__startswith=event_type_prefix)
+                    queryset = _build_outbox_base_queryset(
+                        simulation_id=simulation_id,
+                        event_type_prefix=event_type_prefix,
+                    )
                     queryset = order_outbox_queryset(queryset)
 
                     if last_event is not None:
@@ -213,3 +281,47 @@ def stream_outbox_events(
     response["Cache-Control"] = "no-cache, no-transform"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+def stream_outbox_events(
+    *,
+    simulation_id: int,
+    cursor: str | None = None,
+    replay: bool = False,
+    event_type_prefix: str | None = None,
+    sse_event_name: str = "simulation",
+    heartbeat_interval_seconds: float | None = None,
+    poll_interval_seconds: float = 1.0,
+    heartbeat_comment: str = ": keep-alive\n\n",
+    emit_named_heartbeat: bool = False,
+) -> StreamingHttpResponse:
+    """Create a ``StreamingHttpResponse`` for simulation outbox events.
+
+    Resolves the stream anchor synchronously (raising HTTP 400/410 before any
+    bytes are sent) then delegates to
+    :func:`build_outbox_events_stream_response`.
+
+    Stream semantics:
+
+    * **cursor omitted + replay=False** → tail-only from current tip.
+    * **cursor omitted + replay=True** → replay from the beginning.
+    * **cursor=<uuid>** → resume strictly after that event.
+    * **cursor=<stale/missing uuid>** → HTTP 410 Gone.
+    """
+    last_event = resolve_outbox_stream_anchor(
+        simulation_id=simulation_id,
+        cursor=cursor,
+        replay=replay,
+        event_type_prefix=event_type_prefix,
+    )
+    return build_outbox_events_stream_response(
+        simulation_id=simulation_id,
+        last_event=last_event,
+        cursor=cursor,
+        event_type_prefix=event_type_prefix,
+        sse_event_name=sse_event_name,
+        heartbeat_interval_seconds=heartbeat_interval_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+        heartbeat_comment=heartbeat_comment,
+        emit_named_heartbeat=emit_named_heartbeat,
+    )

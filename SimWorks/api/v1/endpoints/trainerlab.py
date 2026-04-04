@@ -61,7 +61,7 @@ from api.v1.schemas.trainerlab import (
     trainer_run_to_out,
     trainer_state_to_out,
 )
-from api.v1.sse import stream_outbox_events
+from api.v1.sse import aresolve_outbox_stream_anchor, build_outbox_events_stream_response
 from api.v1.utils import (
     get_account_for_request,
     get_simulation_for_user,
@@ -1894,7 +1894,19 @@ def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
 
 @router.get(
     "/simulations/{simulation_id}/events/stream/",
+    response={200: None, 400: ErrorResponse, 410: ErrorResponse},
     summary="SSE stream for TrainerLab events",
+    description=(
+        "Streams outbox events for a TrainerLab simulation session.\n\n"
+        "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
+        "that checkpoint.\n\n"
+        "**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\n"
+        "before any stream bytes are sent.  The client must re-bootstrap by\n"
+        "loading ``GET /trainerlab/simulations/{id}/state/`` and using the\n"
+        "``latest_event_cursor`` from that response.\n\n"
+        "Delivery semantics are **at-least-once**.  Clients must deduplicate by\n"
+        "``event_id``."
+    ),
 )
 async def stream_trainer_events(
     request: HttpRequest,
@@ -1906,8 +1918,13 @@ async def stream_trainer_events(
     await sync_to_async(_require_lab_access)(request)
     session = await sync_to_async(_get_session_for_simulation)(request, simulation_id)
 
-    return stream_outbox_events(
+    last_event = await aresolve_outbox_stream_anchor(
         simulation_id=session.simulation_id,
+        cursor=cursor,
+    )
+    return build_outbox_events_stream_response(
+        simulation_id=session.simulation_id,
+        last_event=last_event,
         cursor=cursor,
         sse_event_name="sim",
         heartbeat_interval_seconds=10.0,

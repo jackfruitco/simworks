@@ -202,3 +202,49 @@ class TestStreamOutboxEvents:
             stream_outbox_events(simulation_id=1, cursor="not-a-uuid")
 
         assert getattr(exc_info.value, "status_code", None) == 400
+
+    def test_stale_cursor_returns_http_410(self):
+        """A valid UUID that doesn't exist in the DB raises HTTP 410 Gone."""
+        nonexistent = str(uuid.uuid4())
+        with pytest.raises(HttpError) as exc_info:
+            stream_outbox_events(simulation_id=1, cursor=nonexistent)
+
+        assert getattr(exc_info.value, "status_code", None) == 410
+
+    @pytest.mark.asyncio
+    async def test_omitted_cursor_live_tails_from_latest_event(self, monkeypatch):
+        """Opening a stream with no cursor only delivers events created after connect."""
+        clock = FakeClock()
+        monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
+
+        # Pre-existing event — should NOT appear in the stream.
+        pre_existing = await OutboxEvent.objects.acreate(
+            event_type=MESSAGE_CREATED,
+            simulation_id=50,
+            payload={"message_id": 999},
+            idempotency_key="tail-only:pre:1",
+        )
+
+        # Open a tail-only stream (no cursor, no replay).
+        response = await _stream(
+            simulation_id=50,
+            heartbeat_interval_seconds=10.0,
+            poll_interval_seconds=1.0,
+        )
+
+        # Create a new event AFTER the stream anchor is resolved.
+        new_event = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=50,
+            payload={"status": "new", "phase": "new"},
+            idempotency_key="tail-only:new:1",
+        )
+
+        chunks = await collect_chunks(response.streaming_content, 5)
+        joined = "".join(chunks)
+
+        # The new event must arrive.
+        assert str(new_event.id) in joined
+        # The pre-existing event must NOT appear.
+        assert str(pre_existing.id) not in joined

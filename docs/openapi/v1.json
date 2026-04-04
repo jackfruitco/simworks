@@ -1446,9 +1446,29 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
-        "description": "Streams outbox events for a simulation using a canonical transport envelope.\n\n**Default (tail-only):** Omit ``cursor`` to receive only events created\nafter the current tip \u2014 no historical replay.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.  A stale or pruned cursor returns an SSE error frame\nwith ``status: 410``; the client should re-bootstrap.\n\n**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\nall events from the beginning.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
+        "description": "Streams outbox events for a simulation using a canonical transport envelope.\n\n**Default (tail-only):** Omit ``cursor`` to receive only events created\nafter the current tip \u2014 no historical replay.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap.\n\n**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\nall events from the beginning.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "events"
         ],
@@ -3418,8 +3438,29 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
+        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "trainerlab"
         ],
@@ -5254,6 +5295,172 @@
           "has_more"
         ],
         "title": "PaginatedResponse[EventEnvelope]",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "RFC 7807-inspired error response format.\n\nAll API errors should return this format for consistency.",
+        "properties": {
+          "type": {
+            "description": "Error type identifier (e.g., 'validation_error', 'not_found')",
+            "examples": [
+              "validation_error"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "description": "Short human-readable error title",
+            "examples": [
+              "Invalid input"
+            ],
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "examples": [
+              422
+            ],
+            "title": "Status",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "Detailed error explanation",
+            "examples": [
+              "Field 'content' is required"
+            ],
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URI reference identifying the specific occurrence",
+            "examples": [
+              "/api/v1/messages/"
+            ],
+            "title": "Instance"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation ID for tracing",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Correlation Id"
+          },
+          "guard_denial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardDenialDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured guard denial signal, present only on guard-denied errors"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "GuardDenialDetail": {
+        "description": "Structured guard denial signal embedded in error responses.\n\nMatches the ``GuardSignalOut`` schema shape so clients get the same\ntyped object whether reading from the guard-state endpoint or from\na 403 error payload.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable denial code",
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "description": "'warning' or 'error'",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short UI-ready title",
+            "title": "Title"
+          },
+          "message": {
+            "description": "Human-readable message",
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the session can be resumed",
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the state is permanent",
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Extra machine-readable context",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardDenialDetail",
         "type": "object"
       },
       "LabResultItem": {
@@ -8305,172 +8512,6 @@
           }
         },
         "title": "ControlPlaneDebugOut",
-        "type": "object"
-      },
-      "ErrorResponse": {
-        "description": "RFC 7807-inspired error response format.\n\nAll API errors should return this format for consistency.",
-        "properties": {
-          "type": {
-            "description": "Error type identifier (e.g., 'validation_error', 'not_found')",
-            "examples": [
-              "validation_error"
-            ],
-            "title": "Type",
-            "type": "string"
-          },
-          "title": {
-            "description": "Short human-readable error title",
-            "examples": [
-              "Invalid input"
-            ],
-            "title": "Title",
-            "type": "string"
-          },
-          "status": {
-            "description": "HTTP status code",
-            "examples": [
-              422
-            ],
-            "title": "Status",
-            "type": "integer"
-          },
-          "detail": {
-            "description": "Detailed error explanation",
-            "examples": [
-              "Field 'content' is required"
-            ],
-            "title": "Detail",
-            "type": "string"
-          },
-          "instance": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "URI reference identifying the specific occurrence",
-            "examples": [
-              "/api/v1/messages/"
-            ],
-            "title": "Instance"
-          },
-          "correlation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Request correlation ID for tracing",
-            "examples": [
-              "550e8400-e29b-41d4-a716-446655440000"
-            ],
-            "title": "Correlation Id"
-          },
-          "guard_denial": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GuardDenialDetail"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Structured guard denial signal, present only on guard-denied errors"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "detail"
-        ],
-        "title": "ErrorResponse",
-        "type": "object"
-      },
-      "GuardDenialDetail": {
-        "description": "Structured guard denial signal embedded in error responses.\n\nMatches the ``GuardSignalOut`` schema shape so clients get the same\ntyped object whether reading from the guard-state endpoint or from\na 403 error payload.",
-        "properties": {
-          "code": {
-            "description": "Stable machine-readable denial code",
-            "title": "Code",
-            "type": "string"
-          },
-          "severity": {
-            "description": "'warning' or 'error'",
-            "title": "Severity",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Short UI-ready title",
-            "title": "Title"
-          },
-          "message": {
-            "description": "Human-readable message",
-            "title": "Message",
-            "type": "string"
-          },
-          "resumable": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Whether the session can be resumed",
-            "title": "Resumable"
-          },
-          "terminal": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Whether the state is permanent",
-            "title": "Terminal"
-          },
-          "expires_in_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires In Seconds"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Extra machine-readable context",
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "code",
-          "severity",
-          "message"
-        ],
-        "title": "GuardDenialDetail",
         "type": "object"
       },
       "TrainerCommandAck": {

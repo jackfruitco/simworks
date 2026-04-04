@@ -4,8 +4,10 @@ TrainerLab runtime SSE uses `GET /api/v1/trainerlab/simulations/{id}/events/stre
 
 ## Wire Contract
 
-- Event payloads keep the existing outbox transport envelope unchanged.
-- Cursor behavior stays unchanged. The `cursor` query parameter still resumes from the referenced outbox event.
+- Event payloads use the canonical outbox transport envelope (`EventEnvelope`).
+- The `cursor` query parameter resumes from the referenced outbox event (delivers only events strictly after that cursor).
+- **Stale cursor:** If the referenced cursor has been pruned or is otherwise unavailable, the stream request fails with **HTTP 410 Gone** and the client must re-bootstrap before opening a new stream. No successful `200 OK` stream is opened for stale or pruned cursors.
+- **Bootstrap:** After loading state via `GET /trainerlab/simulations/{id}/state/`, pass the `latest_event_cursor` from that response as the `cursor` parameter when connecting to the SSE stream so only events created after that point are delivered.
 - While the stream is idle, the server emits an SSE comment heartbeat every 10 seconds or less:
 
   ```text

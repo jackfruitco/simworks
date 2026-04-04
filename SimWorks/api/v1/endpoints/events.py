@@ -8,9 +8,9 @@ from ninja import Query, Router
 from ninja.errors import HttpError
 
 from api.v1.auth import JWTAuth
-from api.v1.schemas.common import PaginatedResponse
+from api.v1.schemas.common import ErrorResponse, PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
-from api.v1.sse import stream_outbox_events
+from api.v1.sse import build_outbox_events_stream_response, resolve_outbox_stream_anchor
 from api.v1.utils import get_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
@@ -156,14 +156,16 @@ def list_events(
 
 @router.get(
     "/{simulation_id}/events/stream/",
+    response={200: None, 400: ErrorResponse, 410: ErrorResponse},
     summary="SSE stream for simulation events",
     description=(
         "Streams outbox events for a simulation using a canonical transport envelope.\n\n"
         "**Default (tail-only):** Omit ``cursor`` to receive only events created\n"
         "after the current tip — no historical replay.\n\n"
         "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
-        "that checkpoint.  A stale or pruned cursor returns an SSE error frame\n"
-        "with ``status: 410``; the client should re-bootstrap.\n\n"
+        "that checkpoint.\n\n"
+        "**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\n"
+        "before any stream bytes are sent.  The client must re-bootstrap.\n\n"
         "**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\n"
         "all events from the beginning.\n\n"
         "Delivery semantics are **at-least-once**.  Clients must deduplicate by\n"
@@ -187,10 +189,16 @@ def stream_events(
     _require_chatlab_access(request)
     user = request.auth
     get_simulation_for_user(simulation_id, user, request=request)
-    return stream_outbox_events(
+    last_event = resolve_outbox_stream_anchor(
         simulation_id=simulation_id,
         cursor=cursor,
         replay=replay,
+        event_type_prefix=event_prefix,
+    )
+    return build_outbox_events_stream_response(
+        simulation_id=simulation_id,
+        last_event=last_event,
+        cursor=cursor,
         event_type_prefix=event_prefix,
         sse_event_name="simulation",
         heartbeat_interval_seconds=10.0,

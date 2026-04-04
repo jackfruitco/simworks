@@ -19,7 +19,7 @@ import uuid
 from asgiref.sync import sync_to_async
 import pytest
 
-from api.v1.sse import stream_outbox_events
+from api.v1.sse import resolve_outbox_stream_anchor, stream_outbox_events
 from apps.common.models import OutboxEvent
 from apps.common.outbox.event_types import (
     MESSAGE_CREATED,
@@ -234,32 +234,43 @@ class TestResumeSemantics:
 
 
 # ---------------------------------------------------------------------------
-# D. Stale cursor → error frame
+# D. Stale cursor → HTTP 410
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestStaleCursor:
-    """Stale/missing cursor must yield an error frame, not silent replay."""
+    """Stale/missing cursor must raise HTTP 410 before any stream bytes are sent."""
 
-    @pytest.mark.asyncio
-    async def test_stale_cursor_emits_410_error_frame(self, monkeypatch):
-        clock = FakeClock()
-        monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
-        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
+    def test_stale_cursor_raises_http_410(self):
+        """A valid UUID that doesn't exist in the DB raises HttpError(410)."""
+        from ninja.errors import HttpError
 
         fake_cursor = str(uuid.uuid4())
-        response = await _stream(
-            simulation_id=60,
-            cursor=fake_cursor,
-            heartbeat_interval_seconds=10.0,
-            poll_interval_seconds=1.0,
-        )
+        with pytest.raises(HttpError) as exc_info:
+            resolve_outbox_stream_anchor(
+                simulation_id=60,
+                cursor=fake_cursor,
+            )
 
-        chunks = await collect_chunks(response.streaming_content, 5)
-        joined = "".join(chunks)
-        assert "stale_cursor" in joined
-        assert "410" in joined
+        assert exc_info.value.status_code == 410
+        assert "stale" in str(exc_info.value.message).lower() or "re-bootstrap" in str(
+            exc_info.value.message
+        ).lower()
+
+    def test_stale_cursor_raises_before_stream_opens(self):
+        """stream_outbox_events raises 410 before returning StreamingHttpResponse."""
+        from ninja.errors import HttpError
+
+        fake_cursor = str(uuid.uuid4())
+        with pytest.raises(HttpError) as exc_info:
+            stream_outbox_events(
+                simulation_id=60,
+                cursor=fake_cursor,
+                heartbeat_interval_seconds=10.0,
+            )
+
+        assert exc_info.value.status_code == 410
 
 
 # ---------------------------------------------------------------------------
