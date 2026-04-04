@@ -660,6 +660,7 @@ export interface TrainerLabRuntimeSnapshot {
     last_runtime_completed_at?: string | null;
     control_plane_debug?: Record<string, unknown>;
     request_metadata?: Record<string, unknown>;
+    latest_event_cursor?: string | null;
 }
 
 export interface TrainerLabStateMetadata {

@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from pydantic import Field
 
+from apps.common.outbox.outbox import get_latest_cursor_sync
 from config.logging import get_logger
 from orchestrai.types import StrictBaseModel
 
@@ -165,6 +166,7 @@ class RuntimeSnapshot(StrictBaseModel):
     last_runtime_completed_at: str | None = None
     control_plane_debug: dict[str, Any] = Field(default_factory=dict)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
+    latest_event_cursor: str | None = None
 
 
 class ScenarioStateSummary(StrictBaseModel):
@@ -260,6 +262,7 @@ class TrainerEngineAggregate:
     pulses: tuple[PulseAssessment, ...]
     runtime_events: tuple[RuntimeEvent, ...]
     runtime_event_total_count: int
+    latest_event_cursor: str | None
     snapshot_cache: SnapshotCacheStatus
 
 
@@ -268,6 +271,7 @@ def load_trainer_engine_aggregate(
     session: TrainerSession | None = None,
     simulation_id: int | None = None,
     event_limit: int = DEFAULT_EVENT_TIMELINE_LIMIT,
+    include_latest_event_cursor: bool = False,
     runtime_state_override: dict[str, Any] | None = None,
 ) -> TrainerEngineAggregate:
     if session is None and simulation_id is None:
@@ -362,6 +366,9 @@ def load_trainer_engine_aggregate(
         RuntimeEvent.objects.filter(session=session).order_by("-created_at", "-id")[:event_limit]
     )
     runtime_event_total_count = RuntimeEvent.objects.filter(session=session).count()
+    latest_event_cursor = (
+        get_latest_cursor_sync(session.simulation_id) if include_latest_event_cursor else None
+    )
 
     snapshot_cache = SnapshotCacheStatus(
         status="disabled",
@@ -388,6 +395,7 @@ def load_trainer_engine_aggregate(
         pulses=pulses,
         runtime_events=runtime_events,
         runtime_event_total_count=runtime_event_total_count,
+        latest_event_cursor=latest_event_cursor,
         snapshot_cache=snapshot_cache,
     )
 
@@ -489,6 +497,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
         request_metadata=dict(
             (runtime_state.get("control_plane_debug") or {}).get("last_request_profile") or {}
         ),
+        latest_event_cursor=aggregate.latest_event_cursor,
     )
     logger.debug(
         "trainerlab.runtime_snapshot.built",

@@ -1784,6 +1784,7 @@ class TestTrainerLabDictionaries:
         assert "pending_runtime_reasons" not in body
         assert "currently_processing_reasons" not in body
         assert body["runtime_snapshot"]["state_revision"] == 0
+        assert "latest_event_cursor" in body["runtime_snapshot"]
         assert body["scenario_snapshot"]["causes"] == []
         assert body["scenario_snapshot"]["problems"] == []
         assert body["scenario_snapshot"]["recommended_interventions"] == []
@@ -1797,6 +1798,64 @@ class TestTrainerLabDictionaries:
         assert body["metadata"]["snapshot_cache"]["status"] == "disabled"
         assert body["metadata"]["snapshot_cache"]["authoritative"] is False
         assert "legacy_keys_present" not in body["metadata"]["snapshot_cache"]
+
+    def test_state_endpoint_runtime_snapshot_cursor_is_null_without_outbox_events(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.services import create_session
+
+        client = auth_client_factory(instructor_user)
+        session = create_session(
+            user=instructor_user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        OutboxEvent.objects.filter(simulation_id=session.simulation_id).delete()
+        assert not OutboxEvent.objects.filter(simulation_id=session.simulation_id).exists()
+
+        response = client.get(f"/api/v1/trainerlab/simulations/{session.simulation_id}/state/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["runtime_snapshot"]["latest_event_cursor"] is None
+
+    def test_state_endpoint_runtime_snapshot_cursor_matches_latest_outbox_event(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.services import create_session
+
+        client = auth_client_factory(instructor_user)
+        session = create_session(
+            user=instructor_user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+
+        events = [
+            OutboxEvent.objects.create(
+                event_type=SIMULATION_STATUS_UPDATED,
+                simulation_id=session.simulation_id,
+                payload={"status": f"status-{index}"},
+                idempotency_key=f"trainer-state-cursor:{session.simulation_id}:{uuid4()}",
+            )
+            for index in range(3)
+        ]
+
+        response = client.get(f"/api/v1/trainerlab/simulations/{session.simulation_id}/state/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["runtime_snapshot"]["latest_event_cursor"] == str(events[-1].id)
 
     def test_control_plane_debug_endpoint_returns_defaults(
         self,

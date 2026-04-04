@@ -938,7 +938,9 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 
 def trainer_state_to_out(session: TrainerSession) -> TrainerRestViewModelOut:
-    view_model = build_trainer_rest_view_model(load_trainer_engine_aggregate(session=session))
+    view_model = build_trainer_rest_view_model(
+        load_trainer_engine_aggregate(session=session, include_latest_event_cursor=True)
+    )
     return TrainerRestViewModelOut.model_validate(view_model.model_dump(mode="json"))
 
 
