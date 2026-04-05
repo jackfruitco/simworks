@@ -134,7 +134,7 @@ def build_watch_page_context(
     outbox_events,
     service_calls_qs,
     stream_url: str,
-    realtime_transport: str = "sse",
+    realtime_transport: str,
     realtime_session_payload: dict[str, Any] | None = None,
     service_calls_url: str,
     watch_url: str,
@@ -143,6 +143,9 @@ def build_watch_page_context(
     can_go_to_simulation: bool,
     go_to_simulation_url: str,
 ) -> dict[str, Any]:
+    if realtime_transport not in {"websocket", "sse"}:
+        raise ValueError(f"Unsupported realtime transport: {realtime_transport}")
+
     context = build_watch_service_calls_context(
         request=request,
         service_calls_qs=service_calls_qs,

@@ -10,12 +10,13 @@ from api.v1.utils import get_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
 from apps.chatlab.models import Message
-from apps.chatlab.realtime import is_durable_event_type, parse_event_id
+from apps.chatlab.realtime import parse_event_id
 from apps.common.models import OutboxEvent
 from apps.common.outbox import event_types as outbox_events
 from apps.common.outbox.outbox import (
     apply_outbox_cursor,
-    get_outbox_event_sync,
+    filter_replayable_outbox_queryset,
+    get_replayable_outbox_event_sync,
     order_outbox_queryset,
 )
 from apps.common.ratelimit import api_rate_limit
@@ -60,8 +61,10 @@ def list_events(
     get_simulation_for_user(simulation_id, user, request=request)
 
     queryset = order_outbox_queryset(
-        OutboxEvent.objects.filter(
-            simulation_id=simulation_id,
+        filter_replayable_outbox_queryset(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+            )
         )
     )
 
@@ -71,7 +74,7 @@ def list_events(
         except Exception as exc:
             raise HttpError(400, "Invalid last_event_id: must be a valid UUID") from exc
 
-        anchor_event = get_outbox_event_sync(
+        anchor_event = get_replayable_outbox_event_sync(
             simulation_id=simulation_id,
             event_id=parsed_last_event_id,
         )
@@ -79,9 +82,7 @@ def list_events(
             raise HttpError(400, "Unknown last_event_id for this simulation")
         queryset = apply_outbox_cursor(queryset, anchor_event)
 
-    events = [
-        event for event in list(queryset[: limit + 1]) if is_durable_event_type(event.event_type)
-    ]
+    events = list(queryset[: limit + 1])
     has_more = len(events) > limit
     if has_more:
         events = events[:limit]

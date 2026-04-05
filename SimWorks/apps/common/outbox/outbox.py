@@ -237,6 +237,11 @@ def order_outbox_queryset(queryset):
     return queryset.order_by("created_at", "id")
 
 
+def filter_replayable_outbox_queryset(queryset):
+    """Restrict a queryset to replayable ChatLab durable events."""
+    return queryset.filter(event_type__in=event_types.canonical_event_types())
+
+
 def apply_outbox_cursor(queryset, cursor_event):
     """Return rows strictly after ``cursor_event`` using a stable tie-breaker."""
     return queryset.filter(
@@ -288,9 +293,18 @@ def get_latest_event_id_sync(
     *,
     event_type_prefix: str | None = None,
 ) -> str | None:
-    """Return the newest durable event ID for a simulation."""
+    """Return the newest replayable ChatLab durable event ID for a simulation."""
+    from django.apps import apps
 
-    return get_latest_cursor_sync(simulation_id, event_type_prefix=event_type_prefix)
+    OutboxEventModel = apps.get_model("common", "OutboxEvent")
+    qs = filter_replayable_outbox_queryset(
+        OutboxEventModel.objects.filter(simulation_id=simulation_id)
+    )
+    if event_type_prefix:
+        qs = qs.filter(event_type__startswith=event_type_prefix)
+    qs = order_outbox_queryset(qs)
+    latest = qs.last()
+    return str(latest.id) if latest else None
 
 
 async def get_latest_event_id(
@@ -413,6 +427,27 @@ def get_outbox_event_sync(
     )
 
 
+def get_replayable_outbox_event_sync(
+    *,
+    simulation_id: int,
+    event_id: uuid.UUID,
+) -> OutboxEvent | None:
+    """Return a replayable durable outbox event for a simulation by ID."""
+    from django.apps import apps
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
+    return (
+        filter_replayable_outbox_queryset(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+                id=event_id,
+            )
+        )
+        .order_by()
+        .first()
+    )
+
+
 async def get_outbox_event(
     *,
     simulation_id: int,
@@ -426,20 +461,35 @@ async def get_outbox_event(
     )
 
 
+async def get_replayable_outbox_event(
+    *,
+    simulation_id: int,
+    event_id: uuid.UUID,
+) -> OutboxEvent | None:
+    """Async wrapper for :func:`get_replayable_outbox_event_sync`."""
+
+    return await sync_to_async(get_replayable_outbox_event_sync)(
+        simulation_id=simulation_id,
+        event_id=event_id,
+    )
+
+
 def get_events_after_event_sync(
     *,
     simulation_id: int,
     last_event_id: uuid.UUID | None = None,
 ) -> list[OutboxEvent]:
-    """Return durable events strictly after ``last_event_id`` in canonical order."""
+    """Return replayable durable events strictly after ``last_event_id`` in canonical order."""
     from django.apps import apps
 
     OutboxEvent = apps.get_model("common", "OutboxEvent")
-    queryset = order_outbox_queryset(OutboxEvent.objects.filter(simulation_id=simulation_id))
+    queryset = order_outbox_queryset(
+        filter_replayable_outbox_queryset(OutboxEvent.objects.filter(simulation_id=simulation_id))
+    )
     if last_event_id is None:
         return list(queryset)
 
-    anchor_event = get_outbox_event_sync(
+    anchor_event = get_replayable_outbox_event_sync(
         simulation_id=simulation_id,
         event_id=last_event_id,
     )

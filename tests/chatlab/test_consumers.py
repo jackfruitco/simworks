@@ -199,6 +199,26 @@ class TestChatConsumerContract:
 
         await communicator.disconnect()
 
+    async def test_non_replayable_last_event_id_requires_resync(self):
+        simulation, user = await create_simulation_and_user()
+        non_replayable = await OutboxEvent.objects.acreate(
+            event_type="typing.started",
+            simulation_id=simulation.id,
+            payload={"conversation_id": 123},
+            idempotency_key=f"resume-non-replayable:{uuid4()}",
+        )
+        communicator = await connect_and_resume(
+            simulation,
+            user,
+            last_event_id=str(non_replayable.id),
+        )
+
+        response = await receive_json(communicator)
+        assert response["event_type"] == "session.resync_required"
+        assert response["payload"]["reason"] == "unknown_last_event_id"
+
+        await communicator.disconnect()
+
     async def test_live_durable_event_delivery_uses_canonical_envelope(self):
         simulation, user = await create_simulation_and_user()
         communicator = await connect_and_hello(simulation, user)

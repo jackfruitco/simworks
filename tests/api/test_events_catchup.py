@@ -157,6 +157,69 @@ def test_last_event_id_handles_same_created_at_without_duplicates(auth_client, s
 
 
 @pytest.mark.django_db
+def test_pagination_counts_only_replayable_events(auth_client, simulation):
+    from apps.common.models import OutboxEvent
+
+    durable_events = []
+    durable_events.append(
+        OutboxEvent.objects.create(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.pk,
+            payload={"index": 0},
+            idempotency_key=f"replayable-page:{simulation.pk}:{uuid.uuid4()}",
+        )
+    )
+    OutboxEvent.objects.create(
+        event_type="typing.started",
+        simulation_id=simulation.pk,
+        payload={"index": 0},
+        idempotency_key=f"non-replayable-page:{simulation.pk}:{uuid.uuid4()}",
+    )
+    durable_events.append(
+        OutboxEvent.objects.create(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.pk,
+            payload={"index": 1},
+            idempotency_key=f"replayable-page:{simulation.pk}:{uuid.uuid4()}",
+        )
+    )
+    OutboxEvent.objects.create(
+        event_type="typing.started",
+        simulation_id=simulation.pk,
+        payload={"index": 1},
+        idempotency_key=f"non-replayable-page:{simulation.pk}:{uuid.uuid4()}",
+    )
+    durable_events.append(
+        OutboxEvent.objects.create(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.pk,
+            payload={"index": 2},
+            idempotency_key=f"replayable-page:{simulation.pk}:{uuid.uuid4()}",
+        )
+    )
+
+    first_page = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=2")
+    assert first_page.status_code == 200
+    first_data = first_page.json()
+    assert [item["event_id"] for item in first_data["items"]] == [
+        str(durable_events[0].id),
+        str(durable_events[1].id),
+    ]
+    assert first_data["has_more"] is True
+    assert first_data["next_event_id"] == str(durable_events[1].id)
+
+    second_page = auth_client.get(
+        f"/api/v1/simulations/{simulation.pk}/events/"
+        f"?last_event_id={first_data['next_event_id']}&limit=2"
+    )
+    assert second_page.status_code == 200
+    second_data = second_page.json()
+    assert [item["event_id"] for item in second_data["items"]] == [str(durable_events[2].id)]
+    assert second_data["has_more"] is False
+    assert second_data["next_event_id"] is None
+
+
+@pytest.mark.django_db
 def test_invalid_last_event_id_returns_400(auth_client, simulation):
     response = auth_client.get(
         f"/api/v1/simulations/{simulation.pk}/events/?last_event_id=not-a-uuid"
@@ -169,6 +232,24 @@ def test_invalid_last_event_id_returns_400(auth_client, simulation):
 def test_unknown_last_event_id_returns_400(auth_client, simulation):
     response = auth_client.get(
         f"/api/v1/simulations/{simulation.pk}/events/?last_event_id={uuid.uuid4()}"
+    )
+    assert response.status_code == 400
+    assert "last_event_id" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_non_replayable_last_event_id_returns_400(auth_client, simulation):
+    from apps.common.models import OutboxEvent
+
+    non_replayable = OutboxEvent.objects.create(
+        event_type="typing.started",
+        simulation_id=simulation.pk,
+        payload={"conversation_id": 123},
+        idempotency_key=f"non-replayable-anchor:{simulation.pk}:{uuid.uuid4()}",
+    )
+
+    response = auth_client.get(
+        f"/api/v1/simulations/{simulation.pk}/events/?last_event_id={non_replayable.id}"
     )
     assert response.status_code == 400
     assert "last_event_id" in response.json()["detail"]

@@ -928,8 +928,8 @@ class TestChatLabBootstrapCheckpoint:
         data = response.json()
         assert data["latest_event_id"] is None
 
-    def test_bootstrap_event_id_matches_latest_event(self, auth_client, simulation):
-        """latest_event_id matches the UUID of the most recent outbox event."""
+    def test_bootstrap_event_id_matches_latest_replayable_event(self, auth_client, simulation):
+        """latest_event_id matches the UUID of the most recent replayable event."""
         import uuid as uuid_module
 
         from apps.common.models import OutboxEvent
@@ -950,6 +950,31 @@ class TestChatLabBootstrapCheckpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["latest_event_id"] == str(events[-1].id)
+
+    def test_bootstrap_event_id_ignores_newer_non_replayable_events(self, auth_client, simulation):
+        """latest_event_id stays anchored to the replayable ChatLab durable event space."""
+        import uuid as uuid_module
+
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import MESSAGE_CREATED
+
+        replayable = OutboxEvent.objects.create(
+            event_type=MESSAGE_CREATED,
+            simulation_id=simulation.pk,
+            payload={"message_id": 1, "content": "msg 1"},
+            idempotency_key=f"bootstrap-replayable:{simulation.pk}:{uuid_module.uuid4()}",
+        )
+        OutboxEvent.objects.create(
+            event_type="typing.started",
+            simulation_id=simulation.pk,
+            payload={"conversation_id": 1},
+            idempotency_key=f"bootstrap-non-replayable:{simulation.pk}:{uuid_module.uuid4()}",
+        )
+
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["latest_event_id"] == str(replayable.id)
 
     def test_bootstrap_event_id_ignores_other_simulations(self, auth_client, simulation):
         """latest_event_id only reflects events for the requested simulation."""

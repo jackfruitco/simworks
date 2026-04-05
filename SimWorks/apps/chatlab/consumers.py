@@ -32,7 +32,7 @@ from apps.chatlab.realtime import (
 from apps.common.outbox.outbox import (
     build_canonical_envelope,
     get_events_after_event,
-    get_outbox_event,
+    get_replayable_outbox_event,
 )
 from apps.simcore.access import can_access_simulation_in_scope
 from apps.simcore.models import Simulation
@@ -386,7 +386,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             return False, 0
 
-        anchor_event = await get_outbox_event(
+        anchor_event = await get_replayable_outbox_event(
             simulation_id=self.simulation_id,
             event_id=parsed_event_id,
         )

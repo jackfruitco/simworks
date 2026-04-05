@@ -407,7 +407,7 @@
   (function () {
     const INITIAL_EVENTS = {{ outbox_events_json|safe }};
     const STREAM_URL = "{{ stream_url }}";
-    const REALTIME_TRANSPORT = "{{ realtime_transport|default:'sse' }}";
+    const REALTIME_TRANSPORT = "{{ realtime_transport }}";
     const REALTIME_SESSION_PAYLOAD = {{ realtime_session_payload_json|safe }};
     const WATCH_URL = "{{ watch_url }}";
     const SERVICE_CALLS_URL = "{{ service_calls_url }}";
@@ -583,11 +583,15 @@
         },
 
         connect() {
+          if (REALTIME_TRANSPORT === 'sse') {
+            this.connectSSE();
+            return;
+          }
           if (REALTIME_TRANSPORT === 'websocket') {
             this.connectWebSocket();
             return;
           }
-          this.connectSSE();
+          throw new Error(`Unsupported realtime transport: ${REALTIME_TRANSPORT}`);
         },
 
         connectSSE() {

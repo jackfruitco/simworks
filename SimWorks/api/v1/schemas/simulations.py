@@ -68,7 +68,7 @@ class SimulationOut(BaseModel):
     latest_event_id: str | None = Field(
         default=None,
         description=(
-            "Event ID (UUID) of the most recent durable outbox event for this simulation. "
+            "Event ID (UUID) of the most recent replayable ChatLab durable event for this simulation. "
             "Pass this value as ``last_event_id`` in the ChatLab ``session.hello`` or "
             "``session.resume`` payload so the server can replay durable events strictly "
             "after this point. ``null`` when no durable events exist yet."
