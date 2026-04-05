@@ -7963,9 +7963,15 @@
             "type": "string"
           },
           "previous_status": {
-            "default": "",
-            "title": "Previous Status",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Status"
           },
           "treated_at": {
             "anyOf": [

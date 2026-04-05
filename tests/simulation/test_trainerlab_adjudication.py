@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 import pytest
@@ -795,3 +797,46 @@ class TestTrainerLabAdjudication:
         assert sum(1 for item in compacted if item["reason_kind"] == "manual_tick") == 1
         assert any(item["reason_kind"] == "note_recorded" for item in compacted)
         assert any(item["reason_kind"] == "intervention_recorded" for item in compacted)
+
+
+class TestPreviousStatusNormalization:
+    """Verify that RuntimeProblemStateOut normalizes previous_status to a valid
+    lifecycle string or None — never an empty / unrecognized string."""
+
+    _BASE: ClassVar[dict[str, object]] = {
+        "problem_id": 1,
+        "kind": "hemorrhage",
+        "code": "H001",
+        "title": "Hemorrhage",
+        "status": "active",
+        "cause_id": 1,
+        "cause_kind": "injury",
+    }
+
+    def _build(self, **kwargs):
+        from api.v1.schemas.trainerlab import RuntimeProblemStateOut
+
+        return RuntimeProblemStateOut.model_validate({**self._BASE, **kwargs})
+
+    def test_valid_lifecycle_values_pass_through_unchanged(self):
+        from apps.trainerlab.models import Problem
+
+        for status in Problem.Status.values:
+            out = self._build(previous_status=status)
+            assert out.previous_status == status
+
+    def test_empty_string_becomes_null(self):
+        out = self._build(previous_status="")
+        assert out.previous_status is None
+
+    def test_unrecognized_string_becomes_null(self):
+        out = self._build(previous_status="unknown")
+        assert out.previous_status is None
+
+    def test_missing_field_defaults_to_null(self):
+        out = self._build()
+        assert out.previous_status is None
+
+    def test_none_value_stays_null(self):
+        out = self._build(previous_status=None)
+        assert out.previous_status is None
