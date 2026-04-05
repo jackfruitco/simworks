@@ -7971,7 +7971,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Previous Status"
           },
           "treated_at": {
