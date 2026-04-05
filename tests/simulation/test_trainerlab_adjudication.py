@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 import pytest
@@ -801,7 +803,7 @@ class TestPreviousStatusNormalization:
     """Verify that RuntimeProblemStateOut normalizes previous_status to a valid
     lifecycle string or None — never an empty / unrecognized string."""
 
-    _BASE = {
+    _BASE: ClassVar[dict[str, object]] = {
         "problem_id": 1,
         "kind": "hemorrhage",
         "code": "H001",
