@@ -128,7 +128,6 @@ def test_events_catchup_enriches_chat_media_payload(
     event = payload["items"][0]
     assert event["event_type"] == MESSAGE_CREATED
     assert "media_list" in event["payload"]
-    assert "mediaList" in event["payload"]
     assert len(event["payload"]["media_list"]) == 1
     assert event["payload"]["media_list"][0]["original_url"].startswith("http://testserver/")
     assert event["payload"]["media_list"][0]["thumbnail_url"].startswith("http://testserver/")

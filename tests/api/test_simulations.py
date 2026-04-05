@@ -910,26 +910,26 @@ class TestRetryInitialSimulation:
 
 @pytest.mark.django_db
 class TestChatLabBootstrapCheckpoint:
-    """The simulation detail response must expose ``latest_event_cursor``
-    so ChatLab/iOS clients can connect SSE without historical replay.
+    """The simulation detail response must expose ``latest_event_id``
+    so ChatLab clients can negotiate durable WebSocket replay.
     """
 
-    def test_bootstrap_includes_latest_event_cursor_field(self, auth_client, simulation):
-        """GET /simulations/{id}/ always includes ``latest_event_cursor``."""
+    def test_bootstrap_includes_latest_event_id_field(self, auth_client, simulation):
+        """GET /simulations/{id}/ always includes ``latest_event_id``."""
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
         assert response.status_code == 200
         data = response.json()
-        assert "latest_event_cursor" in data
+        assert "latest_event_id" in data
 
-    def test_bootstrap_cursor_is_null_when_no_events(self, auth_client, simulation):
-        """Cursor is null when the simulation has no outbox events yet."""
+    def test_bootstrap_event_id_is_null_when_no_events(self, auth_client, simulation):
+        """Event ID is null when the simulation has no outbox events yet."""
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
         assert response.status_code == 200
         data = response.json()
-        assert data["latest_event_cursor"] is None
+        assert data["latest_event_id"] is None
 
-    def test_bootstrap_cursor_matches_latest_event(self, auth_client, simulation):
-        """Cursor matches the UUID of the most recent outbox event."""
+    def test_bootstrap_event_id_matches_latest_event(self, auth_client, simulation):
+        """latest_event_id matches the UUID of the most recent outbox event."""
         import uuid as uuid_module
 
         from apps.common.models import OutboxEvent
@@ -949,10 +949,10 @@ class TestChatLabBootstrapCheckpoint:
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
         assert response.status_code == 200
         data = response.json()
-        assert data["latest_event_cursor"] == str(events[-1].id)
+        assert data["latest_event_id"] == str(events[-1].id)
 
-    def test_bootstrap_cursor_ignores_other_simulations(self, auth_client, simulation):
-        """Cursor only reflects events for the requested simulation."""
+    def test_bootstrap_event_id_ignores_other_simulations(self, auth_client, simulation):
+        """latest_event_id only reflects events for the requested simulation."""
         import uuid as uuid_module
 
         from apps.common.models import OutboxEvent
@@ -969,36 +969,4 @@ class TestChatLabBootstrapCheckpoint:
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
         assert response.status_code == 200
         data = response.json()
-        assert data["latest_event_cursor"] is None
-
-    def test_sse_from_bootstrap_cursor_does_not_replay(self, auth_client, simulation):
-        """Connecting SSE with the bootstrap cursor should not replay events."""
-        import uuid as uuid_module
-
-        from apps.common.models import OutboxEvent
-        from apps.common.outbox.event_types import MESSAGE_CREATED
-        from tests.helpers.sse import collect_streaming_chunks
-
-        for i in range(3):
-            OutboxEvent.objects.create(
-                event_type=MESSAGE_CREATED,
-                simulation_id=simulation.pk,
-                payload={"message_id": i},
-                idempotency_key=f"sse-resume:{simulation.pk}:{uuid_module.uuid4()}",
-            )
-
-        # 1. Bootstrap — get the cursor
-        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/")
-        cursor = response.json()["latest_event_cursor"]
-        assert cursor is not None
-
-        # 2. Connect SSE with that cursor — should get only heartbeats
-        sse_response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/?cursor={cursor}"
-        )
-        assert sse_response.status_code == 200
-        chunks = collect_streaming_chunks(sse_response, 3)
-        payload = "".join(chunks)
-        # Only heartbeats, no event data
-        assert "event: simulation" not in payload
-        assert ": keep-alive" in payload
+        assert data["latest_event_id"] is None

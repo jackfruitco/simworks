@@ -467,14 +467,6 @@ class TestMediaPayloadCompleteness:
                     "thumbnail_url": "/img/1_t.png",
                 }
             ],
-            "mediaList": [
-                {
-                    "id": 1,
-                    "uuid": "abc",
-                    "original_url": "/img/1.png",
-                    "thumbnail_url": "/img/1_t.png",
-                }
-            ],
         }
         event = OutboxEvent.objects.create(
             event_type=MESSAGE_CREATED,
@@ -484,5 +476,4 @@ class TestMediaPayloadCompleteness:
         )
         envelope = build_canonical_envelope(event)
         assert envelope["payload"]["media_list"] == payload["media_list"]
-        assert envelope["payload"]["mediaList"] == payload["mediaList"]
         assert envelope["payload"]["content"] == "Hello world"

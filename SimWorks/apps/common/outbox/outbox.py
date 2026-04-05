@@ -4,7 +4,7 @@ This module provides functions to:
 1. Create outbox events atomically with domain changes
 2. Build canonical event envelopes for all transports (REST, SSE, WebSocket)
 3. Trigger immediate drain for low-latency delivery
-4. Query the latest cursor/checkpoint for safe SSE connection
+4. Query durable event anchors for replay/resume flows
 
 Usage:
     from apps.common.outbox import enqueue_event, poke_drain
@@ -283,6 +283,26 @@ async def get_latest_cursor(
     return await _query()
 
 
+def get_latest_event_id_sync(
+    simulation_id: int,
+    *,
+    event_type_prefix: str | None = None,
+) -> str | None:
+    """Return the newest durable event ID for a simulation."""
+
+    return get_latest_cursor_sync(simulation_id, event_type_prefix=event_type_prefix)
+
+
+async def get_latest_event_id(
+    simulation_id: int,
+    *,
+    event_type_prefix: str | None = None,
+) -> str | None:
+    """Async version of :func:`get_latest_event_id_sync`."""
+
+    return await get_latest_cursor(simulation_id, event_type_prefix=event_type_prefix)
+
+
 async def poke_drain() -> None:
     """Trigger immediate drain for low-latency delivery.
 
@@ -372,3 +392,71 @@ async def get_events_for_simulation(
         return events, next_cursor, has_more
 
     return await _query()
+
+
+def get_outbox_event_sync(
+    *,
+    simulation_id: int,
+    event_id: uuid.UUID,
+) -> OutboxEvent | None:
+    """Return a durable outbox event for a simulation by ID."""
+    from django.apps import apps
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
+    return (
+        OutboxEvent.objects.filter(
+            simulation_id=simulation_id,
+            id=event_id,
+        )
+        .order_by()
+        .first()
+    )
+
+
+async def get_outbox_event(
+    *,
+    simulation_id: int,
+    event_id: uuid.UUID,
+) -> OutboxEvent | None:
+    """Async wrapper for :func:`get_outbox_event_sync`."""
+
+    return await sync_to_async(get_outbox_event_sync)(
+        simulation_id=simulation_id,
+        event_id=event_id,
+    )
+
+
+def get_events_after_event_sync(
+    *,
+    simulation_id: int,
+    last_event_id: uuid.UUID | None = None,
+) -> list[OutboxEvent]:
+    """Return durable events strictly after ``last_event_id`` in canonical order."""
+    from django.apps import apps
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
+    queryset = order_outbox_queryset(OutboxEvent.objects.filter(simulation_id=simulation_id))
+    if last_event_id is None:
+        return list(queryset)
+
+    anchor_event = get_outbox_event_sync(
+        simulation_id=simulation_id,
+        event_id=last_event_id,
+    )
+    if anchor_event is None:
+        return []
+
+    return list(apply_outbox_cursor(queryset, anchor_event))
+
+
+async def get_events_after_event(
+    *,
+    simulation_id: int,
+    last_event_id: uuid.UUID | None = None,
+) -> list[OutboxEvent]:
+    """Async wrapper for :func:`get_events_after_event_sync`."""
+
+    return await sync_to_async(get_events_after_event_sync)(
+        simulation_id=simulation_id,
+        last_event_id=last_event_id,
+    )

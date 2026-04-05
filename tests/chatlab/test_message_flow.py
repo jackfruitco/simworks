@@ -122,7 +122,7 @@ class TestMessageBroadcastSignal:
         assert payload["id"] == message.id
         assert payload["message_id"] == message.id
         assert payload["content"] == "Test content"
-        assert payload["isFromAi"] is False
+        assert payload["is_from_ai"] is False
         assert payload["status"] == "sent"
 
     def test_user_message_creates_outbox_event(self, simulation, user, conversation):
@@ -146,7 +146,7 @@ class TestMessageBroadcastSignal:
         assert OutboxEvent.objects.count() == initial_count + 1
         event = OutboxEvent.objects.latest("created_at")
         assert event.event_type == "message.item.created"
-        assert event.payload["isFromAi"] is False
+        assert event.payload["is_from_ai"] is False
 
     def test_duplicate_message_event_is_idempotent(self, simulation, user, conversation):
         """Test that duplicate events are prevented by idempotency key."""
@@ -296,10 +296,10 @@ class TestMessagePayloadFormat:
         assert "message_id" in payload  # Explicit dedup field
         assert "content" in payload  # Message text
         assert "role" in payload  # A or U
-        assert "isFromAi" in payload  # For sender detection
-        assert "displayName" in payload  # Sender name
+        assert "is_from_ai" in payload  # For sender detection
+        assert "display_name" in payload  # Sender name
         assert "status" in payload  # completed/pending
-        assert "messageType" in payload  # chat/feedback
+        assert "message_type" in payload  # chat/feedback
 
     def test_payload_handles_empty_content(self, simulation, user, conversation):
         """Test that payload handles messages with empty/null content."""

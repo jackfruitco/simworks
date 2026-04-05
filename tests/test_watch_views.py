@@ -180,6 +180,8 @@ def test_chatlab_watch_view_uses_query_params_for_initial_state(
     assert watch_state.events_filter == "simulation"
     assert watch_state.events_q == "pulse"
     assert watch_state.events_sort == "asc"
+    assert response.context["realtime_transport"] == "websocket"
+    assert response.context["stream_url"] == "/ws/v1/chatlab/"
 
 
 @pytest.mark.django_db

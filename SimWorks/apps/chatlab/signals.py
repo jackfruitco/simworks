@@ -32,6 +32,7 @@ def _emit_message_status(
     simulation_id: int,
     message_id: int,
     status: str,
+    correlation_id: str | None = None,
     retryable: bool | None = None,
     error_code: str | None = None,
     error_text: str | None = None,
@@ -52,6 +53,7 @@ def _emit_message_status(
         idempotency_key=(
             f"{outbox_events.MESSAGE_DELIVERY_UPDATED}:{message_id}:{status}:{retryable}:{error_code or 'none'}"
         ),
+        correlation_id=correlation_id,
     )
     if event:
         poke_drain_sync()
@@ -122,6 +124,7 @@ def broadcast_new_message(sender, instance, created, **kwargs):
                 simulation_id=instance.simulation_id,
                 payload=payload,
                 idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{instance.id}",
+                correlation_id=getattr(instance, "_outbox_correlation_id", None),
             )
 
             if event:
@@ -233,6 +236,8 @@ def handle_ai_response_failed(
             simulation_id=message.simulation_id,
             message_id=message.id,
             status=Message.DeliveryStatus.FAILED,
+            correlation_id=str(call_context.get("correlation_id") or context.get("correlation_id") or "")
+            or None,
             retryable=retryable,
             error_code=message.delivery_error_code,
             error_text=message.delivery_error_text,
