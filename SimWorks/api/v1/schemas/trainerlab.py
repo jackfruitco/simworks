@@ -23,6 +23,11 @@ from apps.trainerlab.models import (
     TrainerSession,
 )
 from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus
+from apps.trainerlab.viewmodels import (
+    build_runtime_snapshot,
+    build_trainer_rest_view_model,
+    load_trainer_engine_aggregate,
+)
 
 
 class LabAccessOut(BaseModel):
@@ -39,7 +44,6 @@ class TrainerRunOut(BaseModel):
     simulation_id: int
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_spec: dict[str, Any]
-    runtime_state: dict[str, Any]
     initial_directives: str | None
     tick_interval_seconds: int
     run_started_at: datetime | None
@@ -520,21 +524,6 @@ class RuntimeDispositionStateOut(BaseModel):
     timestamp: str | None = None
 
 
-class TrainerRuntimeSnapshotOut(BaseModel):
-    causes: list[RuntimeCauseStateOut] = Field(default_factory=list)
-    problems: list[RuntimeProblemStateOut] = Field(default_factory=list)
-    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
-    interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
-    assessment_findings: list[RuntimeAssessmentFindingStateOut] = Field(default_factory=list)
-    diagnostic_results: list[RuntimeDiagnosticResultStateOut] = Field(default_factory=list)
-    resources: list[RuntimeResourceStateOut] = Field(default_factory=list)
-    disposition: RuntimeDispositionStateOut | None = None
-    vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
-    pulses: list[dict[str, Any]] = Field(default_factory=list)
-    patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
-    scenario_brief: "ScenarioBriefOut | None" = None
-
-
 class ScenarioBriefOut(BaseModel):
     read_aloud_brief: str = ""
     environment: str = ""
@@ -543,34 +532,6 @@ class ScenarioBriefOut(BaseModel):
     evacuation_options: list[str] = Field(default_factory=list)
     evacuation_time: str = ""
     special_considerations: list[str] = Field(default_factory=list)
-
-
-class TrainerRuntimeStateOut(BaseModel):
-    simulation_id: int
-    session_id: int
-    status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
-    state_revision: int
-    active_elapsed_seconds: int
-    tick_interval_seconds: int = 15
-    next_tick_at: datetime | None = None
-    scenario_brief: ScenarioBriefOut | None = None
-    current_snapshot: TrainerRuntimeSnapshotOut
-    ai_plan: RuntimeInstructorIntent
-    ai_rationale_notes: list[str] = Field(default_factory=list)
-    pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
-    pending_reasons: list[dict[str, Any]] = Field(default_factory=list)
-    currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
-    last_runtime_error: str = ""
-    last_ai_tick_at: datetime | None = None
-    latest_event_cursor: str | None = Field(
-        default=None,
-        description=(
-            "Cursor (UUID) of the most recent outbox event for this simulation. "
-            "Pass this value as the ``cursor`` parameter when connecting to the "
-            "SSE stream so only events created after this point are delivered. "
-            "``null`` when no events exist yet."
-        ),
-    )
 
 
 class ControlPlaneDebugOut(BaseModel):
@@ -584,6 +545,91 @@ class ControlPlaneDebugOut(BaseModel):
     last_patch_evaluation_summary: dict[str, Any] = Field(default_factory=dict)
     last_rejected_or_normalized_summary: dict[str, Any] = Field(default_factory=dict)
     status_flags: dict[str, Any] = Field(default_factory=dict)
+
+
+class SnapshotCacheStatusOut(BaseModel):
+    status: str = "disabled"
+    authoritative: bool = False
+    source: str = "disabled"
+    state_revision: int | None = None
+
+
+class EventTimelineEntryOut(BaseModel):
+    event_id: str
+    event_type: str
+    created_at: datetime
+    correlation_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventTimelineOut(BaseModel):
+    """RuntimeEvent-backed event read model for /state/ in this phase."""
+
+    events: list[EventTimelineEntryOut] = Field(default_factory=list)
+    total_events: int = 0
+
+
+class ScenarioSnapshotOut(BaseModel):
+    causes: list[RuntimeCauseStateOut] = Field(default_factory=list)
+    problems: list[RuntimeProblemStateOut] = Field(default_factory=list)
+    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
+    interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
+    assessment_findings: list[RuntimeAssessmentFindingStateOut] = Field(default_factory=list)
+    diagnostic_results: list[RuntimeDiagnosticResultStateOut] = Field(default_factory=list)
+    resources: list[RuntimeResourceStateOut] = Field(default_factory=list)
+    disposition: RuntimeDispositionStateOut | None = None
+    vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
+    pulses: list[dict[str, Any]] = Field(default_factory=list)
+    patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
+    scenario_brief: ScenarioBriefOut | None = None
+
+
+class RuntimeSnapshotOut(BaseModel):
+    status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
+    phase: str = ""
+    state_revision: int = 0
+    active_elapsed_seconds: int = 0
+    tick_count: int = 0
+    tick_interval_seconds: int = 15
+    next_tick_at: datetime | None = None
+    runtime_processing: bool = False
+    pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    ai_plan: RuntimeInstructorIntent = Field(default_factory=RuntimeInstructorIntent)
+    ai_rationale_notes: list[str] = Field(default_factory=list)
+    llm_conditions_check: list[dict[str, Any]] = Field(default_factory=list)
+    last_runtime_error: str = ""
+    last_ai_tick_at: datetime | None = None
+    last_runtime_enqueued_at: str | None = None
+    last_runtime_completed_at: str | None = None
+    control_plane_debug: ControlPlaneDebugOut = Field(default_factory=ControlPlaneDebugOut)
+    request_metadata: dict[str, Any] = Field(default_factory=dict)
+    latest_event_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Cursor (UUID) of the most recent outbox event for this simulation. "
+            "Pass this value as the `cursor` parameter when connecting to the "
+            "SSE stream so only events created after this point are delivered. "
+            "`null` when no events exist yet."
+        ),
+    )
+
+
+class TrainerRestMetadataOut(BaseModel):
+    builder_version: str = "v1"
+    schema_version: str = "v1"
+    snapshot_cache: SnapshotCacheStatusOut
+    event_timeline_count: int = 0
+
+
+class TrainerRestViewModelOut(BaseModel):
+    simulation_id: int
+    session_id: int
+    status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
+    scenario_snapshot: ScenarioSnapshotOut
+    runtime_snapshot: RuntimeSnapshotOut
+    event_timeline: EventTimelineOut
+    metadata: TrainerRestMetadataOut
 
 
 class SSEEnvelope(BaseModel):
@@ -853,12 +899,11 @@ class ScenarioBriefDetailOut(BaseModel):
 
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     simulation = session.simulation
-    state = session.runtime_state_json or {}
     terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
     terminal_reason_text = getattr(simulation, "terminal_reason_text", "") or None
     retryable = None
     if terminal_reason_code:
-        stored_retryable = state.get("initial_generation_retryable")
+        stored_retryable = (session.runtime_state_json or {}).get("initial_generation_retryable")
         if terminal_reason_code.startswith("trainerlab_initial_generation_"):
             if stored_retryable is None:
                 retryable = has_user_retries_remaining(simulation.initial_retry_count)
@@ -870,7 +915,6 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         simulation_id=session.simulation_id,
         status=session.status,
         scenario_spec=session.scenario_spec_json or {},
-        runtime_state=session.runtime_state_json or {},
         initial_directives=session.initial_directives or None,
         tick_interval_seconds=session.tick_interval_seconds,
         run_started_at=session.run_started_at,
@@ -893,76 +937,40 @@ def _coerce_string_list(value: Any) -> list[str]:
     return [str(value)]
 
 
-def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
-    from datetime import timedelta
-
-    runtime_state = dict(session.runtime_state_json or {})
-    raw_brief = runtime_state.get("scenario_brief") or session.scenario_spec_json or {}
-    scenario_brief_out = ScenarioBriefOut(
-        read_aloud_brief=str(raw_brief.get("read_aloud_brief") or ""),
-        environment=str(raw_brief.get("environment") or ""),
-        location_overview=str(raw_brief.get("location_overview") or ""),
-        threat_context=str(raw_brief.get("threat_context") or ""),
-        evacuation_options=_coerce_string_list(raw_brief.get("evacuation_options")),
-        evacuation_time=str(raw_brief.get("evacuation_time") or ""),
-        special_considerations=_coerce_string_list(raw_brief.get("special_considerations")),
+def trainer_state_to_out(session: TrainerSession) -> TrainerRestViewModelOut:
+    view_model = build_trainer_rest_view_model(
+        load_trainer_engine_aggregate(session=session, include_latest_event_cursor=True)
     )
-    # #3: Compute next_tick_at for trainer countdown visibility
-    next_tick_at = None
-    if session.last_ai_tick_at is not None and session.tick_interval_seconds:
-        next_tick_at = session.last_ai_tick_at + timedelta(seconds=session.tick_interval_seconds)
-
-    from apps.common.outbox.outbox import get_latest_cursor_sync
-
-    return TrainerRuntimeStateOut(
-        simulation_id=session.simulation_id,
-        session_id=session.id,
-        status=session.status,
-        state_revision=int(runtime_state.get("state_revision", 0) or 0),
-        active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
-        tick_interval_seconds=session.tick_interval_seconds,
-        next_tick_at=next_tick_at,
-        scenario_brief=scenario_brief_out,
-        current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
-            runtime_state.get("current_snapshot") or {}
-        ),
-        ai_plan=RuntimeInstructorIntent.model_validate(runtime_state.get("ai_plan") or {}),
-        ai_rationale_notes=list(runtime_state.get("ai_rationale_notes") or []),
-        pending_runtime_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
-        pending_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
-        currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
-        last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
-        last_ai_tick_at=session.last_ai_tick_at,
-        latest_event_cursor=get_latest_cursor_sync(session.simulation_id),
-    )
+    return TrainerRestViewModelOut.model_validate(view_model.model_dump(mode="json"))
 
 
 def control_plane_debug_to_out(session: TrainerSession) -> ControlPlaneDebugOut:
-    runtime_state = dict(session.runtime_state_json or {})
-    debug = dict(runtime_state.get("control_plane_debug") or {})
-    return ControlPlaneDebugOut(
-        execution_plan=list(debug.get("execution_plan") or []),
-        current_step_index=int(debug.get("current_step_index", 0) or 0),
-        queued_reasons=list(
-            debug.get("queued_reasons") or runtime_state.get("pending_runtime_reasons") or []
-        ),
-        currently_processing_reasons=list(
-            debug.get("currently_processing_reasons")
-            or runtime_state.get("currently_processing_reasons")
-            or []
-        ),
-        last_processed_reasons=list(
-            debug.get("last_processed_reasons")
-            or runtime_state.get("last_processed_runtime_reasons")
-            or []
-        ),
-        last_failed_step=str(debug.get("last_failed_step") or ""),
-        last_failed_error=str(
-            debug.get("last_failed_error") or runtime_state.get("last_runtime_error") or ""
-        ),
-        last_patch_evaluation_summary=dict(debug.get("last_patch_evaluation") or {}),
-        last_rejected_or_normalized_summary=dict(debug.get("last_rejected_or_normalized") or {}),
-        status_flags=dict(debug.get("status_flags") or {}),
+    aggregate = load_trainer_engine_aggregate(session=session)
+    runtime_snapshot = build_runtime_snapshot(aggregate)
+    debug = dict(runtime_snapshot.control_plane_debug or {})
+    return ControlPlaneDebugOut.model_validate(
+        {
+            "execution_plan": list(debug.get("execution_plan") or []),
+            "current_step_index": int(debug.get("current_step_index", 0) or 0),
+            "queued_reasons": list(
+                debug.get("queued_reasons") or runtime_snapshot.pending_runtime_reasons or []
+            ),
+            "currently_processing_reasons": list(
+                debug.get("currently_processing_reasons")
+                or runtime_snapshot.currently_processing_reasons
+                or []
+            ),
+            "last_processed_reasons": list(debug.get("last_processed_reasons") or []),
+            "last_failed_step": str(debug.get("last_failed_step") or ""),
+            "last_failed_error": str(
+                debug.get("last_failed_error") or runtime_snapshot.last_runtime_error or ""
+            ),
+            "last_patch_evaluation_summary": dict(debug.get("last_patch_evaluation") or {}),
+            "last_rejected_or_normalized_summary": dict(
+                debug.get("last_rejected_or_normalized") or {}
+            ),
+            "status_flags": dict(debug.get("status_flags") or {}),
+        }
     )
 
 
@@ -1000,4 +1008,3 @@ def scenario_instruction_to_out(
 
 
 RuntimeCauseStateOut.model_rebuild()
-TrainerRuntimeSnapshotOut.model_rebuild()

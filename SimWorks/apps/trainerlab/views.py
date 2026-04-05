@@ -1,8 +1,10 @@
+import json
 import logging
 
 from asgiref.sync import sync_to_async
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.core.serializers.json import DjangoJSONEncoder
 from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -17,7 +19,9 @@ from apps.common.watch import build_watch_page_context, build_watch_service_call
 from apps.simcore.access import can_access_simulation_in_request
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import has_lab_access_for_request
+from apps.trainerlab.models import TrainerSession
 from apps.trainerlab.utils import create_new_simulation
+from apps.trainerlab.viewmodels import build_trainer_watch_view_model, load_trainer_engine_aggregate
 from orchestrai_django.models import ServiceCall
 
 logger = logging.getLogger(__name__)
@@ -101,6 +105,55 @@ def watch_simulation(request, simulation_id):
         can_go_to_simulation=has_lab_access_for_request(request.user, request=request),
         go_to_simulation_url=run_url,
     )
+    try:
+        trainer_watch_view_model = build_trainer_watch_view_model(
+            load_trainer_engine_aggregate(simulation_id=simulation_id)
+        )
+    except TrainerSession.DoesNotExist:
+        logger.info(
+            "trainerlab.watch.aggregate_missing",
+            extra={"simulation_id": simulation_id},
+        )
+    else:
+        context.update(
+            {
+                "watch_detail_partial": "trainerlab/partials/watch_details.html",
+                "trainer_watch_scenario_state_json": json.dumps(
+                    trainer_watch_view_model.watch_snapshot.scenario_state_summary.model_dump(
+                        mode="json"
+                    ),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+                "trainer_watch_runtime_state_json": json.dumps(
+                    trainer_watch_view_model.watch_snapshot.runtime_state_summary.model_dump(
+                        mode="json"
+                    ),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+                "trainer_watch_scenario_snapshot_json": json.dumps(
+                    trainer_watch_view_model.scenario_snapshot.model_dump(mode="json"),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+                "trainer_watch_runtime_snapshot_json": json.dumps(
+                    trainer_watch_view_model.runtime_snapshot.model_dump(mode="json"),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+                "trainer_watch_event_timeline_json": json.dumps(
+                    trainer_watch_view_model.event_timeline.model_dump(mode="json"),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+                "trainer_watch_snapshot_cache_json": json.dumps(
+                    trainer_watch_view_model.watch_snapshot.snapshot_cache.model_dump(mode="json"),
+                    cls=DjangoJSONEncoder,
+                    indent=2,
+                ),
+            }
+        )
     return render(
         request,
         "simulation_watch.html",

@@ -2475,7 +2475,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerRuntimeStateOut"
+                  "$ref": "#/components/schemas/TrainerRestViewModelOut"
                 }
               }
             }
@@ -5195,7 +5195,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **REST catch-up** (``GET /simulations/{id}/events/``)\n* **SSE streaming** (``GET /simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nSSE stream contract\n-------------------\n* **Tail-only** (default): omitting ``cursor`` starts after the\n  current tip \u2014 no historical replay.\n* **Resume**: ``cursor=<event_id>`` delivers events strictly after\n  that checkpoint.\n* **Explicit replay**: ``replay=true`` (without cursor) replays\n  from the beginning.\n* **Stale cursor**: returns an SSE error frame with ``status: 410``\n  \u2014 the client should re-bootstrap.\n\nBootstrap integration\n---------------------\nBootstrap responses include a ``latest_event_cursor`` field:\n\n* **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)\n* **TrainerLab**: ``TrainerRuntimeStateOut``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nAfter loading state via REST, pass the cursor to the SSE stream\n(``GET /simulations/{id}/events/stream/?cursor=<cursor>``) so only\nevents created after that point are delivered.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **REST catch-up** (``GET /simulations/{id}/events/``)\n* **SSE streaming** (``GET /simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nSSE stream contract\n-------------------\n* **Tail-only** (default): omitting ``cursor`` starts after the\n  current tip \u2014 no historical replay.\n* **Resume**: ``cursor=<event_id>`` delivers events strictly after\n  that checkpoint.\n* **Explicit replay**: ``replay=true`` (without cursor) replays\n  from the beginning.\n* **Stale cursor**: returns an SSE error frame with ``status: 410``\n  \u2014 the client should re-bootstrap.\n\nBootstrap integration\n---------------------\nBootstrap responses include a ``latest_event_cursor`` field:\n\n* **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nAfter loading state via REST, pass the cursor to the SSE stream\n(``GET /simulations/{id}/events/stream/?cursor=<cursor>``) so only\nevents created after that point are delivered.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -6633,11 +6633,6 @@
             "title": "Scenario Spec",
             "type": "object"
           },
-          "runtime_state": {
-            "additionalProperties": true,
-            "title": "Runtime State",
-            "type": "object"
-          },
           "initial_directives": {
             "anyOf": [
               {
@@ -6749,7 +6744,6 @@
           "simulation_id",
           "status",
           "scenario_spec",
-          "runtime_state",
           "initial_directives",
           "tick_interval_seconds",
           "run_started_at",
@@ -6827,6 +6821,132 @@
           "has_more"
         ],
         "title": "PaginatedResponse[TrainerRunOut]",
+        "type": "object"
+      },
+      "ControlPlaneDebugOut": {
+        "properties": {
+          "execution_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execution Plan",
+            "type": "array"
+          },
+          "current_step_index": {
+            "default": 0,
+            "title": "Current Step Index",
+            "type": "integer"
+          },
+          "queued_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queued Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_processed_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Last Processed Reasons",
+            "type": "array"
+          },
+          "last_failed_step": {
+            "default": "",
+            "title": "Last Failed Step",
+            "type": "string"
+          },
+          "last_failed_error": {
+            "default": "",
+            "title": "Last Failed Error",
+            "type": "string"
+          },
+          "last_patch_evaluation_summary": {
+            "additionalProperties": true,
+            "title": "Last Patch Evaluation Summary",
+            "type": "object"
+          },
+          "last_rejected_or_normalized_summary": {
+            "additionalProperties": true,
+            "title": "Last Rejected Or Normalized Summary",
+            "type": "object"
+          },
+          "status_flags": {
+            "additionalProperties": true,
+            "title": "Status Flags",
+            "type": "object"
+          }
+        },
+        "title": "ControlPlaneDebugOut",
+        "type": "object"
+      },
+      "EventTimelineEntryOut": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at"
+        ],
+        "title": "EventTimelineEntryOut",
+        "type": "object"
+      },
+      "EventTimelineOut": {
+        "description": "RuntimeEvent-backed event read model for /state/ in this phase.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventTimelineEntryOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "total_events": {
+            "default": 0,
+            "title": "Total Events",
+            "type": "integer"
+          }
+        },
+        "title": "EventTimelineOut",
         "type": "object"
       },
       "RecommendedInterventionStateOut": {
@@ -8073,6 +8193,170 @@
         "title": "RuntimeResourceStateOut",
         "type": "object"
       },
+      "RuntimeSnapshotOut": {
+        "properties": {
+          "status": {
+            "enum": [
+              "seeding",
+              "seeded",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "phase": {
+            "default": "",
+            "title": "Phase",
+            "type": "string"
+          },
+          "state_revision": {
+            "default": 0,
+            "title": "State Revision",
+            "type": "integer"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "tick_count": {
+            "default": 0,
+            "title": "Tick Count",
+            "type": "integer"
+          },
+          "tick_interval_seconds": {
+            "default": 15,
+            "title": "Tick Interval Seconds",
+            "type": "integer"
+          },
+          "next_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Tick At"
+          },
+          "runtime_processing": {
+            "default": false,
+            "title": "Runtime Processing",
+            "type": "boolean"
+          },
+          "pending_runtime_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Runtime Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "ai_plan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeInstructorIntent"
+              }
+            ]
+          },
+          "ai_rationale_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "llm_conditions_check": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Llm Conditions Check",
+            "type": "array"
+          },
+          "last_runtime_error": {
+            "default": "",
+            "title": "Last Runtime Error",
+            "type": "string"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          },
+          "last_runtime_enqueued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Enqueued At"
+          },
+          "last_runtime_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Completed At"
+          },
+          "control_plane_debug": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ControlPlaneDebugOut"
+              }
+            ]
+          },
+          "request_metadata": {
+            "additionalProperties": true,
+            "title": "Request Metadata",
+            "type": "object"
+          },
+          "latest_event_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the `cursor` parameter when connecting to the SSE stream so only events created after this point are delivered. `null` when no events exist yet.",
+            "title": "Latest Event Cursor"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RuntimeSnapshotOut",
+        "type": "object"
+      },
       "RuntimeVitalStateOut": {
         "properties": {
           "domain_event_id": {
@@ -8214,7 +8498,7 @@
         "title": "ScenarioBriefOut",
         "type": "object"
       },
-      "TrainerRuntimeSnapshotOut": {
+      "ScenarioSnapshotOut": {
         "properties": {
           "causes": {
             "items": {
@@ -8308,10 +8592,69 @@
             ]
           }
         },
-        "title": "TrainerRuntimeSnapshotOut",
+        "title": "ScenarioSnapshotOut",
         "type": "object"
       },
-      "TrainerRuntimeStateOut": {
+      "SnapshotCacheStatusOut": {
+        "properties": {
+          "status": {
+            "default": "disabled",
+            "title": "Status",
+            "type": "string"
+          },
+          "authoritative": {
+            "default": false,
+            "title": "Authoritative",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "disabled",
+            "title": "Source",
+            "type": "string"
+          },
+          "state_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Revision"
+          }
+        },
+        "title": "SnapshotCacheStatusOut",
+        "type": "object"
+      },
+      "TrainerRestMetadataOut": {
+        "properties": {
+          "builder_version": {
+            "default": "v1",
+            "title": "Builder Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_cache": {
+            "$ref": "#/components/schemas/SnapshotCacheStatusOut"
+          },
+          "event_timeline_count": {
+            "default": 0,
+            "title": "Event Timeline Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_cache"
+        ],
+        "title": "TrainerRestMetadataOut",
+        "type": "object"
+      },
+      "TrainerRestViewModelOut": {
         "properties": {
           "simulation_id": {
             "title": "Simulation Id",
@@ -8333,185 +8676,29 @@
             "title": "Status",
             "type": "string"
           },
-          "state_revision": {
-            "title": "State Revision",
-            "type": "integer"
+          "scenario_snapshot": {
+            "$ref": "#/components/schemas/ScenarioSnapshotOut"
           },
-          "active_elapsed_seconds": {
-            "title": "Active Elapsed Seconds",
-            "type": "integer"
+          "runtime_snapshot": {
+            "$ref": "#/components/schemas/RuntimeSnapshotOut"
           },
-          "tick_interval_seconds": {
-            "default": 15,
-            "title": "Tick Interval Seconds",
-            "type": "integer"
+          "event_timeline": {
+            "$ref": "#/components/schemas/EventTimelineOut"
           },
-          "next_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Tick At"
-          },
-          "scenario_brief": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScenarioBriefOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_snapshot": {
-            "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
-          },
-          "ai_plan": {
-            "$ref": "#/components/schemas/RuntimeInstructorIntent"
-          },
-          "ai_rationale_notes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Ai Rationale Notes",
-            "type": "array"
-          },
-          "pending_runtime_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Runtime Reasons",
-            "type": "array"
-          },
-          "pending_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_runtime_error": {
-            "default": "",
-            "title": "Last Runtime Error",
-            "type": "string"
-          },
-          "last_ai_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Ai Tick At"
-          },
-          "latest_event_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the ``cursor`` parameter when connecting to the SSE stream so only events created after this point are delivered. ``null`` when no events exist yet.",
-            "title": "Latest Event Cursor"
+          "metadata": {
+            "$ref": "#/components/schemas/TrainerRestMetadataOut"
           }
         },
         "required": [
           "simulation_id",
           "session_id",
           "status",
-          "state_revision",
-          "active_elapsed_seconds",
-          "current_snapshot",
-          "ai_plan"
+          "scenario_snapshot",
+          "runtime_snapshot",
+          "event_timeline",
+          "metadata"
         ],
-        "title": "TrainerRuntimeStateOut",
-        "type": "object"
-      },
-      "ControlPlaneDebugOut": {
-        "properties": {
-          "execution_plan": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Execution Plan",
-            "type": "array"
-          },
-          "current_step_index": {
-            "default": 0,
-            "title": "Current Step Index",
-            "type": "integer"
-          },
-          "queued_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Queued Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_processed_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Last Processed Reasons",
-            "type": "array"
-          },
-          "last_failed_step": {
-            "default": "",
-            "title": "Last Failed Step",
-            "type": "string"
-          },
-          "last_failed_error": {
-            "default": "",
-            "title": "Last Failed Error",
-            "type": "string"
-          },
-          "last_patch_evaluation_summary": {
-            "additionalProperties": true,
-            "title": "Last Patch Evaluation Summary",
-            "type": "object"
-          },
-          "last_rejected_or_normalized_summary": {
-            "additionalProperties": true,
-            "title": "Last Rejected Or Normalized Summary",
-            "type": "object"
-          },
-          "status_flags": {
-            "additionalProperties": true,
-            "title": "Status Flags",
-            "type": "object"
-          }
-        },
-        "title": "ControlPlaneDebugOut",
+        "title": "TrainerRestViewModelOut",
         "type": "object"
       },
       "TrainerCommandAck": {

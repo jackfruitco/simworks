@@ -633,6 +633,43 @@ export interface TrainerLabSnapshot {
     scenario_brief?: TrainerLabScenarioBriefFields | null;
 }
 
+export interface TrainerLabSnapshotCacheStatus {
+    status: 'disabled' | 'missing' | 'stale' | 'available';
+    authoritative: boolean;
+    source?: string;
+    state_revision?: number | null;
+}
+
+export interface TrainerLabRuntimeSnapshot {
+    status: string;
+    phase?: string;
+    state_revision: number;
+    active_elapsed_seconds: number;
+    tick_count?: number;
+    tick_interval_seconds?: number;
+    next_tick_at?: string | null;
+    runtime_processing?: boolean;
+    pending_runtime_reasons: Array<Record<string, unknown>>;
+    currently_processing_reasons: Array<Record<string, unknown>>;
+    ai_plan: TrainerLabAiIntent;
+    ai_rationale_notes?: string[];
+    llm_conditions_check?: Array<Record<string, unknown>>;
+    last_runtime_error?: string;
+    last_ai_tick_at?: string | null;
+    last_runtime_enqueued_at?: string | null;
+    last_runtime_completed_at?: string | null;
+    control_plane_debug?: Record<string, unknown>;
+    request_metadata?: Record<string, unknown>;
+    latest_event_cursor?: string | null;
+}
+
+export interface TrainerLabStateMetadata {
+    builder_version?: string;
+    schema_version?: string;
+    snapshot_cache: TrainerLabSnapshotCacheStatus;
+    event_timeline_count?: number;
+}
+
 export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
     type: 'patient.injury.created' | 'patient.injury.updated' | 'injury.created' | 'injury.updated';
     event_kind: 'cause';
@@ -731,16 +768,22 @@ export interface TrainerLabInterventionAssessedEvent extends BaseEvent {
 
 export interface TrainerLabStateUpdatedEvent extends BaseEvent {
     type: 'simulation.snapshot.updated' | 'state.updated';
-    state_revision: number;
-    active_elapsed_seconds: number;
-    scenario_brief?: TrainerLabScenarioBriefFields | null;
-    current_snapshot: TrainerLabSnapshot;
+    simulation_id: number;
+    session_id: number;
+    status: string;
+    scenario_snapshot: TrainerLabSnapshot;
+    runtime_snapshot: TrainerLabRuntimeSnapshot;
+    metadata?: TrainerLabStateMetadata;
     processed_reasons: Array<Record<string, unknown>>;
 }
 
 export interface TrainerLabAiIntentUpdatedEvent extends BaseEvent {
     type: 'simulation.plan.updated' | 'ai.intent.updated';
-    state_revision: number;
+    simulation_id?: number;
+    session_id?: number;
+    status?: string;
+    runtime_snapshot?: TrainerLabRuntimeSnapshot;
+    metadata?: TrainerLabStateMetadata;
     ai_plan: TrainerLabAiIntent;
 }
 

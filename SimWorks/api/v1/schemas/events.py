@@ -46,7 +46,7 @@ class EventEnvelope(BaseModel):
     Bootstrap responses include a ``latest_event_cursor`` field:
 
     * **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)
-    * **TrainerLab**: ``TrainerRuntimeStateOut``
+    * **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``
       (``GET /trainerlab/simulations/{id}/state/``)
 
     After loading state via REST, pass the cursor to the SSE stream

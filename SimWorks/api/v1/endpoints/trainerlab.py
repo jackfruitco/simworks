@@ -50,8 +50,8 @@ from api.v1.schemas.trainerlab import (
     SimulationNoteCreateIn,
     SteerPromptIn,
     TrainerCommandAck,
+    TrainerRestViewModelOut,
     TrainerRunOut,
-    TrainerRuntimeStateOut,
     TrainerSessionCreateIn,
     VitalCreateIn,
     annotation_to_out,
@@ -115,6 +115,7 @@ from apps.trainerlab.services import (
     emit_runtime_event,
     enqueue_vitals_progression,
     get_or_create_command,
+    get_runtime_state,
     get_session_annotations,
     pause_session,
     refresh_completed_run_review,
@@ -589,7 +590,7 @@ def apply_preset(
     # #5: Snapshot state before applying preset to compute diff afterwards
     before_snapshot = snapshot_before_preset(session)
 
-    state = dict(session.runtime_state_json or {})
+    state = get_runtime_state(session)
     applied_presets = list(state.get("applied_presets", []))
     applied_presets.append(
         {
@@ -758,11 +759,11 @@ def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunO
 
 @router.get(
     "/simulations/{simulation_id}/state/",
-    response=TrainerRuntimeStateOut,
+    response=TrainerRestViewModelOut,
     summary="Get authoritative TrainerLab runtime state snapshot",
 )
 @api_rate_limit
-def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRuntimeStateOut:
+def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRestViewModelOut:
     _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return trainer_state_to_out(session)
@@ -929,7 +930,7 @@ def steer_prompt(
         return _accepted(command)
     _reject_terminal_mutation(command=command, session=session)
 
-    state = dict(session.runtime_state_json or {})
+    state = get_runtime_state(session)
     prompts = list(state.get("steering_prompts", []))
     prompts.append(body.prompt)
     state["steering_prompts"] = prompts
@@ -1013,7 +1014,7 @@ def adjust_simulation(
         "metadata": body.metadata,
         "issued_at": timezone.now().isoformat(),
     }
-    state = dict(session.runtime_state_json or {})
+    state = get_runtime_state(session)
     adjustments = list(state.get("adjustments", []))
     adjustments.append(adjustment_entry)
     state["adjustments"] = adjustments

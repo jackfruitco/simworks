@@ -226,6 +226,37 @@ class TrainerRunSummary(models.Model):
     generator_version = models.CharField(max_length=32, default="v1")
 
 
+class TrainerAgentViewModelRecord(models.Model):
+    """Persisted audit trail of the composed runtime input presented to the model."""
+
+    session = models.ForeignKey(
+        "trainerlab.TrainerSession",
+        on_delete=models.CASCADE,
+        related_name="agent_view_model_records",
+    )
+    service_call = models.ForeignKey(
+        "orchestrai_django.ServiceCall",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trainer_agent_view_model_records",
+    )
+    state_revision = models.PositiveIntegerField(default=0)
+    correlation_id = models.CharField(max_length=100, blank=True, default="")
+    builder_version = models.CharField(max_length=32, default="v1")
+    schema_version = models.CharField(max_length=32, default="v1")
+    payload_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["session", "created_at"], name="idx_tl_agent_vm_session"),
+            models.Index(fields=["session", "state_revision"], name="idx_tl_agent_vm_revision"),
+            models.Index(fields=["correlation_id"], name="idx_tl_agent_vm_corr"),
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Scenario presets
 # ---------------------------------------------------------------------------
@@ -1385,6 +1416,30 @@ class ScenarioBrief(BaseDomainEvent):
     def __str__(self):
         brief_preview = (self.read_aloud_brief or "")[:50]
         return f"ScenarioBrief at {self.timestamp:%H:%M:%S}: {brief_preview}..."
+
+
+class PatientStatusState(BaseDomainEvent):
+    """Canonical persisted structured clinical status flags for scenario snapshots."""
+
+    avpu = models.CharField(max_length=24, blank=True, default="")
+    respiratory_distress = models.BooleanField(default=False)
+    hemodynamic_instability = models.BooleanField(default=False)
+    impending_pneumothorax = models.BooleanField(default=False)
+    tension_pneumothorax = models.BooleanField(default=False)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    def __str__(self):
+        return (
+            "PatientStatusState at "
+            f"{self.timestamp:%H:%M:%S}: avpu={self.avpu or 'unknown'} "
+            f"rd={self.respiratory_distress} hd={self.hemodynamic_instability}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import pytest
 
 from apps.accounts.models import UserRole
 from apps.common.models import OutboxEvent
-from apps.trainerlab.models import SessionStatus
+from apps.trainerlab.models import SessionStatus, TrainerAgentViewModelRecord
 from apps.trainerlab.orca.services.runtime import GenerateTrainerRuntimeTurn
 from apps.trainerlab.services import (
     apply_runtime_turn_output,
@@ -157,6 +157,24 @@ def test_runtime_enqueue_context_uses_compact_state_and_no_previous_response(mon
         {
             "simulation_id": 11,
             "session_id": 22,
+            "trainer_agent_view_model": {
+                "simulation_id": 11,
+                "session_id": 22,
+                "status": "running",
+                "scenario_snapshot": {"causes": [], "problems": []},
+                "runtime_snapshot": {"state_revision": 3},
+                "event_timeline": {"events": [], "total_events": 0},
+                "trigger_reasons": [{"reason_kind": "tick", "count": 2}],
+                "metadata": {
+                    "builder_version": "v1",
+                    "schema_version": "v1",
+                    "snapshot_cache": {
+                        "status": "disabled",
+                        "authoritative": False,
+                        "source": "disabled",
+                    },
+                },
+            },
             "runtime_reasons": [{"reason_kind": "tick", "count": 2}],
             "runtime_llm_context": {"active_elapsed_seconds": 30, "active_problems": []},
             "runtime_request_metrics": {"estimated_prompt_tokens": 123},
@@ -168,6 +186,7 @@ def test_runtime_enqueue_context_uses_compact_state_and_no_previous_response(mon
     assert call_id == "call-123"
     context = captured["context"]
     assert "current_snapshot" not in context
+    assert "trainer_agent_view_model" in context
     assert "runtime_llm_context" in context
     assert "previous_response_id" not in context
     assert "previous_provider_response_id" not in context
@@ -217,12 +236,24 @@ def test_runtime_service_call_persists_compact_context_and_request_profile(
     assert "runtime_llm_context" in call.context
     assert "runtime_request_metrics" in call.context
     assert "current_snapshot" not in call.context
+    assert "trainer_agent_view_model" in call.context
     assert "previous_response_id" not in call.context
     assert "previous_provider_response_id" not in call.context
     assert str(call.context["runtime_request_metrics"]["service_call_id"]).replace("-", "") == str(
         call.id
     ).replace("-", "")
     assert call.context["runtime_request_metrics"]["previous_response_id_present"] is False
+    record = TrainerAgentViewModelRecord.objects.get(service_call=call)
+    assert call.context["trainer_agent_view_model_record_id"] == record.id
+    assert record.session_id == session.id
+    assert record.correlation_id == ""
+    assert record.builder_version == "v1"
+    assert record.schema_version == "v1"
+    assert record.payload_json["simulation_id"] == session.simulation_id
+    assert record.payload_json["session_id"] == session.id
+    assert record.payload_json["runtime_snapshot"]["state_revision"] >= 0
+    assert record.payload_json["metadata"]["builder_version"] == "v1"
+    assert record.payload_json["metadata"]["schema_version"] == "v1"
 
 
 @pytest.mark.django_db

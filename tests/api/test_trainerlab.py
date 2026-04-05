@@ -3,6 +3,7 @@
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import Client
 import pytest
@@ -684,6 +685,7 @@ class TestTrainerLabSessionLifecycle:
         )
 
         assert captured["simulation_id"] == created["simulation_id"]
+        assert "runtime_state" not in created
 
     def test_create_session_returns_seeding_and_blocks_mutations_until_ready(
         self,
@@ -1775,17 +1777,85 @@ class TestTrainerLabDictionaries:
         assert response.status_code == 200
         body = response.json()
         assert body["simulation_id"] == session["simulation_id"]
-        assert body["state_revision"] == 0
-        assert body["current_snapshot"]["causes"] == []
-        assert body["current_snapshot"]["problems"] == []
-        assert body["current_snapshot"]["recommended_interventions"] == []
-        assert body["current_snapshot"]["interventions"] == []
-        assert body["current_snapshot"]["assessment_findings"] == []
-        assert body["current_snapshot"]["diagnostic_results"] == []
-        assert body["current_snapshot"]["resources"] == []
-        assert body["current_snapshot"]["disposition"] is None
-        assert body["current_snapshot"]["vitals"] == []
-        assert body["pending_runtime_reasons"] == []
+        assert body["status"] == "seeded"
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
+        assert "pending_runtime_reasons" not in body
+        assert "currently_processing_reasons" not in body
+        assert body["runtime_snapshot"]["state_revision"] == 0
+        assert "latest_event_cursor" in body["runtime_snapshot"]
+        assert body["scenario_snapshot"]["causes"] == []
+        assert body["scenario_snapshot"]["problems"] == []
+        assert body["scenario_snapshot"]["recommended_interventions"] == []
+        assert body["scenario_snapshot"]["interventions"] == []
+        assert body["scenario_snapshot"]["assessment_findings"] == []
+        assert body["scenario_snapshot"]["diagnostic_results"] == []
+        assert body["scenario_snapshot"]["resources"] == []
+        assert body["scenario_snapshot"]["disposition"] is None
+        assert body["scenario_snapshot"]["vitals"] == []
+        assert body["runtime_snapshot"]["pending_runtime_reasons"] == []
+        assert body["metadata"]["snapshot_cache"]["status"] == "disabled"
+        assert body["metadata"]["snapshot_cache"]["authoritative"] is False
+        assert "legacy_keys_present" not in body["metadata"]["snapshot_cache"]
+
+    def test_state_endpoint_runtime_snapshot_cursor_is_null_without_outbox_events(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.services import create_session
+
+        client = auth_client_factory(instructor_user)
+        session = create_session(
+            user=instructor_user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+        OutboxEvent.objects.filter(simulation_id=session.simulation_id).delete()
+        assert not OutboxEvent.objects.filter(simulation_id=session.simulation_id).exists()
+
+        response = client.get(f"/api/v1/trainerlab/simulations/{session.simulation_id}/state/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["runtime_snapshot"]["latest_event_cursor"] is None
+
+    def test_state_endpoint_runtime_snapshot_cursor_matches_latest_outbox_event(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.services import create_session
+
+        client = auth_client_factory(instructor_user)
+        session = create_session(
+            user=instructor_user,
+            scenario_spec={},
+            directives="",
+            modifiers=[],
+        )
+
+        events = [
+            OutboxEvent.objects.create(
+                event_type=SIMULATION_STATUS_UPDATED,
+                simulation_id=session.simulation_id,
+                payload={"status": f"status-{index}"},
+                idempotency_key=f"trainer-state-cursor:{session.simulation_id}:{uuid4()}",
+            )
+            for index in range(3)
+        ]
+
+        response = client.get(f"/api/v1/trainerlab/simulations/{session.simulation_id}/state/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["runtime_snapshot"]["latest_event_cursor"] == str(events[-1].id)
 
     def test_control_plane_debug_endpoint_returns_defaults(
         self,
@@ -1805,6 +1875,196 @@ class TestTrainerLabDictionaries:
         assert body["queued_reasons"] == []
         assert body["currently_processing_reasons"] == []
         assert body["last_processed_reasons"] == []
+
+    def test_state_endpoint_derives_snapshot_without_legacy_cache_after_start(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import (
+            EventSource,
+            HeartRate,
+            PulseAssessment,
+            RecommendedIntervention,
+            ScenarioBrief,
+            TrainerSession,
+        )
+        from apps.trainerlab.recommendations import validate_and_normalize_recommendation
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="state-no-cache-session")
+        simulation_id = session["simulation_id"]
+
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="state-no-cache-injury",
+            injury_location="TLA",
+            injury_kind="GSW",
+            injury_description="GSW to the left chest",
+        )
+        assert injury_resp.status_code == 200
+
+        from apps.trainerlab.models import Injury
+
+        injury = Injury.objects.get(
+            simulation_id=simulation_id, injury_description="GSW to the left chest"
+        )
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="state-no-cache-problem",
+            cause_kind="injury",
+            cause_id=injury.id,
+            kind="open_chest_wound",
+            title="Open chest wound",
+            march_category="R",
+            severity="moderate",
+            anatomical_location=injury.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+
+        from apps.trainerlab.models import Injury, Problem
+
+        injury = Injury.objects.get(
+            simulation_id=simulation_id,
+            injury_description="GSW to the left chest",
+        )
+        problem = Problem.objects.get(
+            simulation_id=simulation_id,
+            cause_injury=injury,
+            kind="open_chest_wound",
+        )
+        normalization = validate_and_normalize_recommendation(
+            problem=problem,
+            raw_kind="chest_seal",
+            raw_title="Apply chest seal",
+            raw_site="left_anterior_chest",
+        )
+
+        trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
+        ScenarioBrief.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            read_aloud_brief="Pinned under a broken wall with worsening respiratory compromise.",
+            environment="Collapsed urban structure",
+        )
+        HeartRate.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            min_value=132,
+            max_value=138,
+        )
+        PulseAssessment.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            location=PulseAssessment.Location.PEDAL_LEFT,
+            present=False,
+            description=PulseAssessment.Description.ABSENT,
+            color_normal=False,
+            color_description=PulseAssessment.ColorDescription.PALE,
+            condition_normal=False,
+            condition_description=PulseAssessment.ConditionDescription.CLAMMY,
+            temperature_normal=False,
+            temperature_description=PulseAssessment.TemperatureDescription.COOL,
+        )
+        RecommendedIntervention.objects.create(
+            simulation=trainer_session.simulation,
+            source=EventSource.SYSTEM,
+            kind=normalization.kind,
+            code=normalization.code,
+            slug=normalization.slug,
+            title=normalization.title,
+            display_name=normalization.display_name,
+            target_problem=problem,
+            target_injury=injury,
+            recommendation_source=normalization.recommendation_source,
+            validation_status=normalization.validation_status,
+            normalized_kind=normalization.kind,
+            normalized_code=normalization.code,
+            site_code=normalization.site_code,
+            site_label=normalization.site_label,
+        )
+
+        start_response = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
+            HTTP_IDEMPOTENCY_KEY="state-no-cache-start",
+        )
+        assert start_response.status_code == 200
+
+        trainer_session.refresh_from_db()
+        state = dict(trainer_session.runtime_state_json or {})
+        state.pop("current_snapshot", None)
+        state.pop("scenario_brief", None)
+        state.pop("snapshot_annotations", None)
+        trainer_session.runtime_state_json = state
+        trainer_session.save(update_fields=["runtime_state_json", "modified_at"])
+
+        body = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
+
+        assert body["status"] == "running"
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
+        assert "pending_runtime_reasons" not in body
+        assert "legacy_keys_present" not in body["metadata"]["snapshot_cache"]
+        assert any(
+            problem["kind"] == "open_chest_wound"
+            for problem in body["scenario_snapshot"]["problems"]
+        )
+        assert body["scenario_snapshot"]["scenario_brief"]["read_aloud_brief"].startswith(
+            "Pinned under a broken wall"
+        )
+        assert any(
+            vital["vital_type"] == "heart_rate" for vital in body["scenario_snapshot"]["vitals"]
+        )
+        assert body["scenario_snapshot"]["pulses"]
+        assert body["scenario_snapshot"]["recommended_interventions"]
+        assert body["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
+
+    def test_state_endpoint_returns_chronological_event_timeline_with_true_total_count(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import RuntimeEvent, TrainerSession
+        from apps.trainerlab.viewmodels import DEFAULT_EVENT_TIMELINE_LIMIT
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="state-event-timeline-session")
+        trainer_session = TrainerSession.objects.get(simulation_id=session["simulation_id"])
+        base_time = datetime(2030, 1, 1, tzinfo=UTC)
+        total_events = DEFAULT_EVENT_TIMELINE_LIMIT + 5
+        baseline_events = RuntimeEvent.objects.filter(session=trainer_session).count()
+
+        for sequence in range(total_events):
+            runtime_event = RuntimeEvent.objects.create(
+                session=trainer_session,
+                simulation=trainer_session.simulation,
+                event_type="trainerlab.runtime.note",
+                payload={"sequence": sequence},
+                correlation_id=f"timeline-{sequence}",
+            )
+            RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
+                created_at=base_time + timedelta(seconds=sequence)
+            )
+
+        body = client.get(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/state/"
+        ).json()
+
+        assert body["event_timeline"]["total_events"] == baseline_events + total_events
+        assert len(body["event_timeline"]["events"]) == DEFAULT_EVENT_TIMELINE_LIMIT
+        assert [
+            event["payload"]["sequence"]
+            for event in body["event_timeline"]["events"]
+            if "sequence" in event["payload"]
+        ] == list(range(5, 105))
+        assert "current_snapshot" not in body
+        assert "scenario_brief" not in body
+        assert "patient_status" not in body
 
     def test_intervention_event_captures_structured_fields_and_queues_reason(
         self,
@@ -1873,7 +2133,10 @@ class TestTrainerLabDictionaries:
         assert pending[-1]["reason_kind"] == "intervention_recorded"
 
         state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
-        assert state["pending_runtime_reasons"][-1]["reason_kind"] == "intervention_recorded"
+        assert (
+            state["runtime_snapshot"]["pending_runtime_reasons"][-1]["reason_kind"]
+            == "intervention_recorded"
+        )
 
         # Verify the outbox event payload from _inject_event_core has structured fields
         outbox_event = OutboxEvent.objects.filter(
@@ -1979,10 +2242,12 @@ class TestTrainerLabDictionaries:
             AssessmentFinding,
             Injury,
             Intervention,
+            PatientStatusState,
             Problem,
             TrainerSession,
         )
         from apps.trainerlab.services import apply_runtime_turn_output, process_runtime_turn_queue
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="runtime-worker-session")
@@ -2036,9 +2301,20 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
         captured_batch: dict[str, object] = {}
+        inline_call_id = str(uuid4())
 
         def _inline_enqueue(batch):
             captured_batch.update(batch)
+            ServiceCall.objects.create(
+                id=inline_call_id,
+                service_identity="services.trainerlab.default.trainer-runtime-turn",
+                service_kwargs={},
+                backend="immediate",
+                status=CallStatus.COMPLETED,
+                input={"user_message": "runtime turn"},
+                context={},
+                dispatch={},
+            )
             apply_runtime_turn_output(
                 session_id=batch["session_id"],
                 output_payload=_inline_runtime_payload(
@@ -2052,7 +2328,7 @@ class TestTrainerLabDictionaries:
                     "correlation_id": batch.get("correlation_id"),
                 },
             )
-            return "inline-runtime-call"
+            return inline_call_id
 
         monkeypatch.setattr(
             "apps.trainerlab.services.enqueue_runtime_turn_service_call", _inline_enqueue
@@ -2069,21 +2345,25 @@ class TestTrainerLabDictionaries:
 
         call_id = process_runtime_turn_queue(session_id=trainer_session.id)
 
-        assert call_id == "inline-runtime-call"
+        assert call_id == inline_call_id
         assert captured_batch["runtime_request_metrics"]["previous_response_id_present"] is False
         assert "runtime_llm_context" in captured_batch
-        assert "current_snapshot" in captured_batch
+        assert "trainer_agent_view_model" in captured_batch
+        assert "current_snapshot" not in captured_batch
         assert "pending_runtime_reasons" in captured_batch["runtime_llm_context"]
         assert "read_aloud_brief" not in str(captured_batch["runtime_llm_context"])
 
         trainer_session.refresh_from_db()
-        current_snapshot = trainer_session.runtime_state_json["current_snapshot"]
         assert trainer_session.runtime_state_json["state_revision"] >= 4
-        assert current_snapshot["patient_status"]["respiratory_distress"] is True
-        assert current_snapshot["patient_status"]["impending_pneumothorax"] is True
         assert trainer_session.runtime_state_json["ai_plan"]["eta_seconds"] == 45
         assert trainer_session.runtime_state_json["pending_runtime_reasons"] == []
         assert trainer_session.runtime_state_json["currently_processing_reasons"] == []
+        patient_status = PatientStatusState.objects.filter(
+            simulation_id=simulation_id,
+            is_active=True,
+        ).latest("timestamp")
+        assert patient_status.respiratory_distress is True
+        assert patient_status.impending_pneumothorax is True
         assert Problem.objects.filter(
             simulation_id=simulation_id,
             kind="respiratory_distress",
@@ -2094,7 +2374,10 @@ class TestTrainerLabDictionaries:
             kind="diminished_breath_sounds",
             is_active=True,
         ).exists()
-        assert current_snapshot["recommended_interventions"]
+        state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
+        assert state["scenario_snapshot"]["patient_status"]["respiratory_distress"] is True
+        assert state["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
+        assert state["scenario_snapshot"]["recommended_interventions"]
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,
             event_type="simulation.snapshot.updated",

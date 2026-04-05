@@ -18,15 +18,10 @@ from config.logging import get_logger
 from orchestrai_django.models import ServiceCall as ServiceCallModel
 
 from .event_payloads import (
-    serialize_assessment_finding_summary,
-    serialize_cause_snapshot,
-    serialize_diagnostic_result_summary,
-    serialize_disposition_state_summary,
     serialize_domain_event,
     serialize_intervention_summary,
     serialize_problem_snapshot,
     serialize_recommendation_summary,
-    serialize_resource_state_summary,
 )
 from .finding_dictionary import get_finding_definition
 from .models import (
@@ -43,6 +38,7 @@ from .models import (
     Illness,
     Injury,
     Intervention,
+    PatientStatusState,
     Problem,
     PulseAssessment,
     RecommendationEvaluation,
@@ -53,6 +49,7 @@ from .models import (
     ScenarioBrief,
     SessionStatus,
     SimulationNote,
+    TrainerAgentViewModelRecord,
     TrainerCommand,
     TrainerRunSummary,
     TrainerSession,
@@ -68,11 +65,24 @@ from .runtime_llm import (
     get_runtime_max_output_tokens,
     get_runtime_max_prompt_tokens,
 )
+from .schemas.shared import RuntimePatientStatus
+from .viewmodels import (
+    BUILDER_VERSION as VIEWMODEL_BUILDER_VERSION,
+    SCHEMA_VERSION as VIEWMODEL_SCHEMA_VERSION,
+    build_scenario_snapshot,
+    build_trainer_agent_view_model,
+    build_trainer_derived_views,
+    build_trainer_rest_view_model,
+    load_trainer_engine_aggregate,
+)
 
 MIN_TICK_INTERVAL = 5
 MAX_TICK_INTERVAL = 60
 DEFAULT_TICK_INTERVAL = 15
 TERMINAL_SESSION_STATUSES = {SessionStatus.COMPLETED, SessionStatus.FAILED}
+RUNTIME_STATE_EXCLUDED_KEYS = frozenset(
+    {"current_snapshot", "scenario_brief", "snapshot_annotations"}
+)
 logger = get_logger(__name__)
 
 VITAL_TYPE_MODEL_MAP = {
@@ -108,6 +118,14 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     return parsed
 
 
+def _sanitize_runtime_state_payload(state: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(state or {}).items()
+        if key not in RUNTIME_STATE_EXCLUDED_KEYS
+    }
+
+
 def build_runtime_state_defaults(
     *,
     directives: str = "",
@@ -122,34 +140,6 @@ def build_runtime_state_defaults(
         "initial_generation_retryable": None,
         "active_elapsed_seconds": 0,
         "active_elapsed_anchor_started_at": None,
-        "scenario_brief": {
-            "read_aloud_brief": (
-                "Initial scenario is generating."
-                if phase == "seeding"
-                else "Scenario brief pending."
-            ),
-            "environment": "",
-            "location_overview": "",
-            "threat_context": "",
-            "evacuation_options": [],
-            "evacuation_time": "",
-            "special_considerations": [],
-        },
-        "current_snapshot": {
-            "causes": [],
-            "problems": [],
-            "recommended_interventions": [],
-            "interventions": [],
-            "assessment_findings": [],
-            "diagnostic_results": [],
-            "resources": [],
-            "disposition": None,
-            "vitals": [],
-            "pulses": [],
-            "patient_status": {},
-            "scenario_brief": None,
-        },
-        "snapshot_annotations": {"patient_status": {}},
         "ai_plan": {
             "summary": "",
             "rationale": "",
@@ -188,22 +178,10 @@ def build_runtime_state_defaults(
     }
     merged = dict(baseline)
     if state:
-        merged.update(state)
-        merged["current_snapshot"] = {
-            **baseline["current_snapshot"],
-            **dict(state.get("current_snapshot") or {}),
-        }
-        merged["snapshot_annotations"] = {
-            **baseline["snapshot_annotations"],
-            **dict(state.get("snapshot_annotations") or {}),
-        }
+        merged.update(_sanitize_runtime_state_payload(state))
         merged["ai_plan"] = {
             **baseline["ai_plan"],
             **dict(state.get("ai_plan") or {}),
-        }
-        merged["scenario_brief"] = {
-            **baseline["scenario_brief"],
-            **dict(state.get("scenario_brief") or {}),
         }
     return merged
 
@@ -246,6 +224,210 @@ def get_runtime_state(session: TrainerSession) -> dict[str, Any]:
         directives=session.initial_directives or "",
         state=dict(session.runtime_state_json or {}),
     )
+
+
+def _current_patient_status_payload(session: TrainerSession) -> dict[str, Any]:
+    existing = (
+        PatientStatusState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    if existing is None:
+        return {}
+    return {
+        "avpu": existing.avpu or None,
+        "respiratory_distress": existing.respiratory_distress,
+        "hemodynamic_instability": existing.hemodynamic_instability,
+        "impending_pneumothorax": existing.impending_pneumothorax,
+        "tension_pneumothorax": existing.tension_pneumothorax,
+    }
+
+
+def _derive_patient_status_truth(
+    *,
+    session: TrainerSession,
+    base_status: dict[str, Any] | None,
+) -> dict[str, Any]:
+    normalized_payload = RuntimePatientStatus.model_validate(base_status or {})
+    active_problems = list(
+        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
+    active_kinds = {problem.kind for problem in active_problems}
+    return {
+        "avpu": normalized_payload.avpu or None,
+        "respiratory_distress": bool(
+            normalized_payload.respiratory_distress
+            or {"respiratory_distress", "tension_pneumothorax", "hypoxia"} & active_kinds
+        ),
+        "hemodynamic_instability": bool(
+            normalized_payload.hemodynamic_instability
+            or {"hemorrhage", "hypoperfusion_shock"} & active_kinds
+        ),
+        "tension_pneumothorax": bool(
+            normalized_payload.tension_pneumothorax or "tension_pneumothorax" in active_kinds
+        ),
+        "impending_pneumothorax": bool(
+            normalized_payload.impending_pneumothorax
+            or ("open_chest_wound" in active_kinds and "tension_pneumothorax" not in active_kinds)
+        ),
+    }
+
+
+def _persist_patient_status_state(
+    *,
+    session: TrainerSession,
+    base_status: dict[str, Any] | None,
+    source: str = EventSource.SYSTEM,
+) -> PatientStatusState:
+    normalized_payload = _derive_patient_status_truth(session=session, base_status=base_status)
+    existing = (
+        PatientStatusState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    if existing is not None:
+        existing_payload = {
+            "avpu": existing.avpu or None,
+            "respiratory_distress": existing.respiratory_distress,
+            "hemodynamic_instability": existing.hemodynamic_instability,
+            "impending_pneumothorax": existing.impending_pneumothorax,
+            "tension_pneumothorax": existing.tension_pneumothorax,
+        }
+        if existing_payload == normalized_payload:
+            return existing
+        _deactivate_event(existing)
+
+    patient_status = PatientStatusState.objects.create(
+        simulation=session.simulation,
+        source=source,
+        supersedes=existing,
+        avpu=normalized_payload.get("avpu") or "",
+        respiratory_distress=bool(normalized_payload.get("respiratory_distress")),
+        hemodynamic_instability=bool(normalized_payload.get("hemodynamic_instability")),
+        impending_pneumothorax=bool(normalized_payload.get("impending_pneumothorax")),
+        tension_pneumothorax=bool(normalized_payload.get("tension_pneumothorax")),
+    )
+    logger.info(
+        "trainerlab.scenario_state.patient_status.updated",
+        session_id=session.id,
+        simulation_id=session.simulation_id,
+        patient_status_state_id=patient_status.id,
+        source=source,
+    )
+    return patient_status
+
+
+def _persist_runtime_state_and_load_aggregate(
+    *,
+    session: TrainerSession,
+    state: dict[str, Any],
+    now: datetime,
+    update_tick_timestamp: bool,
+):
+    session.runtime_state_json = state
+    update_fields = ["runtime_state_json", "modified_at"]
+    if update_tick_timestamp:
+        session.last_ai_tick_at = now
+        update_fields.append("last_ai_tick_at")
+    session.save(update_fields=update_fields)
+    return load_trainer_engine_aggregate(
+        session=session,
+        runtime_state_override=state,
+    )
+
+
+def _emit_runtime_view_events(
+    *,
+    session: TrainerSession,
+    rest_view_model,
+    derived_views,
+    correlation_id: str | None,
+    processed_reasons: list[dict[str, Any]] | None,
+) -> None:
+    runtime_snapshot = derived_views.runtime_snapshot.model_dump(mode="json")
+    scenario_snapshot = derived_views.scenario_snapshot.model_dump(mode="json")
+    metadata = rest_view_model.metadata.model_dump(mode="json")
+
+    emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_SNAPSHOT_UPDATED,
+        payload={
+            "simulation_id": rest_view_model.simulation_id,
+            "session_id": rest_view_model.session_id,
+            "status": rest_view_model.status,
+            "scenario_snapshot": scenario_snapshot,
+            "runtime_snapshot": runtime_snapshot,
+            "metadata": metadata,
+            "processed_reasons": processed_reasons or [],
+        },
+        correlation_id=correlation_id,
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_SNAPSHOT_UPDATED}:"
+            f"{session.id}:{derived_views.runtime_snapshot.state_revision}"
+        ),
+    )
+
+    emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_PLAN_UPDATED,
+        payload={
+            "simulation_id": rest_view_model.simulation_id,
+            "session_id": rest_view_model.session_id,
+            "status": rest_view_model.status,
+            "runtime_snapshot": runtime_snapshot,
+            "ai_plan": runtime_snapshot["ai_plan"],
+            "metadata": metadata,
+        },
+        correlation_id=correlation_id,
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_PLAN_UPDATED}:"
+            f"{session.id}:{derived_views.runtime_snapshot.state_revision}"
+        ),
+    )
+
+
+def _finalize_runtime_views(
+    *,
+    session: TrainerSession,
+    state: dict[str, Any],
+    correlation_id: str | None = None,
+    processed_reasons: list[dict[str, Any]] | None = None,
+    update_tick_timestamp: bool = False,
+    now: datetime | None = None,
+):
+    now = now or timezone.now()
+    state = build_runtime_state_defaults(
+        directives=session.initial_directives or "",
+        state=state,
+    )
+    if processed_reasons is not None:
+        state["last_processed_runtime_reasons"] = list(processed_reasons)
+        tick_count = sum(1 for reason in processed_reasons if reason.get("reason_kind") == "tick")
+        if tick_count:
+            state["tick_count"] = int(state.get("tick_count", 0) or 0) + tick_count
+
+    state["active_elapsed_seconds"] = get_active_elapsed_seconds(session, state=state, now=now)
+    state["state_revision"] = int(state.get("state_revision", 0) or 0) + 1
+    state["last_runtime_completed_at"] = now.astimezone(UTC).isoformat()
+
+    aggregate = _persist_runtime_state_and_load_aggregate(
+        session=session,
+        state=state,
+        now=now,
+        update_tick_timestamp=update_tick_timestamp,
+    )
+    derived_views = build_trainer_derived_views(aggregate)
+    rest_view_model = build_trainer_rest_view_model(aggregate, derived_views=derived_views)
+    _emit_runtime_view_events(
+        session=session,
+        rest_view_model=rest_view_model,
+        derived_views=derived_views,
+        correlation_id=correlation_id,
+        processed_reasons=processed_reasons,
+    )
+    return aggregate, derived_views, rest_view_model
 
 
 def get_active_elapsed_seconds(
@@ -339,6 +521,7 @@ def emit_domain_runtime_event(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RuntimeEvent:
+    """Emit a domain-centric event payload from a concrete TrainerLab state object."""
     return emit_runtime_event(
         session=session,
         event_type=event_type,
@@ -494,239 +677,6 @@ def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
         "timestamp": _iso_or_none(obj.timestamp),
         "source": obj.source,
     }
-
-
-def project_current_snapshot(
-    session: TrainerSession,
-    *,
-    state: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    state = (
-        get_runtime_state(session)
-        if state is None
-        else build_runtime_state_defaults(
-            directives=session.initial_directives or "",
-            state=state,
-        )
-    )
-
-    recommendation_objects = list(
-        RecommendedIntervention.objects.select_related(
-            "target_problem",
-            "target_injury",
-            "target_illness",
-        )
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    )
-    recommendations = [serialize_recommendation_summary(item) for item in recommendation_objects]
-
-    problems = list(
-        Problem.objects.select_related("cause_injury", "cause_illness")
-        .prefetch_related("recommended_interventions")
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    )
-    problem_items = [_serialize_condition(p, p.cause) for p in problems]
-
-    injury_objects = list(
-        Injury.objects.prefetch_related("recommended_interventions")
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    )
-    illness_objects = list(
-        Illness.objects.prefetch_related("recommended_interventions")
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    )
-    causes = [
-        serialize_cause_snapshot(item)
-        for item in sorted(
-            [*injury_objects, *illness_objects],
-            key=lambda item: (item.timestamp, item.id),
-        )
-    ]
-
-    interventions = [
-        _serialize_intervention(
-            item,
-            intervention_effects=dict(state.get("intervention_effects") or {}),
-        )
-        for item in Intervention.objects.select_related("target_problem")
-        .filter(
-            simulation=session.simulation,
-            is_active=True,
-        )
-        .order_by("timestamp", "id")
-    ]
-
-    assessment_findings = [
-        serialize_assessment_finding_summary(item)
-        for item in AssessmentFinding.objects.select_related("target_problem")
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    ]
-
-    diagnostic_results = [
-        serialize_diagnostic_result_summary(item)
-        for item in DiagnosticResult.objects.select_related("target_problem")
-        .filter(simulation=session.simulation, is_active=True)
-        .order_by("timestamp", "id")
-    ]
-
-    resources = [
-        serialize_resource_state_summary(item)
-        for item in ResourceState.objects.filter(
-            simulation=session.simulation, is_active=True
-        ).order_by("timestamp", "id")
-    ]
-
-    disposition_obj = (
-        DispositionState.objects.filter(simulation=session.simulation, is_active=True)
-        .order_by("-timestamp", "-id")
-        .first()
-    )
-    disposition = (
-        serialize_disposition_state_summary(disposition_obj)
-        if disposition_obj is not None
-        else None
-    )
-
-    vitals: list[dict[str, Any]] = []
-    for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
-        current = (
-            model.objects.filter(
-                simulation=session.simulation,
-                is_active=True,
-            )
-            .order_by("-timestamp", "-id")
-            .first()
-        )
-        if current is not None:
-            vitals.append(_serialize_vital(vital_type, current))
-
-    scenario_brief_data: dict[str, Any] = {}
-    scenario_brief_obj = (
-        ScenarioBrief.objects.filter(
-            simulation=session.simulation,
-            is_active=True,
-        )
-        .order_by("-timestamp", "-id")
-        .first()
-    )
-    if scenario_brief_obj is not None:
-        scenario_brief_data = {
-            "read_aloud_brief": scenario_brief_obj.read_aloud_brief,
-            "environment": scenario_brief_obj.environment,
-            "location_overview": scenario_brief_obj.location_overview,
-            "threat_context": scenario_brief_obj.threat_context,
-            "evacuation_options": scenario_brief_obj.evacuation_options,
-            "evacuation_time": scenario_brief_obj.evacuation_time,
-            "special_considerations": scenario_brief_obj.special_considerations,
-        }
-
-    pulses: list[dict[str, Any]] = [
-        _serialize_pulse(obj)
-        for obj in PulseAssessment.objects.filter(
-            simulation=session.simulation,
-            is_active=True,
-        ).order_by("location")
-    ]
-
-    return {
-        "causes": causes,
-        "problems": problem_items,
-        "recommended_interventions": recommendations,
-        "interventions": interventions,
-        "assessment_findings": assessment_findings,
-        "diagnostic_results": diagnostic_results,
-        "resources": resources,
-        "disposition": disposition,
-        "vitals": vitals,
-        "pulses": pulses,
-        "patient_status": dict(
-            (state.get("snapshot_annotations") or {}).get("patient_status") or {}
-        ),
-        "scenario_brief": scenario_brief_data,
-    }
-
-
-def refresh_runtime_projection(
-    *,
-    session: TrainerSession,
-    correlation_id: str | None = None,
-    ai_plan: dict[str, Any] | None = None,
-    rationale_notes: list[str] | None = None,
-    snapshot_annotations: dict[str, Any] | None = None,
-    processed_reasons: list[dict[str, Any]] | None = None,
-    update_tick_timestamp: bool = False,
-) -> dict[str, Any]:
-    now = timezone.now()
-    state = get_runtime_state(session)
-
-    if snapshot_annotations is not None:
-        state["snapshot_annotations"] = {
-            **dict(state.get("snapshot_annotations") or {}),
-            **snapshot_annotations,
-        }
-    if ai_plan is not None:
-        state["ai_plan"] = {
-            **dict(state.get("ai_plan") or {}),
-            **ai_plan,
-        }
-    if rationale_notes is not None:
-        state["ai_rationale_notes"] = list(rationale_notes)
-    if processed_reasons is not None:
-        state["last_processed_runtime_reasons"] = list(processed_reasons)
-        tick_count = sum(1 for reason in processed_reasons if reason.get("reason_kind") == "tick")
-        if tick_count:
-            state["tick_count"] = int(state.get("tick_count", 0) or 0) + tick_count
-
-    state["active_elapsed_seconds"] = get_active_elapsed_seconds(session, state=state, now=now)
-    snapshot = project_current_snapshot(session, state=state)
-    state["current_snapshot"] = snapshot
-    # Promote scenario_brief from snapshot to top-level state for backward compat
-    if snapshot.get("scenario_brief"):
-        state["scenario_brief"] = snapshot["scenario_brief"]
-    state["state_revision"] = int(state.get("state_revision", 0) or 0) + 1
-    state["last_runtime_completed_at"] = now.astimezone(UTC).isoformat()
-
-    session.runtime_state_json = state
-    update_fields = ["runtime_state_json", "modified_at"]
-    if update_tick_timestamp:
-        session.last_ai_tick_at = now
-        update_fields.append("last_ai_tick_at")
-    session.save(update_fields=update_fields)
-
-    emit_runtime_event(
-        session=session,
-        event_type=outbox_events.SIMULATION_SNAPSHOT_UPDATED,
-        payload={
-            "state_revision": state["state_revision"],
-            "active_elapsed_seconds": state["active_elapsed_seconds"],
-            "scenario_brief": state["scenario_brief"],
-            "current_snapshot": state["current_snapshot"],
-            "processed_reasons": processed_reasons or [],
-        },
-        correlation_id=correlation_id,
-        idempotency_key=(
-            f"{outbox_events.SIMULATION_SNAPSHOT_UPDATED}:{session.id}:{state['state_revision']}"
-        ),
-    )
-
-    emit_runtime_event(
-        session=session,
-        event_type=outbox_events.SIMULATION_PLAN_UPDATED,
-        payload={
-            "state_revision": state["state_revision"],
-            "ai_plan": state["ai_plan"],
-        },
-        correlation_id=correlation_id,
-        idempotency_key=(
-            f"{outbox_events.SIMULATION_PLAN_UPDATED}:{session.id}:{state['state_revision']}"
-        ),
-    )
-    return state
 
 
 def create_session(
@@ -1354,6 +1304,35 @@ def _persist_runtime_request_metrics(*, call_id: str, metrics: dict[str, Any]) -
         call.save(update_fields=["context"])
 
 
+def _persist_trainer_agent_view_model_record(
+    *,
+    session_id: int,
+    state_revision: int,
+    correlation_id: str | None,
+    payload: dict[str, Any],
+) -> int:
+    record = TrainerAgentViewModelRecord.objects.create(
+        session_id=session_id,
+        state_revision=state_revision,
+        correlation_id=correlation_id or "",
+        builder_version=VIEWMODEL_BUILDER_VERSION,
+        schema_version=VIEWMODEL_SCHEMA_VERSION,
+        payload_json=payload,
+    )
+    logger.info(
+        "trainerlab.agent_view_model.persisted",
+        session_id=session_id,
+        correlation_id=correlation_id,
+        agent_view_model_record_id=record.id,
+        state_revision=state_revision,
+    )
+    return record.id
+
+
+def _attach_service_call_to_agent_view_model_record(*, record_id: int, call_id: str) -> None:
+    TrainerAgentViewModelRecord.objects.filter(pk=record_id).update(service_call_id=call_id)
+
+
 def _normalize_runtime_request_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(metrics)
     if normalized.get("service_call_id") is not None:
@@ -1398,7 +1377,13 @@ def _emit_runtime_failure_event(
 def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
     from .orca.services import GenerateTrainerRuntimeTurn
 
-    session = TrainerSession.objects.select_related("simulation").get(pk=batch["session_id"])
+    aggregate = batch["aggregate"]
+    session = aggregate.session
+    trainer_agent_view_model = build_trainer_agent_view_model(
+        aggregate,
+        reasons=list(batch["reasons"]),
+    )
+    trainer_agent_view_model_payload = trainer_agent_view_model.model_dump(mode="json")
     request_model = GenerateTrainerRuntimeTurn(
         context={
             "simulation_id": batch["simulation_id"],
@@ -1408,7 +1393,7 @@ def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
     budget_result = enforce_runtime_token_budget(
         service_cls=GenerateTrainerRuntimeTurn,
         session=session,
-        current_snapshot=batch["current_snapshot"],
+        scenario_snapshot=trainer_agent_view_model_payload["scenario_snapshot"],
         runtime_reasons=batch["reasons"],
         active_elapsed_seconds=batch["active_elapsed_seconds"],
         user_message=RUNTIME_TURN_USER_MESSAGE,
@@ -1421,10 +1406,12 @@ def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
         **budget_result.metrics,
         "correlation_id": batch.get("correlation_id"),
         "service_call_id": None,
+        "trainer_agent_view_model_record_id": None,
     }
     return {
         **batch,
         "request_model": request_model,
+        "trainer_agent_view_model": trainer_agent_view_model_payload,
         "runtime_llm_context": budget_result.runtime_llm_context,
         "runtime_reasons": budget_result.runtime_reasons,
         "runtime_request_metrics": metrics,
@@ -1489,12 +1476,16 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
+        aggregate = load_trainer_engine_aggregate(
+            session=session,
+            runtime_state_override=state,
+        )
         return {
             "session_id": session.id,
             "simulation_id": session.simulation_id,
             "reasons": reasons,
             "active_elapsed_seconds": active_elapsed_seconds,
-            "current_snapshot": project_current_snapshot(session, state=state),
+            "aggregate": aggregate,
             "correlation_id": next(
                 (
                     reason.get("correlation_id")
@@ -1540,6 +1531,7 @@ def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
     context = {
         "simulation_id": batch["simulation_id"],
         "session_id": batch["session_id"],
+        "trainer_agent_view_model": batch["trainer_agent_view_model"],
         "runtime_reasons": batch["runtime_reasons"],
         "active_elapsed_seconds": batch["active_elapsed_seconds"],
         "runtime_llm_context": batch["runtime_llm_context"],
@@ -1548,6 +1540,7 @@ def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
             "max_tokens": get_runtime_max_output_tokens(),
         },
         "correlation_id": batch.get("correlation_id"),
+        "trainer_agent_view_model_record_id": batch.get("trainer_agent_view_model_record_id"),
     }
     context.pop("previous_response_id", None)
     context.pop("previous_provider_response_id", None)
@@ -1591,6 +1584,19 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
 
     try:
         request_batch = _build_runtime_request_batch(batch)
+        agent_view_model_record_id = _persist_trainer_agent_view_model_record(
+            session_id=session_id,
+            state_revision=int(
+                request_batch["trainer_agent_view_model"]["runtime_snapshot"]["state_revision"] or 0
+            ),
+            correlation_id=batch.get("correlation_id"),
+            payload=request_batch["trainer_agent_view_model"],
+        )
+        request_batch["trainer_agent_view_model_record_id"] = agent_view_model_record_id
+        request_batch["runtime_request_metrics"] = {
+            **request_batch["runtime_request_metrics"],
+            "trainer_agent_view_model_record_id": agent_view_model_record_id,
+        }
         _update_runtime_request_profile(
             session_id=session_id,
             metrics=request_batch["runtime_request_metrics"],
@@ -1658,6 +1664,10 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
                 "service_call_id": call_id,
             }
             try:
+                _attach_service_call_to_agent_view_model_record(
+                    record_id=agent_view_model_record_id,
+                    call_id=call_id,
+                )
                 _persist_runtime_request_metrics(call_id=call_id, metrics=request_metrics)
                 _update_runtime_request_profile(session_id=session_id, metrics=request_metrics)
             except Exception:
@@ -2515,50 +2525,6 @@ def recompute_active_recommendations(
         )
 
 
-def _derive_patient_status_annotations(
-    *,
-    session: TrainerSession,
-    base_status: dict[str, Any] | None,
-) -> dict[str, Any]:
-    patient_status = dict(base_status or {})
-    active_problems = list(
-        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
-            "timestamp", "id"
-        )
-    )
-    active_kinds = {problem.kind for problem in active_problems}
-    patient_status["respiratory_distress"] = bool(
-        patient_status.get("respiratory_distress")
-        or {"respiratory_distress", "tension_pneumothorax", "hypoxia"} & active_kinds
-    )
-    patient_status["hemodynamic_instability"] = bool(
-        patient_status.get("hemodynamic_instability")
-        or {"hemorrhage", "hypoperfusion_shock"} & active_kinds
-    )
-    patient_status["tension_pneumothorax"] = bool(
-        patient_status.get("tension_pneumothorax") or "tension_pneumothorax" in active_kinds
-    )
-    patient_status["impending_pneumothorax"] = bool(
-        patient_status.get("impending_pneumothorax")
-        or ("open_chest_wound" in active_kinds and "tension_pneumothorax" not in active_kinds)
-    )
-    if not patient_status.get("narrative"):
-        if "hypoperfusion_shock" in active_kinds:
-            patient_status["narrative"] = (
-                "Patient is decompensating with evolving shock physiology."
-            )
-        elif "tension_pneumothorax" in active_kinds:
-            patient_status["narrative"] = (
-                "Patient is in critical respiratory compromise with tension physiology."
-            )
-        elif "infectious_process" in active_kinds:
-            patient_status["narrative"] = "Patient remains ill with an active infectious process."
-        else:
-            patient_status["narrative"] = "Patient status is being actively reassessed."
-    patient_status.setdefault("teaching_flags", [])
-    return patient_status
-
-
 def _apply_vital_change(
     *,
     session: TrainerSession,
@@ -2858,9 +2824,11 @@ def apply_runtime_turn_output(
                 }
             )
         # Deterministic step 4: narrative worker runs last and consumes canonical state.
-        patient_status = _derive_patient_status_annotations(
+        patient_status = _derive_patient_status_truth(
             session=session,
-            base_status=dict(output_payload.get("patient_status") or {}),
+            base_status=dict(
+                output_payload.get("patient_status") or _current_patient_status_payload(session)
+            ),
         )
         if output_payload.get("patient_status") or output_payload.get("instructor_intent"):
             if "narrative" not in touched_domains:
@@ -2876,23 +2844,12 @@ def apply_runtime_turn_output(
         state["currently_processing_reasons"] = []
         state["last_runtime_error"] = ""
         state["llm_conditions_check"] = list(output_payload.get("llm_conditions_check") or [])
-        state["snapshot_annotations"] = {
-            **dict(state.get("snapshot_annotations") or {}),
-            "patient_status": patient_status,
+        state["ai_plan"] = {
+            **dict(state.get("ai_plan") or {}),
+            **dict(output_payload.get("instructor_intent") or {}),
         }
-        session.runtime_state_json = state
-        session.save(update_fields=["runtime_state_json", "modified_at"])
-
-        refreshed = refresh_runtime_projection(
-            session=session,
-            correlation_id=correlation_id,
-            ai_plan=dict(output_payload.get("instructor_intent") or {}),
-            rationale_notes=list(output_payload.get("rationale_notes") or []),
-            snapshot_annotations={"patient_status": patient_status},
-            processed_reasons=processed_reasons,
-            update_tick_timestamp=True,
-        )
-        debug = dict(refreshed.get("control_plane_debug") or {})
+        state["ai_rationale_notes"] = list(output_payload.get("rationale_notes") or [])
+        debug = dict(state.get("control_plane_debug") or {})
         debug["current_step_index"] = 3
         debug["currently_processing_reasons"] = []
         debug["last_processed_reasons"] = processed_reasons
@@ -2900,34 +2857,32 @@ def apply_runtime_turn_output(
             **dict(debug.get("status_flags") or {}),
             "runtime_processing": False,
         }
-        refreshed["control_plane_debug"] = debug
-        session.runtime_state_json = refreshed
-        session.save(update_fields=["runtime_state_json", "modified_at"])
+        state["control_plane_debug"] = debug
+        _persist_patient_status_state(
+            session=session,
+            base_status=patient_status,
+            source=EventSource.AI,
+        )
+
+        aggregate, _derived_views, _rest_view_model = _finalize_runtime_views(
+            session=session,
+            state=state,
+            correlation_id=correlation_id,
+            processed_reasons=processed_reasons,
+            update_tick_timestamp=True,
+        )
         record_patch_evaluation_summary(
             session=session,
             correlation_id=correlation_id,
             summary=evaluation_summary,
         )
 
+    refreshed = aggregate.runtime_state
+
     if refreshed.get("pending_runtime_reasons"):
         _schedule_runtime_turn(session_id)
 
     return refreshed
-
-
-def refresh_projection_from_domain_state(
-    *,
-    simulation_id: int,
-    correlation_id: str | None = None,
-) -> dict[str, Any]:
-    session = (
-        TrainerSession.objects.select_related("simulation")
-        .filter(simulation_id=simulation_id)
-        .first()
-    )
-    if session is None:
-        return {}
-    return refresh_runtime_projection(session=session, correlation_id=correlation_id)
 
 
 def enqueue_summary_debrief(*, session: TrainerSession) -> str | None:
@@ -3294,13 +3249,19 @@ def apply_vitals_progression_output(
         for change in output_payload.get("vitals", []):
             _apply_vital_change(session=session, change=change, correlation_id=correlation_id)
 
-        refreshed = refresh_runtime_projection(
+        _persist_patient_status_state(
             session=session,
+            base_status=_current_patient_status_payload(session),
+            source=EventSource.SYSTEM,
+        )
+        aggregate, _derived_views, _rest_view_model = _finalize_runtime_views(
+            session=session,
+            state=state,
             correlation_id=correlation_id,
             update_tick_timestamp=False,
         )
 
-    return refreshed
+    return aggregate.runtime_state
 
 
 def enqueue_vitals_progression(
@@ -3312,7 +3273,11 @@ def enqueue_vitals_progression(
     from .orca.services import GenerateVitalsProgression
 
     state = get_runtime_state(session)
-    current_snapshot = project_current_snapshot(session, state=state)
+    aggregate = load_trainer_engine_aggregate(
+        session=session,
+        runtime_state_override=state,
+    )
+    scenario_snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
 
     try:
         return GenerateVitalsProgression.task.using(
@@ -3320,7 +3285,7 @@ def enqueue_vitals_progression(
                 "simulation_id": session.simulation_id,
                 "session_id": session.id,
                 "active_elapsed_seconds": get_active_elapsed_seconds(session, state=state),
-                "current_snapshot": current_snapshot,
+                "scenario_snapshot": scenario_snapshot,
                 "runtime_reasons": [{"reason_kind": "manual_vitals_tick"}],
                 "correlation_id": correlation_id,
             },
@@ -3407,7 +3372,12 @@ def update_problem_status(
         idempotency_key=f"{outbox_events.PATIENT_PROBLEM_UPDATED}:manual-status:{created.id}",
     )
 
-    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+    state = get_runtime_state(session)
+    _finalize_runtime_views(
+        session=session,
+        state=state,
+        correlation_id=correlation_id,
+    )
     return created
 
 
@@ -3659,9 +3629,20 @@ def commit_non_ai_mutation_side_effects(
         "disposition",
         "intervention",
         "initial_seed",
+        "scenario_brief",
     }:
         recompute_active_recommendations(session=session, correlation_id=correlation_id)
-    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+    _persist_patient_status_state(
+        session=session,
+        base_status=_current_patient_status_payload(session),
+        source=EventSource.SYSTEM,
+    )
+    state = get_runtime_state(session)
+    _finalize_runtime_views(
+        session=session,
+        state=state,
+        correlation_id=correlation_id,
+    )
     record_patch_evaluation_summary(
         session=session,
         correlation_id=correlation_id,
@@ -3694,7 +3675,7 @@ def update_scenario_brief(
     """
     Edit the scenario brief text fields.
 
-    Creates a new superseding ScenarioBrief event and updates runtime_state_json.
+    Creates a new superseding ScenarioBrief event and refreshes derived views.
     """
     existing = (
         ScenarioBrief.objects.filter(simulation=session.simulation, is_active=True)
@@ -3730,19 +3711,6 @@ def update_scenario_brief(
         special_considerations=merged.get("special_considerations", []),
     )
 
-    state = get_runtime_state(session)
-    state["scenario_brief"] = {
-        "read_aloud_brief": new_brief.read_aloud_brief,
-        "environment": new_brief.environment,
-        "location_overview": new_brief.location_overview,
-        "threat_context": new_brief.threat_context,
-        "evacuation_options": new_brief.evacuation_options,
-        "evacuation_time": new_brief.evacuation_time,
-        "special_considerations": new_brief.special_considerations,
-    }
-    session.runtime_state_json = state
-    session.save(update_fields=["runtime_state_json", "modified_at"])
-
     emit_runtime_event(
         session=session,
         event_type=outbox_events.SIMULATION_BRIEF_UPDATED,
@@ -3759,6 +3727,14 @@ def update_scenario_brief(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"{outbox_events.SIMULATION_BRIEF_UPDATED}:{new_brief.id}",
+    )
+    commit_non_ai_mutation_side_effects(
+        session=session,
+        event_kind="scenario_brief",
+        correlation_id=correlation_id,
+        worker_kind="scenario_brief",
+        domains=["scenario_brief"],
+        source_call_id=None,
     )
     return new_brief
 

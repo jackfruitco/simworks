@@ -617,15 +617,18 @@ class TestSerializePulseEvent:
 
 
 # ---------------------------------------------------------------------------
-# project_current_snapshot includes pulses
+# ScenarioSnapshot includes pulses
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-class TestProjectCurrentSnapshotPulses:
+class TestScenarioSnapshotPulses:
     def test_snapshot_includes_pulses(self, simulation):
         from apps.trainerlab.models import EventSource, PulseAssessment, TrainerSession
-        from apps.trainerlab.services import project_current_snapshot
+        from apps.trainerlab.viewmodels import (
+            build_scenario_snapshot,
+            load_trainer_engine_aggregate,
+        )
 
         session = TrainerSession.objects.create(
             simulation=simulation,
@@ -646,7 +649,9 @@ class TestProjectCurrentSnapshotPulses:
             temperature_description="warm",
         )
 
-        snapshot = project_current_snapshot(session)
+        snapshot = build_scenario_snapshot(
+            load_trainer_engine_aggregate(session=session)
+        ).model_dump(mode="json")
         assert "pulses" in snapshot
         assert len(snapshot["pulses"]) == 1
         assert snapshot["pulses"][0]["location"] == "radial_left"
@@ -654,12 +659,17 @@ class TestProjectCurrentSnapshotPulses:
 
     def test_snapshot_empty_pulses_when_none(self, simulation):
         from apps.trainerlab.models import TrainerSession
-        from apps.trainerlab.services import project_current_snapshot
+        from apps.trainerlab.viewmodels import (
+            build_scenario_snapshot,
+            load_trainer_engine_aggregate,
+        )
 
         session = TrainerSession.objects.create(
             simulation=simulation,
             status="active",
             runtime_state_json={},
         )
-        snapshot = project_current_snapshot(session)
+        snapshot = build_scenario_snapshot(
+            load_trainer_engine_aggregate(session=session)
+        ).model_dump(mode="json")
         assert snapshot["pulses"] == []

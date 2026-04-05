@@ -208,15 +208,18 @@ def serialize_recommendation_summary(obj: RecommendedIntervention) -> dict[str, 
 
 
 def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
-    recommendations = list(
-        getattr(problem, "_prefetched_objects_cache", {}).get("recommended_interventions", [])
+    prefetched_recommendations = getattr(problem, "_prefetched_objects_cache", {}).get(
+        "recommended_interventions"
     )
-    recommendations = [item for item in recommendations if item.is_active]
-    if not recommendations and hasattr(problem, "recommended_interventions"):
+    if prefetched_recommendations is not None:
+        recommendations = [item for item in prefetched_recommendations if item.is_active]
+    elif hasattr(problem, "recommended_interventions"):
         try:
             recommendations = list(problem.recommended_interventions.filter(is_active=True))
         except SynchronousOnlyOperation:
             recommendations = []
+    else:
+        recommendations = []
     return enrich_trainer_payload(
         {
             "problem_id": problem.id,
@@ -253,15 +256,18 @@ def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
 
 
 def serialize_cause_snapshot(cause: Injury | Illness) -> dict[str, Any]:
-    recommended = list(
-        getattr(cause, "_prefetched_objects_cache", {}).get("recommended_interventions", [])
+    prefetched_recommendations = getattr(cause, "_prefetched_objects_cache", {}).get(
+        "recommended_interventions"
     )
-    recommended = [item for item in recommended if item.is_active]
-    if not recommended and hasattr(cause, "recommended_interventions"):
+    if prefetched_recommendations is not None:
+        recommended = [item for item in prefetched_recommendations if item.is_active]
+    elif hasattr(cause, "recommended_interventions"):
         try:
             recommended = list(cause.recommended_interventions.filter(is_active=True))
         except SynchronousOnlyOperation:
             recommended = []
+    else:
+        recommended = []
     return enrich_trainer_payload(
         {
             "id": cause.id,
