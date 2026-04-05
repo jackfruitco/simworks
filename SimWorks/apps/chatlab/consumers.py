@@ -54,6 +54,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        # Some tests instantiate the consumer directly without a Channels ASGI scope.
+        self.scope = getattr(self, "scope", {})
+        self.channel_name = getattr(self, "channel_name", "")
         self.simulation_id: int | None = None
         self.simulation: Simulation | None = None
         self.room_group_name: str | None = None
