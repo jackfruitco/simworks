@@ -2704,7 +2704,7 @@ class TestTrainerLabDictionaries:
             kind="hemorrhage",
             title="Hemorrhage",
             march_category="C",
-            severity="severe",
+            severity="critical",
             anatomical_location=injury.anatomical_location,
         )
         assert problem_resp.status_code == 200
