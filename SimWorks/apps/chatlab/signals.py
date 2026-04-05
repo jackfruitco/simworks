@@ -236,7 +236,9 @@ def handle_ai_response_failed(
             simulation_id=message.simulation_id,
             message_id=message.id,
             status=Message.DeliveryStatus.FAILED,
-            correlation_id=str(call_context.get("correlation_id") or context.get("correlation_id") or "")
+            correlation_id=str(
+                call_context.get("correlation_id") or context.get("correlation_id") or ""
+            )
             or None,
             retryable=retryable,
             error_code=message.delivery_error_code,

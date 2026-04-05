@@ -80,9 +80,7 @@ def list_events(
         queryset = apply_outbox_cursor(queryset, anchor_event)
 
     events = [
-        event
-        for event in list(queryset[: limit + 1])
-        if is_durable_event_type(event.event_type)
+        event for event in list(queryset[: limit + 1]) if is_durable_event_type(event.event_type)
     ]
     has_more = len(events) > limit
     if has_more:

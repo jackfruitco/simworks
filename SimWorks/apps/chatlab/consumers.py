@@ -62,6 +62,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.replay_buffer: dict[str, dict[str, Any]] = {}
         self.deferred_transient_events: list[dict[str, Any]] = []
 
+    @staticmethod
+    def build_envelope(
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        event_id: str | None = None,
+        correlation_id: str | None = None,
+        created_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Compatibility wrapper for legacy tests and callers."""
+        return build_realtime_envelope(
+            event_type,
+            payload,
+            event_id=event_id,
+            correlation_id=correlation_id,
+            created_at=created_at,
+        )
+
     async def connect(self) -> None:
         user = self.scope.get("user")
         user_id = getattr(user, "id", None)
@@ -163,11 +181,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         if inbound.event_type == TYPING_STARTED:
-            await self._handle_typing(started=True, payload=inbound.payload, correlation_id=inbound.correlation_id)
+            await self._handle_typing(
+                started=True, payload=inbound.payload, correlation_id=inbound.correlation_id
+            )
             return
 
         if inbound.event_type == TYPING_STOPPED:
-            await self._handle_typing(started=False, payload=inbound.payload, correlation_id=inbound.correlation_id)
+            await self._handle_typing(
+                started=False, payload=inbound.payload, correlation_id=inbound.correlation_id
+            )
             return
 
         if inbound.event_type == PING:

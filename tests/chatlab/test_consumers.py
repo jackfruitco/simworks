@@ -105,7 +105,7 @@ class TestChatConsumerContract:
         await communicator.disconnect()
 
     async def test_invalid_inbound_payload_returns_structured_error(self):
-        simulation, user = await create_simulation_and_user()
+        _simulation, user = await create_simulation_and_user()
         communicator = WebsocketCommunicator(ChatConsumer.as_asgi(), "/ws/v1/chatlab/")
         communicator.scope["user"] = user
 
