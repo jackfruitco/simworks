@@ -13,6 +13,7 @@ import pytest
 from apps.chatlab.consumers import ChatConsumer
 from apps.common.models import OutboxEvent
 from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
+from apps.common.outbox.outbox import build_canonical_envelope
 
 
 async def create_simulation_and_user(*, in_progress: bool = False):
@@ -218,6 +219,59 @@ class TestChatConsumerContract:
         assert response["payload"]["reason"] == "unknown_last_event_id"
 
         await communicator.disconnect()
+
+    async def test_resume_deduplicates_live_events_buffered_during_replay(self, monkeypatch):
+        simulation, user = await create_simulation_and_user()
+        anchor = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "running", "phase": "warmup"},
+            idempotency_key=f"resume-anchor:{uuid4()}",
+            correlation_id="corr-anchor",
+        )
+        replayed = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "completed", "phase": "done"},
+            idempotency_key=f"resume-replayed:{uuid4()}",
+            correlation_id="corr-replayed",
+        )
+
+        consumer = ChatConsumer()
+        consumer.scope = {"user": user, "headers": [], "scheme": "http"}
+        consumer.simulation_id = simulation.id
+        consumer.simulation = simulation
+        consumer.room_group_name = f"simulation_{simulation.id}"
+
+        sent_envelopes: list[dict] = []
+
+        async def capture_send(envelope):
+            sent_envelopes.append(envelope)
+
+        consumer._send_envelope = capture_send
+
+        async def fake_get_events_after_event(*, simulation_id: int, last_event_id):
+            await consumer.outbox_event(
+                {
+                    "type": "outbox.event",
+                    "event": build_canonical_envelope(replayed),
+                }
+            )
+            return [replayed]
+
+        monkeypatch.setattr(
+            "apps.chatlab.consumers.get_events_after_event", fake_get_events_after_event
+        )
+
+        replay_ok, replay_count = await consumer._replay_after_event_id(
+            last_event_id=str(anchor.id),
+            correlation_id="corr-resume",
+            event_type="session.resume",
+        )
+
+        assert replay_ok is True
+        assert replay_count == 1
+        assert [envelope["event_id"] for envelope in sent_envelopes] == [str(replayed.id)]
 
     async def test_live_durable_event_delivery_uses_canonical_envelope(self):
         simulation, user = await create_simulation_and_user()

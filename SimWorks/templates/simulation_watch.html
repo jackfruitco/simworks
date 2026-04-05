@@ -584,6 +584,7 @@
 
         connect() {
           if (REALTIME_TRANSPORT === 'sse') {
+            // TrainerLab admin watch keeps using SSE. ChatLab always passes websocket.
             this.connectSSE();
             return;
           }
@@ -623,6 +624,7 @@
         },
 
         connectWebSocket() {
+          // ChatLab admin watch uses the same strict WebSocket session protocol as the product UI.
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           const socket = new WebSocket(`${protocol}//${window.location.host}${STREAM_URL}`);
           this._connection = socket;

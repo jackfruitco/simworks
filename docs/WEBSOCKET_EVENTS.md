@@ -235,6 +235,8 @@ MedSim uses a reliable event delivery pattern:
 
 WebSocket delivery is not the source of truth. The API remains authoritative.
 
+`last_event_id` always refers to the replayable ChatLab durable event stream, which is the same event space exposed by `GET /api/v1/simulations/{id}/events/` and `SimulationOut.latest_event_id`.
+
 ## Session Protocol
 
 Inbound client messages must use:
@@ -267,3 +269,8 @@ Server lifecycle and transient events:
 - `pong`
 
 `typing.started`, `typing.stopped`, `ping`, and `pong` are transient and are never replayed.
+
+Lifecycle ordering is intentional:
+
+- Fresh connect: `session.ready`, then live tail.
+- Resume connect: replay durable events strictly after `last_event_id`, then `session.resumed`, then live tail.

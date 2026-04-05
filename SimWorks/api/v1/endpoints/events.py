@@ -59,6 +59,7 @@ def list_events(
     _require_chatlab_access(request)
     user = request.auth
     get_simulation_for_user(simulation_id, user, request=request)
+    anchor_found: bool | None = None
 
     queryset = order_outbox_queryset(
         filter_replayable_outbox_queryset(
@@ -72,6 +73,14 @@ def list_events(
         try:
             parsed_last_event_id = parse_event_id(last_event_id)
         except Exception as exc:
+            logger.warning(
+                "chatlab.events.replay_invalid_anchor",
+                simulation_id=simulation_id,
+                user_id=getattr(user, "id", None),
+                last_event_id=last_event_id,
+                anchor_found=False,
+                page_limit=limit,
+            )
             raise HttpError(400, "Invalid last_event_id: must be a valid UUID") from exc
 
         anchor_event = get_replayable_outbox_event_sync(
@@ -79,7 +88,16 @@ def list_events(
             event_id=parsed_last_event_id,
         )
         if anchor_event is None:
+            logger.warning(
+                "chatlab.events.replay_unknown_anchor",
+                simulation_id=simulation_id,
+                user_id=getattr(user, "id", None),
+                last_event_id=last_event_id,
+                anchor_found=False,
+                page_limit=limit,
+            )
             raise HttpError(400, "Unknown last_event_id for this simulation")
+        anchor_found = True
         queryset = apply_outbox_cursor(queryset, anchor_event)
 
     events = list(queryset[: limit + 1])
@@ -132,6 +150,8 @@ def list_events(
         simulation_id=simulation_id,
         user_id=getattr(user, "id", None),
         last_event_id=last_event_id,
+        anchor_found=anchor_found,
+        page_limit=limit,
         returned=len(items),
         has_more=has_more,
         next_event_id=next_event_id,

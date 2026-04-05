@@ -34,7 +34,8 @@ class EventEnvelope(BaseModel):
     ---------------------
     Bootstrap responses include a durable event anchor field:
 
-    * **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``)
+    * **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),
+      which is the newest replayable ChatLab durable event ID
     * **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``
       (``GET /trainerlab/simulations/{id}/state/``)
 

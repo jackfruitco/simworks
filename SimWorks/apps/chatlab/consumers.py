@@ -326,6 +326,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             correlation_id=inbound.correlation_id,
         )
 
+        # Fresh connects announce readiness before any live tail events.
+        # Resume flows complete durable replay first, then emit session.resumed,
+        # then flush any transient live events buffered during replay.
         self.session_established = True
         await self._send_envelope(lifecycle_envelope)
 
@@ -383,6 +386,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reason="malformed_last_event_id",
                 last_event_id=last_event_id,
                 correlation_id=correlation_id,
+                anchor_found=False,
             )
             return False, 0
 
@@ -395,6 +399,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reason="unknown_last_event_id",
                 last_event_id=last_event_id,
                 correlation_id=correlation_id,
+                anchor_found=False,
             )
             return False, 0
 
@@ -411,6 +416,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             channel_name=self.channel_name,
             room_group_name=self.room_group_name,
             last_event_id=last_event_id,
+            anchor_found=True,
+            anchor_event_id=str(anchor_event.id),
             reason=event_type,
         )
 
@@ -611,6 +618,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         reason: str,
         last_event_id: str,
         correlation_id: str | None,
+        anchor_found: bool | None = None,
     ) -> None:
         logger.warning(
             "chatlab.ws.resync_required",
@@ -621,6 +629,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             channel_name=self.channel_name,
             room_group_name=self.room_group_name,
             last_event_id=last_event_id,
+            anchor_found=anchor_found,
             reason=reason,
         )
         await self._send_envelope(

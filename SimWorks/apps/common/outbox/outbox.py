@@ -238,7 +238,7 @@ def order_outbox_queryset(queryset):
 
 
 def filter_replayable_outbox_queryset(queryset):
-    """Restrict a queryset to replayable ChatLab durable events."""
+    """Restrict a queryset to the replayable ChatLab durable event space."""
     return queryset.filter(event_type__in=event_types.canonical_event_types())
 
 
@@ -314,7 +314,11 @@ async def get_latest_event_id(
 ) -> str | None:
     """Async version of :func:`get_latest_event_id_sync`."""
 
-    return await get_latest_cursor(simulation_id, event_type_prefix=event_type_prefix)
+    @sync_to_async
+    def _query():
+        return get_latest_event_id_sync(simulation_id, event_type_prefix=event_type_prefix)
+
+    return await _query()
 
 
 async def poke_drain() -> None:

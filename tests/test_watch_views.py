@@ -304,6 +304,7 @@ def test_trainerlab_watch_view_renders_truth_snapshot_and_cache_sections(
     )
 
     assert response.status_code == 200
+    assert response.context["realtime_transport"] == "sse"
     assert response.context["watch_detail_partial"] == "trainerlab/partials/watch_details.html"
     assert response.context["trainer_watch_snapshot_cache_json"]
     content = response.content.decode()

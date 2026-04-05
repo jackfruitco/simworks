@@ -143,6 +143,7 @@ def build_watch_page_context(
     can_go_to_simulation: bool,
     go_to_simulation_url: str,
 ) -> dict[str, Any]:
+    """Build shared admin watch context with an explicit transport selection."""
     if realtime_transport not in {"websocket", "sse"}:
         raise ValueError(f"Unsupported realtime transport: {realtime_transport}")
 

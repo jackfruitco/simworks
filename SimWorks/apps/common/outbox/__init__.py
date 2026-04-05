@@ -11,10 +11,10 @@ Public API:
     poke_drain_sync()          - Trigger immediate delivery (sync)
     build_canonical_envelope() - Build transport envelope from outbox event
     build_ws_envelope()        - Alias for build_canonical_envelope (compat)
-    get_latest_cursor_sync()   - Latest outbox cursor for a simulation (sync)
-    get_latest_cursor()        - Latest outbox cursor for a simulation (async)
-    get_latest_event_id_sync() - Latest durable event ID for a simulation (sync)
-    get_latest_event_id()      - Latest durable event ID for a simulation (async)
+    get_latest_cursor_sync()   - Latest raw outbox cursor for a simulation (sync)
+    get_latest_cursor()        - Latest raw outbox cursor for a simulation (async)
+    get_latest_event_id_sync() - Latest replayable ChatLab durable event ID (sync)
+    get_latest_event_id()      - Latest replayable ChatLab durable event ID (async)
     get_events_for_simulation() - Fetch events for catch-up API
 
 Usage:
