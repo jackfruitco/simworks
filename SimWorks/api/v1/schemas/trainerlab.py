@@ -398,7 +398,7 @@ class RuntimeProblemStateOut(BaseModel):
     anatomical_location: str | None = None
     laterality: str | None = None
     status: Literal["active", "treated", "controlled", "resolved"]
-    previous_status: str = ""
+    previous_status: str | None = None
     treated_at: str | None = None
     controlled_at: str | None = None
     resolved_at: str | None = None
@@ -412,6 +412,14 @@ class RuntimeProblemStateOut(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
     timestamp: str | None = None
+
+    @field_validator("previous_status", mode="before")
+    @classmethod
+    def normalize_previous_status(cls, v: object) -> str | None:
+        _VALID = {"active", "treated", "controlled", "resolved"}
+        if isinstance(v, str) and v in _VALID:
+            return v
+        return None
 
 
 class RuntimeInterventionStateOut(BaseModel):

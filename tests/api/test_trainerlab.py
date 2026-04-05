@@ -2668,6 +2668,61 @@ class TestTrainerLabDictionaries:
             actual_pairs = {(item["code"], item["label"]) for item in data[key]}
             assert actual_pairs == expected_pairs
 
+    def test_state_endpoint_emits_null_previous_status_for_unset_problem(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        """A problem with previous_status='' (never transitioned) must emit null,
+        not an empty string, so the iOS ProblemLifecycleState enum can decode safely."""
+        from apps.trainerlab.models import Injury, Problem
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="state-prev-status-null-session")
+        simulation_id = session["simulation_id"]
+
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="state-prev-status-null-injury",
+            injury_location="TLA",
+            injury_kind="GSW",
+            injury_description="GSW to the left arm",
+        )
+        assert injury_resp.status_code == 200
+
+        injury = Injury.objects.get(
+            simulation_id=simulation_id, injury_description="GSW to the left arm"
+        )
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="state-prev-status-null-problem",
+            cause_kind="injury",
+            cause_id=injury.id,
+            kind="hemorrhage",
+            title="Hemorrhage",
+            march_category="C",
+            severity="severe",
+            anatomical_location=injury.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+
+        # Force previous_status to empty string to simulate the problematic state
+        Problem.objects.filter(simulation_id=simulation_id, kind="hemorrhage").update(
+            previous_status=""
+        )
+
+        response = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/")
+        assert response.status_code == 200
+        body = response.json()
+
+        problems = body["scenario_snapshot"]["problems"]
+        assert len(problems) >= 1
+        hemorrhage = next(p for p in problems if p["kind"] == "hemorrhage")
+        assert hemorrhage["previous_status"] is None
+
 
 @pytest.mark.django_db
 class TestTrainerLabPresets:
