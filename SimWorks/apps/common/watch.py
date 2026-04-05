@@ -134,6 +134,8 @@ def build_watch_page_context(
     outbox_events,
     service_calls_qs,
     stream_url: str,
+    realtime_transport: str,
+    realtime_session_payload: dict[str, Any] | None = None,
     service_calls_url: str,
     watch_url: str,
     back_url: str,
@@ -141,6 +143,10 @@ def build_watch_page_context(
     can_go_to_simulation: bool,
     go_to_simulation_url: str,
 ) -> dict[str, Any]:
+    """Build shared admin watch context with an explicit transport selection."""
+    if realtime_transport not in {"websocket", "sse"}:
+        raise ValueError(f"Unsupported realtime transport: {realtime_transport}")
+
     context = build_watch_service_calls_context(
         request=request,
         service_calls_qs=service_calls_qs,
@@ -152,6 +158,11 @@ def build_watch_page_context(
             "simulation": simulation,
             "outbox_events_json": dump_outbox_events_json(outbox_events),
             "stream_url": stream_url,
+            "realtime_transport": realtime_transport,
+            "realtime_session_payload_json": json.dumps(
+                realtime_session_payload or {},
+                cls=DjangoJSONEncoder,
+            ),
             "back_url": back_url,
             "lab_name": lab_name,
             "can_go_to_simulation": can_go_to_simulation,

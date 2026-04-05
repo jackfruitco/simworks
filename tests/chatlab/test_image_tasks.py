@@ -122,7 +122,6 @@ def test_generate_patient_image_task_success(source_message):
     assert event.payload["message_id"] == image_message.id
     assert event.payload["source_message_id"] == source_message.id
     assert len(event.payload["media_list"]) == 1
-    assert len(event.payload["mediaList"]) == 1
 
 
 @pytest.mark.django_db

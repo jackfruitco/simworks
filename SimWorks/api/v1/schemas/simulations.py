@@ -15,9 +15,8 @@ class SimulationOut(BaseModel):
     """Output schema for a simulation.
 
     This is the primary bootstrap response for ChatLab clients.  After loading
-    this snapshot, the client should connect the SSE event stream using
-    ``latest_event_cursor`` so only events created *after* this point are
-    delivered.
+    this snapshot, the client should open the ChatLab WebSocket and send
+    ``session.hello`` with ``latest_event_id`` as the optional replay anchor.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -66,13 +65,13 @@ class SimulationOut(BaseModel):
         default=None,
         description="Whether the failed simulation can be retried by the user",
     )
-    latest_event_cursor: str | None = Field(
+    latest_event_id: str | None = Field(
         default=None,
         description=(
-            "Cursor (UUID) of the most recent outbox event for this simulation. "
-            "Pass this value as the ``cursor`` parameter when connecting to the "
-            "SSE event stream (``/events/stream/``) so only events created after "
-            "this point are delivered.  ``null`` when no events exist yet."
+            "Event ID (UUID) of the most recent replayable ChatLab durable event for this simulation. "
+            "Pass this value as ``last_event_id`` in the ChatLab ``session.hello`` or "
+            "``session.resume`` payload so the server can replay durable events strictly "
+            "after this point. ``null`` when no durable events exist yet."
         ),
     )
 
@@ -126,7 +125,7 @@ class SimulationEndResponse(BaseModel):
 
 def simulation_to_out(sim) -> SimulationOut:
     """Convert a Simulation model instance to SimulationOut schema."""
-    from apps.common.outbox.outbox import get_latest_cursor_sync
+    from apps.common.outbox.outbox import get_latest_event_id_sync
 
     raw_status = getattr(sim, "status", None)
     if raw_status in {"completed", "timed_out", "failed", "canceled"}:
@@ -167,5 +166,5 @@ def simulation_to_out(sim) -> SimulationOut:
         terminal_reason_text=getattr(sim, "terminal_reason_text", "") or "",
         terminal_at=getattr(sim, "terminal_at", None),
         retryable=retryable,
-        latest_event_cursor=get_latest_cursor_sync(sim.pk),
+        latest_event_id=get_latest_event_id_sync(sim.pk),
     )

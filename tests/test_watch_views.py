@@ -180,6 +180,8 @@ def test_chatlab_watch_view_uses_query_params_for_initial_state(
     assert watch_state.events_filter == "simulation"
     assert watch_state.events_q == "pulse"
     assert watch_state.events_sort == "asc"
+    assert response.context["realtime_transport"] == "websocket"
+    assert response.context["stream_url"] == "/ws/v1/chatlab/"
 
 
 @pytest.mark.django_db
@@ -302,6 +304,7 @@ def test_trainerlab_watch_view_renders_truth_snapshot_and_cache_sections(
     )
 
     assert response.status_code == 200
+    assert response.context["realtime_transport"] == "sse"
     assert response.context["watch_detail_partial"] == "trainerlab/partials/watch_details.html"
     assert response.context["trainer_watch_snapshot_cache_json"]
     content = response.content.decode()

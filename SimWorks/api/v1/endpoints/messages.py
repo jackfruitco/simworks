@@ -41,6 +41,7 @@ def _emit_message_status(
     simulation_id: int,
     message_id: int,
     status: str,
+    correlation_id: str | None = None,
     retryable: bool | None = None,
     error_code: str | None = None,
     error_text: str | None = None,
@@ -62,13 +63,18 @@ def _emit_message_status(
             f"{outbox_events.MESSAGE_DELIVERY_UPDATED}:"
             f"{message_id}:{status}:{retryable}:{error_code or 'none'}"
         ),
+        correlation_id=correlation_id,
     )
     if event:
         poke_drain_sync()
 
 
 def _mark_message_failed(
-    message_id: int, error_code: str, error_text: str, retryable: bool = True
+    message_id: int,
+    error_code: str,
+    error_text: str,
+    retryable: bool = True,
+    correlation_id: str | None = None,
 ) -> None:
     from apps.chatlab.models import Message
 
@@ -93,6 +99,7 @@ def _mark_message_failed(
         simulation_id=msg.simulation_id,
         message_id=msg.id,
         status=Message.DeliveryStatus.FAILED,
+        correlation_id=correlation_id,
         retryable=msg.delivery_retryable,
         error_code=msg.delivery_error_code,
         error_text=msg.delivery_error_text,
@@ -137,6 +144,7 @@ def _enqueue_patient_reply(
     simulation_id: int,
     user_msg_pk: int,
     conversation_id: int | None = None,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Enqueue the GenerateReplyResponse service for a user message.
 
@@ -147,6 +155,7 @@ def _enqueue_patient_reply(
     context = {
         "simulation_id": simulation_id,
         "user_msg": user_msg_pk,
+        "correlation_id": correlation_id,
     }
     if conversation_id:
         context["conversation_id"] = conversation_id
@@ -179,6 +188,7 @@ def _enqueue_stitch_reply(
     simulation_id: int,
     user_msg_pk: int,
     conversation_id: int,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Enqueue the GenerateStitchReply service for a user message.
 
@@ -190,6 +200,7 @@ def _enqueue_stitch_reply(
         "simulation_id": simulation_id,
         "user_msg": user_msg_pk,
         "conversation_id": conversation_id,
+        "correlation_id": correlation_id,
     }
 
     async def _enqueue():
@@ -217,13 +228,28 @@ def _enqueue_stitch_reply(
         return None
 
 
-def _enqueue_ai_reply(conversation, simulation_id: int, user_msg_pk: int) -> str | None:
+def _enqueue_ai_reply(
+    conversation,
+    simulation_id: int,
+    user_msg_pk: int,
+    correlation_id: str | None = None,
+) -> str | None:
     """Dispatch to the correct AI service based on conversation type's ai_persona."""
     persona = conversation.conversation_type.ai_persona
     if persona == "patient":
-        return _enqueue_patient_reply(simulation_id, user_msg_pk, conversation.id)
+        return _enqueue_patient_reply(
+            simulation_id,
+            user_msg_pk,
+            conversation.id,
+            correlation_id=correlation_id,
+        )
     elif persona == "stitch":
-        return _enqueue_stitch_reply(simulation_id, user_msg_pk, conversation.id)
+        return _enqueue_stitch_reply(
+            simulation_id,
+            user_msg_pk,
+            conversation.id,
+            correlation_id=correlation_id,
+        )
     else:
         logger.warning(
             "service.unknown_persona",
@@ -242,8 +268,14 @@ def _enqueue_ai_reply_and_handle_failure(
     conversation,
     simulation_id: int,
     user_msg_pk: int,
+    correlation_id: str | None = None,
 ) -> None:
-    call_id = _enqueue_ai_reply(conversation, simulation_id, user_msg_pk)
+    call_id = _enqueue_ai_reply(
+        conversation,
+        simulation_id,
+        user_msg_pk,
+        correlation_id=correlation_id,
+    )
     if call_id:
         from apps.chatlab.models import Message
 
@@ -255,6 +287,7 @@ def _enqueue_ai_reply_and_handle_failure(
             simulation_id=simulation_id,
             message_id=user_msg_pk,
             status=Message.DeliveryStatus.SENT,
+            correlation_id=correlation_id,
             retryable=message.delivery_retryable,
         )
         return
@@ -263,6 +296,7 @@ def _enqueue_ai_reply_and_handle_failure(
         error_code="enqueue_failed",
         error_text="Message queued locally but failed to start AI processing. Try again.",
         retryable=True,
+        correlation_id=correlation_id,
     )
 
 
@@ -391,7 +425,7 @@ def create_message(
     with transaction.atomic():
         pii_scan = _pii_scan_result(body.content)
         # Create the user message
-        message = Message.objects.create(
+        message = Message(
             simulation=sim,
             conversation=conversation,
             sender=user,
@@ -401,6 +435,8 @@ def create_message(
             is_from_ai=False,
             display_name=user.get_full_name() or user.email,
         )
+        message._outbox_correlation_id = getattr(request, "correlation_id", None)
+        message.save()
         message.delivery_status = Message.DeliveryStatus.SENT
         message.delivery_retryable = True
         message.save(update_fields=["delivery_status", "delivery_retryable"])
@@ -416,7 +452,12 @@ def create_message(
 
         # Enqueue only after the user message transaction commits.
         transaction.on_commit(
-            lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
+            lambda: _enqueue_ai_reply_and_handle_failure(
+                conversation,
+                simulation_id,
+                message.pk,
+                correlation_id=getattr(request, "correlation_id", None),
+            )
         )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
@@ -487,7 +528,12 @@ def retry_message(
         )
 
         transaction.on_commit(
-            lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
+            lambda: _enqueue_ai_reply_and_handle_failure(
+                conversation,
+                simulation_id,
+                message.pk,
+                correlation_id=getattr(request, "correlation_id", None),
+            )
         )
 
     message.refresh_from_db()

@@ -4,7 +4,7 @@
  * This file documents the event types consumed by web and mobile clients
  * via the SimulationSocket WebSocket connection.
  *
- * WebSocket Endpoint: ws://{host}/ws/simulation/{simulation_id}/
+ * ChatLab WebSocket Endpoint: ws://{host}/ws/v1/chatlab/
  *
  * Usage:
  *   - Web: Listen for `sim:{event_type}` CustomEvents on window
@@ -19,17 +19,13 @@ export type TransientSimulationEventType =
     // Connection events (dispatched by SimulationSocket, not durable outbox events)
     | 'connected'
     | 'disconnected'
-
-    // Initialization
-    | 'init_message'
+    | 'session.ready'
+    | 'session.resumed'
+    | 'session.resync_required'
     | 'error'
-
-    | 'typing'
-    | 'stopped_typing'
-
-    // Compatibility / transient workflow events outside the canonical outbox contract
-    | 'simulation.feedback.continue_conversation'
-    | 'simulation.hotwash.continue_conversation';
+    | 'pong'
+    | 'typing.started'
+    | 'typing.stopped';
 
 export type CanonicalOutboxEventType =
     | 'message.item.created'
@@ -75,7 +71,9 @@ export type CanonicalOutboxEventType =
     | 'simulation.adjustment.updated'
     | 'simulation.preset.updated'
     | 'simulation.command.updated'
-    | 'simulation.patch.completed';
+    | 'simulation.patch.completed'
+    | 'guard.state.updated'
+    | 'guard.warning.updated';
 
 /**
  * Canonical outbox contract plus transient socket-only events.
@@ -85,75 +83,9 @@ export type CanonicalSimulationEventType =
     | TransientSimulationEventType;
 
 /**
- * Deprecated aliases accepted during the migration window.
+ * Deprecated aliases are intentionally unsupported by the v1 ChatLab contract.
  */
-export type DeprecatedSimulationEventType =
-    | 'chat.message_created'
-    | 'message_status_update'
-    | 'simulation.feedback_created'
-    | 'feedback.created'
-    | 'simulation.hotwash.created'
-    | 'metadata.created'
-    | 'simulation.metadata.results_created'
-    | 'simulation.state_changed'
-    | 'feedback.failed'
-    | 'feedback.retrying'
-    | 'injury.created'
-    | 'injury.updated'
-    | 'illness.created'
-    | 'illness.updated'
-    | 'problem.created'
-    | 'problem.updated'
-    | 'problem.resolved'
-    | 'recommended_intervention.created'
-    | 'recommended_intervention.updated'
-    | 'recommended_intervention.removed'
-    | 'intervention.created'
-    | 'intervention.updated'
-    | 'note.created'
-    | 'trainerlab.assessment_finding.created'
-    | 'trainerlab.assessment_finding.updated'
-    | 'trainerlab.assessment_finding.removed'
-    | 'trainerlab.diagnostic_result.created'
-    | 'trainerlab.diagnostic_result.updated'
-    | 'trainerlab.resource.updated'
-    | 'trainerlab.disposition.updated'
-    | 'trainerlab.vital.created'
-    | 'trainerlab.vital.updated'
-    | 'trainerlab.pulse.created'
-    | 'trainerlab.pulse.updated'
-    | 'trainerlab.recommendation_evaluation.created'
-    | 'trainerlab.scenario_brief.created'
-    | 'trainerlab.scenario_brief.updated'
-    | 'trainerlab.intervention.assessed'
-    | 'trainerlab.annotation.created'
-    | 'trainerlab.tick.triggered'
-    | 'state.updated'
-    | 'ai.intent.updated'
-    | 'run.started'
-    | 'run.paused'
-    | 'run.resumed'
-    | 'run.stopped'
-    | 'runtime.failed'
-    | 'summary.ready'
-    | 'summary.updated'
-    | 'session.seeding'
-    | 'session.seeded'
-    | 'session.failed'
-    | 'adjustment.accepted'
-    | 'adjustment.applied'
-    | 'preset.applied'
-    | 'command.accepted'
-    | 'simulation.patch_evaluation.completed'
-    | 'patient.assessment_finding.created'
-    | 'patient.assessment_finding.updated'
-    | 'patient.assessment_finding.removed'
-    | 'patient.diagnostic_result.created'
-    | 'patient.diagnostic_result.updated'
-    | 'patient.recommendation_evaluation.created'
-    | 'patient.recommended_intervention.created'
-    | 'patient.recommended_intervention.updated'
-    | 'patient.recommended_intervention.removed';
+export type DeprecatedSimulationEventType = never;
 
 /**
  * All simulation event types accepted by clients.
@@ -188,14 +120,31 @@ export interface DisconnectedEvent extends BaseEvent {
     reason: string;
 }
 
-/**
- * Initial message with patient display info
- * Sent by server on WebSocket connection
- */
-export interface InitMessageEvent extends BaseEvent {
-    type: 'init_message';
-    sim_display_name: string;
-    sim_display_initials: string;
+export interface SessionReadyEvent extends BaseEvent {
+    type: 'session.ready';
+    simulation_id: number;
+    patient_display_name: string;
+    patient_initials: string;
+    status: string;
+    replay_count: number;
+    last_event_id?: string | null;
+}
+
+export interface SessionResumedEvent extends BaseEvent {
+    type: 'session.resumed';
+    simulation_id: number;
+    patient_display_name: string;
+    patient_initials: string;
+    status: string;
+    replay_count: number;
+    last_event_id?: string | null;
+}
+
+export interface SessionResyncRequiredEvent extends BaseEvent {
+    type: 'session.resync_required';
+    simulation_id: number;
+    last_event_id: string;
+    reason: string;
 }
 
 /**
@@ -203,30 +152,33 @@ export interface InitMessageEvent extends BaseEvent {
  */
 export interface ErrorEvent extends BaseEvent {
     type: 'error';
+    code: string;
     message: string;
-    redirect?: string;
+    details?: Record<string, unknown>;
+}
+
+export interface PongEvent extends BaseEvent {
+    type: 'pong';
+    client_timestamp?: string;
+    client_nonce?: string;
 }
 
 /**
  * Chat message created event
  */
 export interface ChatMessageCreatedEvent extends BaseEvent {
-    type: 'message.item.created' | 'chat.message_created';
+    type: 'message.item.created';
     id: number;
     message_id?: number;
     content: string;
     role: 'user' | 'assistant';
-    senderId: string;
-    user: string;
+    sender_id: number;
     display_name?: string;
-    displayName?: string;
-    isFromLLM?: boolean;
-    isFromAi?: boolean;
+    is_from_ai?: boolean;
     status?: 'sent' | 'delivered' | 'read';
     conversation_id?: number;
     conversation_type?: string;
     media_list?: MediaItem[];
-    mediaList?: MediaItem[];
 }
 
 /**
@@ -234,17 +186,19 @@ export interface ChatMessageCreatedEvent extends BaseEvent {
  */
 export interface MediaItem {
     id: number;
-    url: string;
-    type?: 'image' | 'video' | 'audio';
+    uuid: string;
+    original_url: string;
+    thumbnail_url: string;
+    mime_type?: string;
+    description?: string;
 }
 
 /**
  * User typing indicator
  */
 export interface TypingEvent extends BaseEvent {
-    type: 'typing';
+    type: 'typing.started';
     user: string;
-    display_name?: string;
     display_initials?: string;
     conversation_id?: number;
 }
@@ -253,8 +207,9 @@ export interface TypingEvent extends BaseEvent {
  * User stopped typing indicator
  */
 export interface StoppedTypingEvent extends BaseEvent {
-    type: 'stopped_typing';
+    type: 'typing.stopped';
     user: string;
+    display_initials?: string;
     conversation_id?: number;
 }
 
@@ -262,7 +217,7 @@ export interface StoppedTypingEvent extends BaseEvent {
  * Message status update (delivery/read receipts)
  */
 export interface MessageStatusUpdateEvent extends BaseEvent {
-    type: 'message.delivery.updated' | 'message_status_update';
+    type: 'message.delivery.updated';
     id: number;
     status: 'sent' | 'delivered' | 'failed';
     retryable?: boolean;
@@ -280,7 +235,7 @@ export interface SimulationStateChangedEvent extends BaseEvent {
 }
 
 export interface FeedbackFailedEvent extends BaseEvent {
-    type: 'feedback.generation.failed' | 'feedback.failed';
+    type: 'feedback.generation.failed';
     simulation_id: number;
     error_code?: string;
     error_text?: string;
@@ -289,7 +244,7 @@ export interface FeedbackFailedEvent extends BaseEvent {
 }
 
 export interface FeedbackRetryingEvent extends BaseEvent {
-    type: 'feedback.generation.updated' | 'feedback.retrying';
+    type: 'feedback.generation.updated';
     simulation_id: number;
     status?: 'retrying';
     retryable?: boolean;
@@ -300,23 +255,28 @@ export interface FeedbackRetryingEvent extends BaseEvent {
  * Feedback created event
  */
 export interface FeedbackCreatedEvent extends BaseEvent {
-    type: 'feedback.item.created' | 'simulation.feedback_created' | 'feedback.created' | 'simulation.hotwash.created';
+    type: 'feedback.item.created';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }
 
-/**
- * Feedback continuation event
- */
-export interface FeedbackContinuationEvent extends BaseEvent {
-    type: 'simulation.feedback.continue_conversation' | 'simulation.hotwash.continue_conversation';
+export interface GuardStateUpdatedEvent extends BaseEvent {
+    type: 'guard.state.updated';
+    guard_state: string;
+    guard_reason?: string;
+}
+
+export interface GuardWarningUpdatedEvent extends BaseEvent {
+    type: 'guard.warning.updated';
+    guard_state: string;
+    seconds_until_pause?: number;
 }
 
 /**
  * Metadata results created event
  */
 export interface MetadataResultsCreatedEvent extends BaseEvent {
-    type: 'patient.results.updated' | 'simulation.metadata.results_created';
+    type: 'patient.results.updated';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }
@@ -660,7 +620,7 @@ export interface TrainerLabRuntimeSnapshot {
     last_runtime_completed_at?: string | null;
     control_plane_debug?: Record<string, unknown>;
     request_metadata?: Record<string, unknown>;
-    latest_event_cursor?: string | null;
+    latest_event_id?: string | null;
 }
 
 export interface TrainerLabStateMetadata {
@@ -861,8 +821,11 @@ export interface TrainerLabSimplePayloadEvent extends BaseEvent {
 export type SimulationEvent =
     | ConnectedEvent
     | DisconnectedEvent
-    | InitMessageEvent
+    | SessionReadyEvent
+    | SessionResumedEvent
+    | SessionResyncRequiredEvent
     | ErrorEvent
+    | PongEvent
     | ChatMessageCreatedEvent
     | TypingEvent
     | StoppedTypingEvent
@@ -871,7 +834,8 @@ export type SimulationEvent =
     | FeedbackFailedEvent
     | FeedbackRetryingEvent
     | FeedbackCreatedEvent
-    | FeedbackContinuationEvent
+    | GuardStateUpdatedEvent
+    | GuardWarningUpdatedEvent
     | MetadataResultsCreatedEvent
     | TrainerLabInjuryCreatedEvent
     | TrainerLabIllnessCreatedEvent
@@ -908,53 +872,76 @@ export type SimulationEvent =
  * Commands sent from client to server via WebSocket
  */
 export type ClientCommandType =
-    | 'client_ready'
-    | 'chat.message_created'
-    | 'typing'
-    | 'stopped_typing';
+    | 'session.hello'
+    | 'session.resume'
+    | 'typing.started'
+    | 'typing.stopped'
+    | 'ping';
 
 /**
- * Client ready command - sent on connection
+ * Initial ChatLab session negotiation command.
  */
-export interface ClientReadyCommand {
-    type: 'client_ready';
-    content_mode?: 'fullHtml' | 'rawText' | 'trigger';
+export interface SessionHelloCommand {
+    event_type: 'session.hello';
+    correlation_id?: string | null;
+    payload: {
+        simulation_id: number;
+        last_event_id?: string;
+    };
 }
 
 /**
- * Send chat message command
+ * Resume an existing ChatLab session from the last durable event ID.
  */
-export interface SendMessageCommand {
-    type: 'chat.message_created';
-    content: string;
-    role: 'user';
-    status?: 'sent';
-    conversation_id?: number;
+export interface SessionResumeCommand {
+    event_type: 'session.resume';
+    correlation_id?: string | null;
+    payload: {
+        simulation_id: number;
+        last_event_id: string;
+    };
 }
 
 /**
  * Typing indicator command
  */
 export interface TypingCommand {
-    type: 'typing';
-    user: string;
-    conversation_id?: number;
+    event_type: 'typing.started';
+    correlation_id?: string | null;
+    payload: {
+        conversation_id?: number;
+    };
 }
 
 /**
  * Stopped typing command
  */
 export interface StoppedTypingCommand {
-    type: 'stopped_typing';
-    user: string;
-    conversation_id?: number;
+    event_type: 'typing.stopped';
+    correlation_id?: string | null;
+    payload: {
+        conversation_id?: number;
+    };
+}
+
+/**
+ * Ping/liveness command
+ */
+export interface PingCommand {
+    event_type: 'ping';
+    correlation_id?: string | null;
+    payload: {
+        client_timestamp?: string;
+        client_nonce?: string;
+    };
 }
 
 /**
  * Any client command
  */
 export type ClientCommand =
-    | ClientReadyCommand
-    | SendMessageCommand
+    | SessionHelloCommand
+    | SessionResumeCommand
     | TypingCommand
-    | StoppedTypingCommand;
+    | StoppedTypingCommand
+    | PingCommand;

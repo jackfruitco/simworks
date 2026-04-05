@@ -289,14 +289,20 @@ class TestJWTWebSocketEndToEnd:
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
         connected, _ = await communicator.connect()
         assert connected is True
 
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
         response = await communicator.receive_json_from()
-        assert response["type"] == "init_message"
+        assert response["event_type"] == "session.ready"
 
         await communicator.disconnect()
 
@@ -307,50 +313,44 @@ class TestJWTWebSocketEndToEnd:
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/?token={token}",
+            f"/ws/v1/chatlab/?token={token}",
         )
         connected, _ = await communicator.connect()
         assert connected is True
 
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
         response = await communicator.receive_json_from()
-        assert response["type"] == "init_message"
+        assert response["event_type"] == "session.ready"
 
         await communicator.disconnect()
 
     async def test_no_auth_rejects_ws_connection(self):
-        """WS connection without any auth is rejected (close code 4403)."""
-        _, simulation = await self._make_user_and_simulation()
+        """WS connection without any auth is rejected before accept."""
+        await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
         )
         connected, _ = await communicator.connect()
-        # Consumer accepts then immediately closes with 4403 for unauthenticated users
-        assert connected is True
-
-        response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-        assert "access" in response["message"].lower()
-
-        await communicator.disconnect()
+        assert connected is False
 
     async def test_invalid_jwt_rejects_ws_connection(self):
         """WS connection with a malformed JWT is treated as unauthenticated."""
-        _, simulation = await self._make_user_and_simulation()
+        await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", b"Bearer not.a.real.token")],
         )
         connected, _ = await communicator.connect()
-        assert connected is True
-
-        response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-
-        await communicator.disconnect()
+        assert connected is False
 
     async def test_jwt_user_cannot_access_other_users_simulation(self):
         """JWT-authenticated user is rejected for a simulation they don't own."""
@@ -369,15 +369,21 @@ class TestJWTWebSocketEndToEnd:
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
         connected, _ = await communicator.connect()
         assert connected is True
 
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
         response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-        assert "access" in response["message"].lower()
+        assert response["event_type"] == "error"
+        assert "access" in response["payload"]["code"]
 
         await communicator.disconnect()
 

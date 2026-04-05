@@ -319,7 +319,6 @@ class TestListMessages:
 
         item = data["items"][0]
         assert "media_list" in item
-        assert "mediaList" in item
         assert len(item["media_list"]) == 1
         assert item["media_list"][0]["original_url"].startswith("http://testserver/")
         assert item["media_list"][0]["thumbnail_url"].startswith("http://testserver/")
@@ -503,7 +502,6 @@ class TestCreateMessage:
         assert data["conversation_id"] == conversation.pk
         assert data["conversation_type"] == "simulated_patient"
         assert data["media_list"] == []
-        assert data["mediaList"] == []
 
     def test_create_message_simulation_not_found_returns_404(self, auth_client):
         """Non-existent simulation returns 404."""
@@ -763,7 +761,6 @@ class TestRetryMessage:
         data = response.json()
         assert data["id"] == message.pk
         assert data["media_list"] == []
-        assert data["mediaList"] == []
 
 
 @pytest.mark.django_db
@@ -868,7 +865,6 @@ class TestMessageOutputFormat:
         data = response.json()
 
         assert "media_list" in data
-        assert "mediaList" in data
         assert len(data["media_list"]) == 1
         item = data["media_list"][0]
         assert item["original_url"].startswith("http://testserver/")

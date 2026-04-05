@@ -177,6 +177,366 @@
         }
       }
     },
+    "/api/v1/accounts/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_list_accounts",
+        "summary": "List accessible accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/select/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_select_account",
+        "summary": "Select active account context",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountSelectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/organizations/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_create_organization",
+        "summary": "Create organization account",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/me/access/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_current_access_snapshot",
+        "summary": "Get current access snapshot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessSnapshotOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_list_memberships",
+        "summary": "List memberships for current account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MembershipOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/invite/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_invite_membership",
+        "summary": "Invite a member to the current account",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipInviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/memberships/{membership_uuid}/approve/": {
+      "post": {
+        "operationId": "api_v1_endpoints_accounts_approve_membership",
+        "summary": "Approve a pending membership",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membership_uuid",
+            "schema": {
+              "title": "Membership Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/billing-summary/": {
+      "get": {
+        "operationId": "api_v1_endpoints_accounts_billing_summary",
+        "summary": "Get billing summary for the current account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/stripe/webhook/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_stripe_webhook",
+        "summary": "Receive Stripe webhook events",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/apple/sync/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_apple_sync",
+        "summary": "Sync an Apple subscription transaction for the signed-in user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleTransactionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/stripe/checkout-session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_create_checkout_session",
+        "summary": "Create a Stripe checkout session for a personal plan",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/simulations/": {
       "get": {
         "operationId": "api_v1_endpoints_simulations_list_simulations",
@@ -953,7 +1313,7 @@
     "/api/v1/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_events_list_events",
-        "summary": "List events for catch-up",
+        "summary": "List replayable durable ChatLab events",
         "parameters": [
           {
             "in": "path",
@@ -966,7 +1326,7 @@
           },
           {
             "in": "query",
-            "name": "cursor",
+            "name": "last_event_id",
             "schema": {
               "anyOf": [
                 {
@@ -976,11 +1336,11 @@
                   "type": "null"
                 }
               ],
-              "description": "Cursor (event ID) to start after",
-              "title": "Cursor"
+              "description": "Replay anchor (event ID) to start strictly after",
+              "title": "Last Event Id"
             },
             "required": false,
-            "description": "Cursor (event ID) to start after"
+            "description": "Replay anchor (event ID) to start strictly after"
           },
           {
             "in": "query",
@@ -1003,80 +1363,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_EventEnvelope_"
+                  "$ref": "#/components/schemas/EventReplayResponse"
                 }
               }
             }
           }
         },
-        "description": "Returns events for a simulation, enabling clients to catch up on missed WebSocket events after reconnection. Uses cursor-based pagination with UUID event IDs as cursors.",
-        "tags": [
-          "events"
-        ],
-        "security": [
-          {
-            "JWTAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/simulations/{simulation_id}/events/stream/": {
-      "get": {
-        "operationId": "api_v1_endpoints_events_stream_events",
-        "summary": "SSE stream for simulation events",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "simulation_id",
-            "schema": {
-              "title": "Simulation Id",
-              "type": "integer"
-            },
-            "required": true
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Outbox event cursor UUID",
-              "title": "Cursor"
-            },
-            "required": false,
-            "description": "Outbox event cursor UUID"
-          },
-          {
-            "in": "query",
-            "name": "event_prefix",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional event_type prefix filter (e.g. trainerlab.)",
-              "title": "Event Prefix"
-            },
-            "required": false,
-            "description": "Optional event_type prefix filter (e.g. trainerlab.)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "description": "Streams outbox events for a simulation using a common transport envelope. Optionally filter by event type prefix.",
+        "description": "Returns replayable durable ChatLab events in canonical order.\n\nUse this endpoint for explicit hard resync and offline replay after a\nChatLab WebSocket session emits ``session.resync_required``. Normal\nreconnects should prefer WebSocket ``session.resume`` with\n``last_event_id``.\n\nDelivery semantics are at-least-once. Clients must deduplicate by\n``event_id``.",
         "tags": [
           "events"
         ],
@@ -1209,18 +1502,18 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK",
+          "202": {
+            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignOrdersOut"
+                  "$ref": "#/components/schemas/LabOrdersOut"
                 }
               }
             }
           }
         },
-        "description": "Signs requested lab orders and enqueues feedback generation.",
+        "description": "Signs requested lab orders and enqueues lab results generation.",
         "tags": [
           "tools"
         ],
@@ -1268,7 +1561,7 @@
             }
           }
         },
-        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected WebSocket clients via `metadata.created` events. Returns 202 Accepted immediately; results arrive asynchronously.",
+        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected WebSocket clients via `patient.metadata.created` events. Returns 202 Accepted immediately; results arrive asynchronously.",
         "tags": [
           "lab-orders"
         ],
@@ -1328,6 +1621,119 @@
         "description": "Returns available simulation modifier groups. Optionally filter by group names.",
         "tags": [
           "modifiers"
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/heartbeat/": {
+      "post": {
+        "operationId": "api_v1_endpoints_guards_heartbeat",
+        "summary": "Record a client heartbeat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Clients send this every 15 seconds to report presence and visibility. Returns the current guard state for UI rendering.",
+        "tags": [
+          "guards"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/guard-state/": {
+      "get": {
+        "operationId": "api_v1_endpoints_guards_get_guard_state",
+        "summary": "Get current guard state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the current guard state for a simulation.",
+        "tags": [
+          "guards"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chatlab/access/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
+        "summary": "Get ChatLab access for current user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabAccessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "chatlab"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
         ]
       }
     },
@@ -1970,7 +2376,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerRuntimeStateOut"
+                  "$ref": "#/components/schemas/TrainerRestViewModelOut"
                 }
               }
             }
@@ -2933,8 +3339,29 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
+        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "trainerlab"
         ],
@@ -3192,7 +3619,7 @@
             }
           }
         },
-        "description": "Partially update the AI-generated scenario brief.\n\nOnly the fields provided in the request body are changed; all others retain\ntheir current values. This is useful for correcting or customising the\nread-aloud brief before delivering it to students.\n\nEmits a `trainerlab.scenario_brief.updated` SSE event.",
+        "description": "Partially update the AI-generated scenario brief.\n\nOnly the fields provided in the request body are changed; all others retain\ntheir current values. This is useful for correcting or customising the\nread-aloud brief before delivering it to students.\n\nEmits a `simulation.brief.updated` SSE event.",
         "tags": [
           "trainerlab"
         ],
@@ -3376,6 +3803,617 @@
         "title": "LogoutRequest",
         "type": "object"
       },
+      "AccountOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "account_type": {
+            "title": "Account Type",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "requires_join_approval": {
+            "title": "Requires Join Approval",
+            "type": "boolean"
+          },
+          "parent_account_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Account Uuid"
+          },
+          "membership_role": {
+            "default": "",
+            "title": "Membership Role",
+            "type": "string"
+          },
+          "membership_status": {
+            "default": "",
+            "title": "Membership Status",
+            "type": "string"
+          },
+          "is_active_context": {
+            "default": false,
+            "title": "Is Active Context",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "slug",
+          "account_type",
+          "is_active",
+          "requires_join_approval"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AccountSelectIn": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_uuid"
+        ],
+        "title": "AccountSelectIn",
+        "type": "object"
+      },
+      "OrganizationCreateIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "default": "",
+            "title": "Slug",
+            "type": "string"
+          },
+          "requires_join_approval": {
+            "default": false,
+            "title": "Requires Join Approval",
+            "type": "boolean"
+          },
+          "parent_account_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Account Uuid"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OrganizationCreateIn",
+        "type": "object"
+      },
+      "AccessSnapshotOut": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "account_type": {
+            "title": "Account Type",
+            "type": "string"
+          },
+          "membership_role": {
+            "default": "",
+            "title": "Membership Role",
+            "type": "string"
+          },
+          "products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProductAccessOut"
+            },
+            "title": "Products",
+            "type": "object"
+          }
+        },
+        "required": [
+          "account_uuid",
+          "account_name",
+          "account_type"
+        ],
+        "title": "AccessSnapshotOut",
+        "type": "object"
+      },
+      "ProductAccessOut": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "features": {
+            "additionalProperties": true,
+            "title": "Features",
+            "type": "object"
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Limits",
+            "type": "object"
+          }
+        },
+        "title": "ProductAccessOut",
+        "type": "object"
+      },
+      "MembershipOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "invite_email": {
+            "default": "",
+            "title": "Invite Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          }
+        },
+        "required": [
+          "uuid",
+          "account_uuid",
+          "role",
+          "status"
+        ],
+        "title": "MembershipOut",
+        "type": "object"
+      },
+      "MembershipInviteIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "MembershipInviteIn",
+        "type": "object"
+      },
+      "BillingAccountOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "provider_type": {
+            "title": "Provider Type",
+            "type": "string"
+          },
+          "provider_customer_id": {
+            "title": "Provider Customer Id",
+            "type": "string"
+          },
+          "billing_email": {
+            "title": "Billing Email",
+            "type": "string"
+          },
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "provider_type",
+          "provider_customer_id",
+          "billing_email",
+          "country_code",
+          "is_active"
+        ],
+        "title": "BillingAccountOut",
+        "type": "object"
+      },
+      "BillingSummaryOut": {
+        "properties": {
+          "account_uuid": {
+            "title": "Account Uuid",
+            "type": "string"
+          },
+          "billing_accounts": {
+            "items": {
+              "$ref": "#/components/schemas/BillingAccountOut"
+            },
+            "title": "Billing Accounts",
+            "type": "array"
+          },
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionOut"
+            },
+            "title": "Subscriptions",
+            "type": "array"
+          },
+          "entitlements": {
+            "items": {
+              "$ref": "#/components/schemas/EntitlementOut"
+            },
+            "title": "Entitlements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_uuid"
+        ],
+        "title": "BillingSummaryOut",
+        "type": "object"
+      },
+      "EntitlementOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "subject_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject User Id"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "feature_code": {
+            "default": "",
+            "title": "Feature Code",
+            "type": "string"
+          },
+          "limit_code": {
+            "default": "",
+            "title": "Limit Code",
+            "type": "string"
+          },
+          "limit_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Value"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          }
+        },
+        "required": [
+          "uuid",
+          "source_type",
+          "source_ref",
+          "scope_type",
+          "product_code",
+          "status"
+        ],
+        "title": "EntitlementOut",
+        "type": "object"
+      },
+      "SubscriptionOut": {
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          },
+          "provider_type": {
+            "title": "Provider Type",
+            "type": "string"
+          },
+          "plan_code": {
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_subscription_id": {
+            "title": "Provider Subscription Id",
+            "type": "string"
+          },
+          "provider_original_transaction_id": {
+            "title": "Provider Original Transaction Id",
+            "type": "string"
+          },
+          "cancel_at_period_end": {
+            "title": "Cancel At Period End",
+            "type": "boolean"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          }
+        },
+        "required": [
+          "uuid",
+          "provider_type",
+          "plan_code",
+          "status",
+          "provider_subscription_id",
+          "provider_original_transaction_id",
+          "cancel_at_period_end"
+        ],
+        "title": "SubscriptionOut",
+        "type": "object"
+      },
+      "StripeWebhookReceiptOut": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "status"
+        ],
+        "title": "StripeWebhookReceiptOut",
+        "type": "object"
+      },
+      "AppleTransactionIn": {
+        "properties": {
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          },
+          "original_transaction_id": {
+            "title": "Original Transaction Id",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date"
+          },
+          "expires_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Date"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "original_transaction_id",
+          "product_id"
+        ],
+        "title": "AppleTransactionIn",
+        "type": "object"
+      },
+      "CheckoutSessionOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "detail"
+        ],
+        "title": "CheckoutSessionOut",
+        "type": "object"
+      },
+      "CheckoutSessionIn": {
+        "properties": {
+          "plan_code": {
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "success_url": {
+            "title": "Success Url",
+            "type": "string"
+          },
+          "cancel_url": {
+            "title": "Cancel Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_code",
+          "success_url",
+          "cancel_url"
+        ],
+        "title": "CheckoutSessionIn",
+        "type": "object"
+      },
       "PaginatedResponse_SimulationOut_": {
         "properties": {
           "items": {
@@ -3415,7 +4453,7 @@
         "type": "object"
       },
       "SimulationOut": {
-        "description": "Output schema for a simulation.",
+        "description": "Output schema for a simulation.\n\nThis is the primary bootstrap response for ChatLab clients.  After loading\nthis snapshot, the client should open the ChatLab WebSocket and send\n``session.hello`` with ``latest_event_id`` as the optional replay anchor.",
         "properties": {
           "id": {
             "description": "Simulation ID",
@@ -3540,6 +4578,18 @@
             ],
             "description": "Whether the failed simulation can be retried by the user",
             "title": "Retryable"
+          },
+          "latest_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Event ID (UUID) of the most recent durable outbox event for this simulation. Pass this value as ``last_event_id`` in the ChatLab ``session.hello`` or ``session.resume`` payload so the server can replay durable events strictly after this point. ``null`` when no durable events exist yet.",
+            "title": "Latest Event Id"
           }
         },
         "required": [
@@ -3818,11 +4868,6 @@
             "title": "Thumbnail Url",
             "type": "string"
           },
-          "url": {
-            "description": "Compatibility alias for thumbnail_url",
-            "title": "Url",
-            "type": "string"
-          },
           "mime_type": {
             "default": "",
             "description": "Media MIME type",
@@ -3840,8 +4885,7 @@
           "id",
           "uuid",
           "original_url",
-          "thumbnail_url",
-          "url"
+          "thumbnail_url"
         ],
         "title": "MessageMediaOut",
         "type": "object"
@@ -3988,14 +5032,6 @@
             },
             "title": "Media List",
             "type": "array"
-          },
-          "mediaList": {
-            "description": "Compatibility alias for media_list",
-            "items": {
-              "$ref": "#/components/schemas/MessageMediaOut"
-            },
-            "title": "Medialist",
-            "type": "array"
           }
         },
         "required": [
@@ -4046,7 +5082,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``)\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab clients pass ``latest_event_cursor`` to the SSE stream.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -4057,11 +5093,18 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Event type: chat.message_created, message_status_update, metadata.created, feedback.created, feedback.failed, feedback.retrying, typing.started, typing.stopped, simulation.ended, simulation.state_changed",
+            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
             "examples": [
-              "chat.message_created",
-              "message_status_update",
-              "simulation.state_changed"
+              "message.item.created",
+              "message.delivery.updated",
+              "patient.metadata.created",
+              "patient.results.updated",
+              "feedback.item.created",
+              "feedback.generation.failed",
+              "feedback.generation.updated",
+              "simulation.status.updated",
+              "simulation.brief.created",
+              "simulation.brief.updated"
             ],
             "title": "Event Type",
             "type": "string"
@@ -4103,17 +5146,18 @@
         "title": "EventEnvelope",
         "type": "object"
       },
-      "PaginatedResponse_EventEnvelope_": {
+      "EventReplayResponse": {
+        "description": "ChatLab durable replay response.",
         "properties": {
           "items": {
-            "description": "List of items in this page",
+            "description": "List of replayable durable events in canonical order",
             "items": {
               "$ref": "#/components/schemas/EventEnvelope"
             },
             "title": "Items",
             "type": "array"
           },
-          "next_cursor": {
+          "next_event_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -4122,14 +5166,14 @@
                 "type": "null"
               }
             ],
-            "description": "Cursor for fetching the next page, null if no more items",
+            "description": "Event ID anchor for the next page, null if no more items remain",
             "examples": [
               "550e8400-e29b-41d4-a716-446655440000"
             ],
-            "title": "Next Cursor"
+            "title": "Next Event Id"
           },
           "has_more": {
-            "description": "Whether more items exist beyond this page",
+            "description": "Whether more durable events exist beyond this page",
             "title": "Has More",
             "type": "boolean"
           }
@@ -4138,7 +5182,7 @@
           "items",
           "has_more"
         ],
-        "title": "PaginatedResponse[EventEnvelope]",
+        "title": "EventReplayResponse",
         "type": "object"
       },
       "LabResultItem": {
@@ -4481,43 +5525,6 @@
         "title": "ToolOut",
         "type": "object"
       },
-      "SignOrdersOut": {
-        "description": "Response for lab order signing.",
-        "properties": {
-          "status": {
-            "const": "ok",
-            "default": "ok",
-            "description": "Request status",
-            "title": "Status",
-            "type": "string"
-          },
-          "orders": {
-            "description": "Orders accepted for processing",
-            "items": {
-              "type": "string"
-            },
-            "title": "Orders",
-            "type": "array"
-          }
-        },
-        "title": "SignOrdersOut",
-        "type": "object"
-      },
-      "SignOrdersIn": {
-        "description": "Input schema for lab order signing.",
-        "properties": {
-          "submitted_orders": {
-            "description": "Lab orders to sign and enqueue",
-            "items": {
-              "type": "string"
-            },
-            "title": "Submitted Orders",
-            "type": "array"
-          }
-        },
-        "title": "SignOrdersIn",
-        "type": "object"
-      },
       "LabOrdersOut": {
         "description": "Response returned after lab orders are accepted for processing.",
         "properties": {
@@ -4555,12 +5562,34 @@
         "title": "LabOrdersOut",
         "type": "object"
       },
+      "SignOrdersIn": {
+        "description": "Input schema for lab order signing.",
+        "properties": {
+          "submitted_orders": {
+            "description": "Lab orders to sign and enqueue. Maximum 50 orders per request.",
+            "items": {
+              "maxLength": 255,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Submitted Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "submitted_orders"
+        ],
+        "title": "SignOrdersIn",
+        "type": "object"
+      },
       "LabOrderSubmit": {
         "description": "Input schema for submitting signed lab orders.",
         "properties": {
           "orders": {
             "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty. Maximum 50 orders per request.",
             "items": {
+              "maxLength": 255,
               "type": "string"
             },
             "maxItems": 50,
@@ -4626,25 +5655,168 @@
         "title": "ModifierOut",
         "type": "object"
       },
+      "GuardSignalOut": {
+        "description": "Structured guard signal \u2014 warning or denial.\n\nClients should branch on ``code`` for logic, render ``message`` for\ndisplay, and use ``resumable`` / ``terminal`` to decide UI affordances.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardSignalOut",
+        "type": "object"
+      },
+      "GuardStateOut": {
+        "description": "Current guard state for a session.",
+        "properties": {
+          "guard_state": {
+            "title": "Guard State",
+            "type": "string"
+          },
+          "guard_reason": {
+            "title": "Guard Reason",
+            "type": "string"
+          },
+          "engine_runnable": {
+            "title": "Engine Runnable",
+            "type": "boolean"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "runtime_cap_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Cap Seconds"
+          },
+          "wall_clock_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Clock Expires At"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/GuardSignalOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "denial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardSignalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "guard_state",
+          "guard_reason",
+          "engine_runnable"
+        ],
+        "title": "GuardStateOut",
+        "type": "object"
+      },
+      "HeartbeatIn": {
+        "description": "Client heartbeat payload.",
+        "properties": {
+          "client_visibility": {
+            "default": "unknown",
+            "title": "Client Visibility",
+            "type": "string"
+          }
+        },
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
       "LabAccessOut": {
         "properties": {
           "lab_slug": {
             "title": "Lab Slug",
             "type": "string"
-          },
-          "access_level": {
-            "enum": [
-              "viewer",
-              "instructor",
-              "admin"
-            ],
-            "title": "Access Level",
-            "type": "string"
           }
         },
         "required": [
-          "lab_slug",
-          "access_level"
+          "lab_slug"
         ],
         "title": "LabAccessOut",
         "type": "object"
@@ -5183,11 +6355,6 @@
             "title": "Scenario Spec",
             "type": "object"
           },
-          "runtime_state": {
-            "additionalProperties": true,
-            "title": "Runtime State",
-            "type": "object"
-          },
           "initial_directives": {
             "anyOf": [
               {
@@ -5299,7 +6466,6 @@
           "simulation_id",
           "status",
           "scenario_spec",
-          "runtime_state",
           "initial_directives",
           "tick_interval_seconds",
           "run_started_at",
@@ -5377,6 +6543,132 @@
           "has_more"
         ],
         "title": "PaginatedResponse[TrainerRunOut]",
+        "type": "object"
+      },
+      "ControlPlaneDebugOut": {
+        "properties": {
+          "execution_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execution Plan",
+            "type": "array"
+          },
+          "current_step_index": {
+            "default": 0,
+            "title": "Current Step Index",
+            "type": "integer"
+          },
+          "queued_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queued Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_processed_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Last Processed Reasons",
+            "type": "array"
+          },
+          "last_failed_step": {
+            "default": "",
+            "title": "Last Failed Step",
+            "type": "string"
+          },
+          "last_failed_error": {
+            "default": "",
+            "title": "Last Failed Error",
+            "type": "string"
+          },
+          "last_patch_evaluation_summary": {
+            "additionalProperties": true,
+            "title": "Last Patch Evaluation Summary",
+            "type": "object"
+          },
+          "last_rejected_or_normalized_summary": {
+            "additionalProperties": true,
+            "title": "Last Rejected Or Normalized Summary",
+            "type": "object"
+          },
+          "status_flags": {
+            "additionalProperties": true,
+            "title": "Status Flags",
+            "type": "object"
+          }
+        },
+        "title": "ControlPlaneDebugOut",
+        "type": "object"
+      },
+      "EventTimelineEntryOut": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at"
+        ],
+        "title": "EventTimelineEntryOut",
+        "type": "object"
+      },
+      "EventTimelineOut": {
+        "description": "RuntimeEvent-backed event read model for /state/ in this phase.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventTimelineEntryOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "total_events": {
+            "default": 0,
+            "title": "Total Events",
+            "type": "integer"
+          }
+        },
+        "title": "EventTimelineOut",
         "type": "object"
       },
       "RecommendedInterventionStateOut": {
@@ -6623,6 +7915,170 @@
         "title": "RuntimeResourceStateOut",
         "type": "object"
       },
+      "RuntimeSnapshotOut": {
+        "properties": {
+          "status": {
+            "enum": [
+              "seeding",
+              "seeded",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "phase": {
+            "default": "",
+            "title": "Phase",
+            "type": "string"
+          },
+          "state_revision": {
+            "default": 0,
+            "title": "State Revision",
+            "type": "integer"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "tick_count": {
+            "default": 0,
+            "title": "Tick Count",
+            "type": "integer"
+          },
+          "tick_interval_seconds": {
+            "default": 15,
+            "title": "Tick Interval Seconds",
+            "type": "integer"
+          },
+          "next_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Tick At"
+          },
+          "runtime_processing": {
+            "default": false,
+            "title": "Runtime Processing",
+            "type": "boolean"
+          },
+          "pending_runtime_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Runtime Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "ai_plan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeInstructorIntent"
+              }
+            ]
+          },
+          "ai_rationale_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "llm_conditions_check": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Llm Conditions Check",
+            "type": "array"
+          },
+          "last_runtime_error": {
+            "default": "",
+            "title": "Last Runtime Error",
+            "type": "string"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          },
+          "last_runtime_enqueued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Enqueued At"
+          },
+          "last_runtime_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Runtime Completed At"
+          },
+          "control_plane_debug": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ControlPlaneDebugOut"
+              }
+            ]
+          },
+          "request_metadata": {
+            "additionalProperties": true,
+            "title": "Request Metadata",
+            "type": "object"
+          },
+          "latest_event_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor (UUID) of the most recent outbox event for this simulation. Pass this value as the `cursor` parameter when connecting to the SSE stream so only events created after this point are delivered. `null` when no events exist yet.",
+            "title": "Latest Event Cursor"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RuntimeSnapshotOut",
+        "type": "object"
+      },
       "RuntimeVitalStateOut": {
         "properties": {
           "domain_event_id": {
@@ -6764,7 +8220,7 @@
         "title": "ScenarioBriefOut",
         "type": "object"
       },
-      "TrainerRuntimeSnapshotOut": {
+      "ScenarioSnapshotOut": {
         "properties": {
           "causes": {
             "items": {
@@ -6858,10 +8314,69 @@
             ]
           }
         },
-        "title": "TrainerRuntimeSnapshotOut",
+        "title": "ScenarioSnapshotOut",
         "type": "object"
       },
-      "TrainerRuntimeStateOut": {
+      "SnapshotCacheStatusOut": {
+        "properties": {
+          "status": {
+            "default": "disabled",
+            "title": "Status",
+            "type": "string"
+          },
+          "authoritative": {
+            "default": false,
+            "title": "Authoritative",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "disabled",
+            "title": "Source",
+            "type": "string"
+          },
+          "state_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Revision"
+          }
+        },
+        "title": "SnapshotCacheStatusOut",
+        "type": "object"
+      },
+      "TrainerRestMetadataOut": {
+        "properties": {
+          "builder_version": {
+            "default": "v1",
+            "title": "Builder Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_cache": {
+            "$ref": "#/components/schemas/SnapshotCacheStatusOut"
+          },
+          "event_timeline_count": {
+            "default": 0,
+            "title": "Event Timeline Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_cache"
+        ],
+        "title": "TrainerRestMetadataOut",
+        "type": "object"
+      },
+      "TrainerRestViewModelOut": {
         "properties": {
           "simulation_id": {
             "title": "Simulation Id",
@@ -6883,173 +8398,29 @@
             "title": "Status",
             "type": "string"
           },
-          "state_revision": {
-            "title": "State Revision",
-            "type": "integer"
+          "scenario_snapshot": {
+            "$ref": "#/components/schemas/ScenarioSnapshotOut"
           },
-          "active_elapsed_seconds": {
-            "title": "Active Elapsed Seconds",
-            "type": "integer"
+          "runtime_snapshot": {
+            "$ref": "#/components/schemas/RuntimeSnapshotOut"
           },
-          "tick_interval_seconds": {
-            "default": 15,
-            "title": "Tick Interval Seconds",
-            "type": "integer"
+          "event_timeline": {
+            "$ref": "#/components/schemas/EventTimelineOut"
           },
-          "next_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Tick At"
-          },
-          "scenario_brief": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScenarioBriefOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_snapshot": {
-            "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
-          },
-          "ai_plan": {
-            "$ref": "#/components/schemas/RuntimeInstructorIntent"
-          },
-          "ai_rationale_notes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Ai Rationale Notes",
-            "type": "array"
-          },
-          "pending_runtime_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Runtime Reasons",
-            "type": "array"
-          },
-          "pending_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_runtime_error": {
-            "default": "",
-            "title": "Last Runtime Error",
-            "type": "string"
-          },
-          "last_ai_tick_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Ai Tick At"
+          "metadata": {
+            "$ref": "#/components/schemas/TrainerRestMetadataOut"
           }
         },
         "required": [
           "simulation_id",
           "session_id",
           "status",
-          "state_revision",
-          "active_elapsed_seconds",
-          "current_snapshot",
-          "ai_plan"
+          "scenario_snapshot",
+          "runtime_snapshot",
+          "event_timeline",
+          "metadata"
         ],
-        "title": "TrainerRuntimeStateOut",
-        "type": "object"
-      },
-      "ControlPlaneDebugOut": {
-        "properties": {
-          "execution_plan": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Execution Plan",
-            "type": "array"
-          },
-          "current_step_index": {
-            "default": 0,
-            "title": "Current Step Index",
-            "type": "integer"
-          },
-          "queued_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Queued Reasons",
-            "type": "array"
-          },
-          "currently_processing_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Currently Processing Reasons",
-            "type": "array"
-          },
-          "last_processed_reasons": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Last Processed Reasons",
-            "type": "array"
-          },
-          "last_failed_step": {
-            "default": "",
-            "title": "Last Failed Step",
-            "type": "string"
-          },
-          "last_failed_error": {
-            "default": "",
-            "title": "Last Failed Error",
-            "type": "string"
-          },
-          "last_patch_evaluation_summary": {
-            "additionalProperties": true,
-            "title": "Last Patch Evaluation Summary",
-            "type": "object"
-          },
-          "last_rejected_or_normalized_summary": {
-            "additionalProperties": true,
-            "title": "Last Rejected Or Normalized Summary",
-            "type": "object"
-          },
-          "status_flags": {
-            "additionalProperties": true,
-            "title": "Status Flags",
-            "type": "object"
-          }
-        },
-        "title": "ControlPlaneDebugOut",
+        "title": "TrainerRestViewModelOut",
         "type": "object"
       },
       "ErrorResponse": {
@@ -7116,6 +8487,17 @@
               "550e8400-e29b-41d4-a716-446655440000"
             ],
             "title": "Correlation Id"
+          },
+          "guard_denial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardDenialDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured guard denial signal, present only on guard-denied errors"
           }
         },
         "required": [
@@ -7125,6 +8507,86 @@
           "detail"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "GuardDenialDetail": {
+        "description": "Structured guard denial signal embedded in error responses.\n\nMatches the ``GuardSignalOut`` schema shape so clients get the same\ntyped object whether reading from the guard-state endpoint or from\na 403 error payload.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable denial code",
+            "title": "Code",
+            "type": "string"
+          },
+          "severity": {
+            "description": "'warning' or 'error'",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short UI-ready title",
+            "title": "Title"
+          },
+          "message": {
+            "description": "Human-readable message",
+            "title": "Message",
+            "type": "string"
+          },
+          "resumable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the session can be resumed",
+            "title": "Resumable"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the state is permanent",
+            "title": "Terminal"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Extra machine-readable context",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "GuardDenialDetail",
         "type": "object"
       },
       "TrainerCommandAck": {
@@ -8012,6 +9474,44 @@
           "max_value"
         ],
         "title": "VitalCreateIn",
+        "type": "object"
+      },
+      "PaginatedResponse_EventEnvelope_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/EventEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[EventEnvelope]",
         "type": "object"
       },
       "RunSummaryOut": {

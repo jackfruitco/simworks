@@ -31,7 +31,7 @@ EVENT_TYPE_PATTERN = re.compile(
 
 @dataclass(frozen=True, slots=True)
 class EventTypeSpec:
-    """Definition for a canonical event type and any deprecated aliases."""
+    """Definition for a canonical event type and any internal aliases."""
 
     name: str
     description: str
@@ -94,37 +94,37 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
     EventTypeSpec(
         MESSAGE_CREATED,
         "A durable message was created.",
-        aliases=("chat.message_created", "message.created"),
+        aliases=(),
     ),
     EventTypeSpec(
         MESSAGE_DELIVERY_UPDATED,
         "A durable message delivery state changed.",
-        aliases=("message_status_update",),
+        aliases=(),
     ),
     EventTypeSpec(
         METADATA_CREATED,
         "Structured patient metadata was persisted.",
-        aliases=("metadata.created",),
+        aliases=(),
     ),
     EventTypeSpec(
         PATIENT_RESULTS_UPDATED,
         "A patient results panel payload was refreshed.",
-        aliases=("simulation.metadata.results_created",),
+        aliases=(),
     ),
     EventTypeSpec(
         FEEDBACK_CREATED,
         "A feedback item was created.",
-        aliases=("feedback.created", "simulation.feedback_created", "simulation.hotwash.created"),
+        aliases=(),
     ),
     EventTypeSpec(
         FEEDBACK_GENERATION_FAILED,
         "Feedback generation failed.",
-        aliases=("feedback.failed",),
+        aliases=(),
     ),
     EventTypeSpec(
         FEEDBACK_GENERATION_UPDATED,
         "Feedback generation state changed.",
-        aliases=("feedback.retrying",),
+        aliases=(),
     ),
     EventTypeSpec(
         SIMULATION_STATUS_UPDATED,
@@ -389,7 +389,7 @@ def canonical_event_types() -> tuple[str, ...]:
 
 
 def deprecated_event_types() -> tuple[str, ...]:
-    """Return all deprecated aliases accepted during migration."""
+    """Return all legacy aliases still accepted for internal compatibility."""
 
     return tuple(LEGACY_EVENT_TYPE_TO_CANONICAL.keys())
 

@@ -36,7 +36,7 @@ STITCH_GREETING_MESSAGE = (
 )
 
 
-def _create_feedback_starter_message(sim, conversation):
+def _create_feedback_starter_message(sim, conversation, *, correlation_id: str | None = None):
     """Create the initial Stitch greeting message for new feedback conversations."""
     from apps.chatlab.media_payloads import build_chat_message_event_payload
     from apps.chatlab.models import Message, RoleChoices
@@ -65,6 +65,7 @@ def _create_feedback_starter_message(sim, conversation):
         simulation_id=sim.id,
         payload=payload,
         idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{message.id}",
+        correlation_id=correlation_id,
     )
     if event:
         poke_drain_sync()
@@ -143,7 +144,11 @@ def create_conversation(
                 },
             )
             if created and conv_type.slug == "simulated_feedback":
-                _create_feedback_starter_message(sim, conv)
+                _create_feedback_starter_message(
+                    sim,
+                    conv,
+                    correlation_id=getattr(request, "correlation_id", None),
+                )
     except IntegrityError:
         conv = Conversation.objects.get(simulation=sim, conversation_type=conv_type)
         created = False

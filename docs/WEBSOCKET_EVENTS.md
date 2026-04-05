@@ -1,6 +1,6 @@
 # WebSocket Event Contract
 
-This document describes the durable outbox-backed event contract used for real-time MedSim simulation updates.
+This document describes the durable outbox-backed ChatLab WebSocket contract used for real-time MedSim simulation updates.
 
 ## Source of Truth
 
@@ -8,7 +8,7 @@ The canonical registry lives in `SimWorks/apps/common/outbox/event_types.py`.
 
 - Server emitters must use registry constants.
 - Server envelopes emit only canonical event names.
-- Browser clients may temporarily accept deprecated aliases during rollout, but aliases are not canonical output.
+- Browser and mobile clients should only use the canonical event names below.
 
 ## Canonical Naming Rules
 
@@ -18,7 +18,7 @@ Canonical outbox event types must follow this exact contract:
 - exactly 3 segments
 - lowercase letters with dot separators only
 - no underscores
-- domains limited to `simulation`, `patient`, `message`, `feedback`
+- domains limited to `simulation`, `patient`, `message`, `feedback`, `guard`
 - actions limited to `created`, `updated`, `removed`, `triggered`, `completed`, `failed`
 
 State transitions belong in payload metadata, not the event name.
@@ -112,6 +112,11 @@ For `*.status.updated` events, payload should include:
 - `patient.pulse.created`
 - `patient.pulse.updated`
 
+### `guard`
+
+- `guard.state.updated`
+- `guard.warning.updated`
+
 ## Representative Payloads
 
 ### `message.item.created`
@@ -183,6 +188,18 @@ For `*.status.updated` events, payload should include:
 }
 ```
 
+### `guard.state.updated`
+
+```json
+{
+  "event_type": "guard.state.updated",
+  "payload": {
+    "guard_state": "paused_inactivity",
+    "guard_reason": "inactivity"
+  }
+}
+```
+
 ### `patient.intervention.updated`
 
 ```json
@@ -212,19 +229,48 @@ MedSim uses a reliable event delivery pattern:
 
 1. Domain persistence creates an outbox row in the same transactional flow.
 2. The drain worker delivers outbox rows to the simulation WebSocket group.
-3. Clients use the WebSocket as a near-realtime hint channel.
-4. Clients recover missed durable events through the catch-up API.
+3. ChatLab clients use `/ws/v1/chatlab/` as the sole realtime transport.
+4. Clients negotiate a session with `session.hello` or `session.resume`.
+5. Durable replay uses `last_event_id`; hard resync uses the replay API only after `session.resync_required`.
 
 WebSocket delivery is not the source of truth. The API remains authoritative.
 
-## Compatibility
+`last_event_id` always refers to the replayable ChatLab durable event stream, which is the same event space exposed by `GET /api/v1/simulations/{id}/events/` and `SimulationOut.latest_event_id`.
 
-During migration, some browser clients may still accept deprecated aliases such as:
+## Session Protocol
 
-- `chat.message_created`
-- `message_status_update`
-- `simulation.state_changed`
-- `feedback.failed`
-- `feedback.retrying`
+Inbound client messages must use:
 
-Those aliases are compatibility inputs only. Canonical server output uses the registry names above.
+```json
+{
+  "event_type": "session.hello",
+  "correlation_id": "optional-correlation-id",
+  "payload": {
+    "simulation_id": 123,
+    "last_event_id": "optional-last-durable-event-id"
+  }
+}
+```
+
+Supported inbound event types:
+
+- `session.hello`
+- `session.resume`
+- `typing.started`
+- `typing.stopped`
+- `ping`
+
+Server lifecycle and transient events:
+
+- `session.ready`
+- `session.resumed`
+- `session.resync_required`
+- `error`
+- `pong`
+
+`typing.started`, `typing.stopped`, `ping`, and `pong` are transient and are never replayed.
+
+Lifecycle ordering is intentional:
+
+- Fresh connect: `session.ready`, then live tail.
+- Resume connect: replay durable events strictly after `last_event_id`, then `session.resumed`, then live tail.

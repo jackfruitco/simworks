@@ -19,7 +19,7 @@
  *   });
  *
  *   // Subscribe to multiple events
- *   eventBus.onMany(['typing', 'stopped_typing'], (data) => {
+ *   eventBus.onMany(['typing.started', 'typing.stopped'], (data) => {
  *       console.log('Typing status changed');
  *   });
  *
@@ -80,29 +80,21 @@ class SimulationEventBus {
      */
     _setupListeners() {
         const eventTypes = [
-            'init_message',
+            'session.ready',
+            'session.resumed',
+            'session.resync_required',
             'message.item.created',
-            'chat.message_created',
-            'typing',
-            'stopped_typing',
+            'typing.started',
+            'typing.stopped',
             'feedback.item.created',
-            'simulation.feedback_created',
-            'feedback.created',
-            'simulation.hotwash.created',
-            'simulation.feedback.continue_conversation',
-            'simulation.hotwash.continue_conversation',
             'patient.metadata.created',
             'message.delivery.updated',
             'simulation.status.updated',
             'feedback.generation.failed',
             'feedback.generation.updated',
             'patient.results.updated',
-            'simulation.metadata.results_created',
-            'simulation.state_changed',
-            'feedback.failed',
-            'feedback.retrying',
-            'message_status_update',
             'error',
+            'pong',
             'connected',
             'disconnected',
         ];

@@ -1,434 +1,265 @@
 /**
- * SimulationSocket - Minimal WebSocket wrapper for simulation events.
+ * ChatLab SimulationSocket - strict WebSocket wrapper for the v1 ChatLab contract.
  *
- * Dispatches custom DOM events that can be consumed by Alpine.js components
- * or any other event listener. This provides a clean separation between
- * WebSocket communication and UI rendering.
+ * Outbound client messages always use:
+ *   { event_type, correlation_id?, payload }
  *
- * Supports both legacy format and the canonical envelope format:
- * - Legacy: { type: "chat.message_created", content: "..." }
- * - Envelope: { event_id: "uuid", event_type: "message.item.created", payload: {...} }
+ * Inbound server events always use:
+ *   { event_id, event_type, created_at, correlation_id, payload }
  *
- * Features:
- * - Automatic reconnection with exponential backoff
- * - Event deduplication via seenEventIds
- * - Catch-up API integration for missed events on reconnect
- * - Gap detection for heuristic warning
- *
- * Usage:
- *   const socket = new SimulationSocket(simulationId, options);
- *
- *   // Listen for events in Alpine.js:
- *   <div @sim:message.item.created.window="handleMessage($event.detail)">
- *
- *   // Or vanilla JS:
- *   window.addEventListener('sim:message.item.created', (e) => {
- *       console.log(e.detail);
- *   });
- *
- * Events dispatched:
- *   - sim:init_message
- *   - sim:message.item.created
- *   - sim:typing
- *   - sim:stopped_typing
- *   - sim:feedback.item.created
- *   - sim:message.delivery.updated
- *   - sim:simulation.status.updated
- *   - sim:feedback.generation.failed
- *   - sim:feedback.generation.updated
- *   - sim:patient.results.updated
- *   - sim:error
- *   - sim:connected
- *   - sim:disconnected
+ * Reconnect model:
+ * - initial connect => session.hello
+ * - reconnect => session.resume with last durable event_id
+ * - hard resync => session.resync_required, then the caller must REST bootstrap again
  */
-const CANONICAL_EVENT_ALIASES = {
-    'message.item.created': ['chat.message_created'],
-    'message.delivery.updated': ['message_status_update'],
-    'simulation.status.updated': ['simulation.state_changed'],
-    'feedback.generation.failed': ['feedback.failed'],
-    'feedback.generation.updated': ['feedback.retrying'],
-    'feedback.item.created': ['simulation.feedback_created', 'feedback.created', 'simulation.hotwash.created'],
-    'patient.results.updated': ['simulation.metadata.results_created'],
-    'patient.metadata.created': ['metadata.created'],
-};
 
-const LEGACY_TO_CANONICAL_EVENT = Object.entries(CANONICAL_EVENT_ALIASES).reduce((acc, [canonicalType, aliases]) => {
-    for (const alias of aliases) {
-        acc[alias] = canonicalType;
-    }
-    return acc;
-}, {});
+const CHATLAB_WS_PATH = '/ws/v1/chatlab/';
+const TRANSIENT_EVENT_TYPES = new Set([
+    'session.ready',
+    'session.resumed',
+    'session.resync_required',
+    'error',
+    'pong',
+    'typing.started',
+    'typing.stopped',
+]);
 
 class SimulationSocket {
     constructor(simulationId, options = {}) {
         this.simulationId = simulationId;
-        this.ws = null;
-        this.reconnectAttempts = 0;
+        this.authToken = options.authToken || null;
+        this.accountUuid = options.accountUuid || null;
+        this.bootstrapEventId = options.bootstrapEventId || null;
         this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
         this.reconnectDelay = options.reconnectDelay || 1000;
-        this.contentMode = options.contentMode || 'fullHtml';
-
-        // Track seen event IDs for deduplication (limited to prevent memory leaks)
-        this.seenEventIds = new Set();
         this.maxSeenEventIds = options.maxSeenEventIds || 1000;
+        this.heartbeatIntervalMs = options.heartbeatIntervalMs || 30000;
+        this.onResyncRequired = typeof options.onResyncRequired === 'function'
+            ? options.onResyncRequired
+            : null;
 
-        // Catch-up tracking
-        this.lastSeenEventId = null;
-        this.lastSeenCreatedAt = null;
-        this.catchupInProgress = false;
-        this.storageKey = `simSocket_lastSeen_${simulationId}`;
+        this.ws = null;
+        this.reconnectAttempts = 0;
+        this.sessionEstablished = false;
+        this.hasConnectedOnce = false;
+        this.manuallyClosed = false;
+        this.storageKey = `chatlab_last_event_id_${simulationId}`;
+        this.lastSeenEventId = this.bootstrapEventId || null;
+        this.seenEventIds = new Set();
+        this.heartbeatTimer = null;
+        this.reconnectTimer = null;
 
-        // Gap detection threshold (ms) - if event timestamp is older than this, warn
-        this.gapThresholdMs = options.gapThresholdMs || 5000;
-
-        // JWT token for catch-up API (optional, will use session auth if not provided)
-        this.authToken = options.authToken || null;
-
-        // Restore last seen event from session storage
         this.restoreLastSeen();
-
         this.connect();
     }
 
     connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const tokenParam = this.authToken ? `?token=${encodeURIComponent(this.authToken)}` : '';
-        const url = `${protocol}//${window.location.host}/ws/simulation/${this.simulationId}/${tokenParam}`;
+        const query = new URLSearchParams();
+        if (this.authToken) {
+            query.set('token', this.authToken);
+        }
+        if (this.accountUuid) {
+            query.set('account_uuid', this.accountUuid);
+        }
 
+        const queryString = query.toString();
+        const url = `${protocol}//${window.location.host}${CHATLAB_WS_PATH}${queryString ? `?${queryString}` : ''}`;
         this.ws = new WebSocket(url);
-        const isReconnect = this.reconnectAttempts > 0;
 
         this.ws.onopen = () => {
-            console.log('[SimulationSocket] Connected');
-            const previousAttempts = this.reconnectAttempts;
+            const wasReconnect = this.hasConnectedOnce;
+            this.hasConnectedOnce = true;
             this.reconnectAttempts = 0;
             this.dispatch('connected', { simulationId: this.simulationId });
-
-            // Send client_ready message
-            this.send('client_ready', { content_mode: this.contentMode });
-
-            // Perform catch-up if reconnecting and we have a last seen event
-            if (isReconnect && this.lastSeenEventId) {
-                console.log('[SimulationSocket] Reconnected, initiating catch-up from:', this.lastSeenEventId);
-                this.performCatchup();
-            }
+            this.startHeartbeat();
+            this.sendSessionEvent(wasReconnect);
         };
 
         this.ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                this.handleMessage(data);
-            } catch (e) {
-                console.error('[SimulationSocket] Failed to parse message:', e);
+                this.handleEnvelope(data);
+            } catch (error) {
+                console.error('[SimulationSocket] Failed to parse inbound event:', error);
             }
         };
 
         this.ws.onclose = (event) => {
-            console.log('[SimulationSocket] Disconnected', event.code, event.reason);
+            this.stopHeartbeat();
+            this.sessionEstablished = false;
             this.dispatch('disconnected', { code: event.code, reason: event.reason });
-            this.reconnect();
+
+            if (!this.manuallyClosed) {
+                this.scheduleReconnect();
+            }
         };
 
         this.ws.onerror = (error) => {
-            console.error('[SimulationSocket] Error:', error);
+            console.error('[SimulationSocket] WebSocket error:', error);
         };
     }
 
-    reconnect() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('[SimulationSocket] Max reconnect attempts reached');
+    sendSessionEvent(isReconnect) {
+        const hasReplayAnchor = typeof this.lastSeenEventId === 'string' && this.lastSeenEventId.length > 0;
+        const eventType = isReconnect && hasReplayAnchor ? 'session.resume' : 'session.hello';
+        const payload = { simulation_id: this.simulationId };
+        if (hasReplayAnchor) {
+            payload.last_event_id = this.lastSeenEventId;
+        }
+        this.send(eventType, payload);
+    }
+
+    handleEnvelope(envelope) {
+        if (!envelope || typeof envelope !== 'object') {
+            console.warn('[SimulationSocket] Ignoring malformed envelope:', envelope);
             return;
         }
 
-        this.reconnectAttempts++;
-        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-
-        console.log(`[SimulationSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-
-        setTimeout(() => this.connect(), delay);
-    }
-
-    handleMessage(data) {
-        // Check if this is the new envelope format (has event_type and event_id)
-        const isEnvelope = data.event_type && data.event_id;
-
-        if (isEnvelope) {
-            // New envelope format - check for duplicate
-            if (this.isDuplicate(data.event_id)) {
-                console.debug('[SimulationSocket] Skipping duplicate event:', data.event_id);
-                return;
-            }
-
-            // Track this event ID
-            this.trackEventId(data.event_id);
-
-            // Update last seen for catch-up
-            this.updateLastSeen(data.event_id, data.created_at);
-
-            // Gap detection
-            this.detectGap(data.created_at);
-
-            // Extract event type and merge payload with envelope metadata
-            const type = this.canonicalizeEventType(data.event_type);
-            const detail = {
-                ...data.payload,
-                event_id: data.event_id,
-                event_type: type,
-                original_event_type: data.event_type,
-                correlation_id: data.correlation_id,
-                created_at: data.created_at,
-            };
-
-            this.dispatchEventType(type, detail);
-
-            // Debug logging
-            console.debug('[SimulationSocket] Envelope event:', type, detail);
-        } else {
-            // Legacy format - use type field directly
-            const type = this.canonicalizeEventType(data.type || 'unknown');
-
-            this.dispatchEventType(type, {
-                ...data,
-                type,
-                original_type: data.type || 'unknown',
-            });
-
-            // Debug logging
-            console.debug('[SimulationSocket] Legacy event:', type, data);
+        const { event_id: eventId, event_type: eventType, created_at: createdAt, correlation_id: correlationId, payload } = envelope;
+        if (!eventId || !eventType || !createdAt || typeof payload !== 'object') {
+            console.warn('[SimulationSocket] Ignoring incomplete envelope:', envelope);
+            return;
         }
+
+        if (this.seenEventIds.has(eventId)) {
+            return;
+        }
+        this.rememberEventId(eventId);
+
+        if (!TRANSIENT_EVENT_TYPES.has(eventType)) {
+            this.lastSeenEventId = eventId;
+            this.persistLastSeen();
+        }
+
+        if (eventType === 'session.ready' || eventType === 'session.resumed') {
+            this.sessionEstablished = true;
+        }
+
+        if (eventType === 'session.resync_required') {
+            this.clearLastSeen();
+            if (this.onResyncRequired) {
+                this.onResyncRequired(envelope);
+            }
+        }
+
+        const detail = {
+            ...payload,
+            event_id: eventId,
+            event_type: eventType,
+            correlation_id: correlationId,
+            created_at: createdAt,
+        };
+        this.dispatch(eventType, detail);
     }
 
-    /**
-     * Check if an event ID has already been seen (duplicate detection).
-     * @param {string} eventId - The event ID to check
-     * @returns {boolean} True if this event was already processed
-     */
-    isDuplicate(eventId) {
-        return this.seenEventIds.has(eventId);
-    }
-
-    /**
-     * Track an event ID for deduplication.
-     * Automatically prunes old entries when limit is reached.
-     * @param {string} eventId - The event ID to track
-     */
-    trackEventId(eventId) {
-        // Prune oldest entries if we're at the limit
+    rememberEventId(eventId) {
         if (this.seenEventIds.size >= this.maxSeenEventIds) {
-            // Convert to array, remove first half, convert back to Set
-            const entries = Array.from(this.seenEventIds);
-            this.seenEventIds = new Set(entries.slice(entries.length / 2));
+            const retained = Array.from(this.seenEventIds).slice(Math.floor(this.maxSeenEventIds / 2));
+            this.seenEventIds = new Set(retained);
         }
         this.seenEventIds.add(eventId);
     }
 
-    /**
-     * Update the last seen event ID and timestamp.
-     * Persists to sessionStorage for catch-up on reconnect.
-     * @param {string} eventId - The event ID
-     * @param {string} createdAt - ISO 8601 timestamp
-     */
-    updateLastSeen(eventId, createdAt) {
-        this.lastSeenEventId = eventId;
-        this.lastSeenCreatedAt = createdAt;
-
-        // Persist to sessionStorage (survives page refresh within session)
-        try {
-            sessionStorage.setItem(this.storageKey, JSON.stringify({
-                eventId,
-                createdAt,
-                timestamp: Date.now(),
-            }));
-        } catch (e) {
-            console.warn('[SimulationSocket] Failed to persist lastSeen:', e);
-        }
-    }
-
-    /**
-     * Restore last seen event from sessionStorage.
-     */
     restoreLastSeen() {
         try {
             const stored = sessionStorage.getItem(this.storageKey);
-            if (stored) {
-                const data = JSON.parse(stored);
-                // Only restore if data is less than 1 hour old
-                const maxAge = 60 * 60 * 1000; // 1 hour
-                if (Date.now() - data.timestamp < maxAge) {
-                    this.lastSeenEventId = data.eventId;
-                    this.lastSeenCreatedAt = data.createdAt;
-                    console.debug('[SimulationSocket] Restored lastSeen:', data.eventId);
-                } else {
-                    // Clean up stale data
-                    sessionStorage.removeItem(this.storageKey);
-                }
+            if (!stored) {
+                return;
             }
-        } catch (e) {
-            console.warn('[SimulationSocket] Failed to restore lastSeen:', e);
+            const data = JSON.parse(stored);
+            if (typeof data?.eventId === 'string' && data.eventId.length > 0) {
+                this.lastSeenEventId = data.eventId;
+            }
+        } catch (error) {
+            console.warn('[SimulationSocket] Failed to restore last_event_id:', error);
         }
     }
 
-    /**
-     * Detect potential gap in events based on timestamp.
-     * Logs a warning if the event appears to be significantly delayed.
-     * @param {string} eventCreatedAt - ISO 8601 timestamp of the event
-     */
-    detectGap(eventCreatedAt) {
-        if (!eventCreatedAt) return;
-
+    persistLastSeen() {
         try {
-            const eventTime = new Date(eventCreatedAt).getTime();
-            const now = Date.now();
-            const age = now - eventTime;
-
-            if (age > this.gapThresholdMs) {
-                console.warn(
-                    '[SimulationSocket] Potential event gap detected:',
-                    `Event is ${Math.round(age / 1000)}s old.`,
-                    'Consider catch-up if events were missed.'
-                );
+            if (!this.lastSeenEventId) {
+                sessionStorage.removeItem(this.storageKey);
+                return;
             }
-        } catch (e) {
-            console.warn('[SimulationSocket] Failed to detect gap:', e);
+            sessionStorage.setItem(this.storageKey, JSON.stringify({ eventId: this.lastSeenEventId }));
+        } catch (error) {
+            console.warn('[SimulationSocket] Failed to persist last_event_id:', error);
         }
     }
 
-    /**
-     * Perform catch-up by fetching missed events from the API.
-     * Called automatically on reconnection if lastSeenEventId is set.
-     */
-    async performCatchup() {
-        if (this.catchupInProgress) {
-            console.debug('[SimulationSocket] Catch-up already in progress');
+    clearLastSeen() {
+        this.lastSeenEventId = null;
+        try {
+            sessionStorage.removeItem(this.storageKey);
+        } catch (error) {
+            console.warn('[SimulationSocket] Failed to clear last_event_id:', error);
+        }
+    }
+
+    scheduleReconnect() {
+        if (this.manuallyClosed) {
             return;
         }
-
-        if (!this.lastSeenEventId) {
-            console.debug('[SimulationSocket] No lastSeenEventId, skipping catch-up');
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error('[SimulationSocket] Max reconnect attempts reached');
             return;
         }
+        this.reconnectAttempts += 1;
+        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    }
 
-        this.catchupInProgress = true;
-        console.log('[SimulationSocket] Starting catch-up from:', this.lastSeenEventId);
-
-        try {
-            let cursor = this.lastSeenEventId;
-            let hasMore = true;
-            let totalFetched = 0;
-
-            while (hasMore) {
-                const response = await this.fetchCatchupEvents(cursor);
-
-                if (!response || !response.items) {
-                    console.warn('[SimulationSocket] Invalid catch-up response');
-                    break;
-                }
-
-                // Process each event
-                for (const event of response.items) {
-                    // Skip if already seen (deduplication)
-                    if (this.isDuplicate(event.event_id)) {
-                        continue;
-                    }
-
-                    // Replay the event
-                    this.handleMessage({
-                        event_id: event.event_id,
-                        event_type: event.event_type,
-                        created_at: event.created_at,
-                        correlation_id: event.correlation_id,
-                        payload: event.payload,
-                    });
-
-                    totalFetched++;
-                }
-
-                cursor = response.next_cursor;
-                hasMore = response.has_more && cursor;
+    startHeartbeat() {
+        this.stopHeartbeat();
+        this.heartbeatTimer = setInterval(() => {
+            if (!this.sessionEstablished || !this.isConnected) {
+                return;
             }
-
-            console.log(`[SimulationSocket] Catch-up complete: ${totalFetched} events replayed`);
-
-        } catch (e) {
-            console.error('[SimulationSocket] Catch-up failed:', e);
-        } finally {
-            this.catchupInProgress = false;
-        }
+            this.send('ping', { client_timestamp: new Date().toISOString() });
+        }, this.heartbeatIntervalMs);
     }
 
-    /**
-     * Fetch catch-up events from the API.
-     * @param {string} cursor - Event ID to start after
-     * @returns {Promise<{items: Array, next_cursor: string|null, has_more: boolean}>}
-     */
-    async fetchCatchupEvents(cursor) {
-        const url = `/api/v1/simulations/${this.simulationId}/events/?cursor=${encodeURIComponent(cursor)}&limit=50`;
-
-        const headers = {
-            'Accept': 'application/json',
-        };
-
-        // Add auth header if JWT token provided
-        if (this.authToken) {
-            headers['Authorization'] = `Bearer ${this.authToken}`;
-        }
-
-        const response = await fetch(url, {
-            method: 'GET',
-            headers,
-            credentials: 'include', // Include session cookies
-        });
-
-        if (!response.ok) {
-            throw new Error(`Catch-up API returned ${response.status}`);
-        }
-
-        return response.json();
-    }
-
-    canonicalizeEventType(type) {
-        return LEGACY_TO_CANONICAL_EVENT[type] || type;
-    }
-
-    dispatchEventType(type, detail) {
-        this.dispatch(type, detail);
-        const aliases = CANONICAL_EVENT_ALIASES[type] || [];
-        for (const alias of aliases) {
-            this.dispatch(alias, detail);
-        }
+    stopHeartbeat() {
+        clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = null;
     }
 
     dispatch(type, detail) {
-        // Dispatch as CustomEvent on window for global listeners
-        const event = new CustomEvent(`sim:${type}`, {
+        window.dispatchEvent(new CustomEvent(`sim:${type}`, {
             detail,
             bubbles: true,
-            cancelable: true
-        });
-        window.dispatchEvent(event);
+            cancelable: true,
+        }));
     }
 
-    send(type, payload = {}) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type, ...payload }));
-        } else {
-            console.warn('[SimulationSocket] Cannot send - socket not open');
+    send(eventType, payload = {}, correlationId = null) {
+        if (!this.isConnected) {
+            console.warn('[SimulationSocket] Cannot send event on a closed socket:', eventType);
+            return;
         }
+        this.ws.send(JSON.stringify({
+            event_type: eventType,
+            correlation_id: correlationId,
+            payload,
+        }));
     }
 
     close() {
+        this.manuallyClosed = true;
+        this.stopHeartbeat();
+        clearTimeout(this.reconnectTimer);
         if (this.ws) {
-            this.maxReconnectAttempts = 0; // Prevent reconnection
             this.ws.close();
         }
     }
 
     get isConnected() {
-        return this.ws && this.ws.readyState === WebSocket.OPEN;
+        return Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
     }
 }
 
-// Export for module systems and attach to window for global access
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = SimulationSocket;
 }

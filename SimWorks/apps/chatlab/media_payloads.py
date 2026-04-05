@@ -76,7 +76,6 @@ def serialize_media_item(
         "uuid": str(media.uuid),
         "original_url": original_url,
         "thumbnail_url": thumbnail_url,
-        "url": thumbnail_url,  # compatibility with existing web renderer
         "mime_type": media.mime_type or "",
         "description": media.description or "",
     }
@@ -102,7 +101,7 @@ def build_message_media_payload(
     scheme: str | None = None,
     host: str | None = None,
 ) -> dict[str, Any]:
-    """Build canonical + compatibility media payload keys for a Message."""
+    """Build the canonical media payload keys for a Message."""
     prefetched_media = getattr(message, "_prefetched_objects_cache", {}).get("media")
     if prefetched_media is not None:
         media_items = prefetched_media
@@ -120,7 +119,6 @@ def build_message_media_payload(
     )
     return {
         "media_list": items,
-        "mediaList": items,
     }
 
 
@@ -176,16 +174,12 @@ def build_chat_message_event_payload(
         "content": message.content or "",
         "role": message.role,
         "is_from_ai": message.is_from_ai,
-        "isFromAi": message.is_from_ai,
-        "isFromAI": message.is_from_ai,
         "display_name": message.display_name or "",
-        "displayName": message.display_name or "",
         "timestamp": message.timestamp.isoformat() if message.timestamp else None,
         "conversation_id": message.conversation_id,
         "conversation_type": resolved_conversation_type,
-        "messageType": message.message_type,
+        "message_type": message.message_type,
         "sender_id": message.sender_id,
-        "senderId": message.sender_id,
         "status": status if status is not None else delivery_status or "completed",
         "delivery_status": delivery_status,
         "delivery_retryable": delivery_retryable,

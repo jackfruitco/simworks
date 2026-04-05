@@ -1,7 +1,7 @@
 """Event schemas for API v1.
 
-Defines the canonical event envelope used across **all** transports:
-REST catch-up, SSE streaming, and WebSocket delivery.
+Defines the canonical event envelope used across ChatLab REST/WS replay
+flows and TrainerLab REST/SSE replay flows.
 """
 
 from datetime import datetime
@@ -18,8 +18,8 @@ class EventEnvelope(BaseModel):
     This schema is the single source of truth for event serialization.
     The same ``EventEnvelope`` is used by:
 
-    * **REST catch-up** (``GET /simulations/{id}/events/``)
-    * **SSE streaming** (``GET /simulations/{id}/events/stream/``)
+    * **ChatLab REST replay** (``GET /simulations/{id}/events/``)
+    * **TrainerLab SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)
     * **WebSocket delivery** (outbox drain → channel layer)
 
     Delivery semantics
@@ -30,28 +30,18 @@ class EventEnvelope(BaseModel):
     * **Cursor-based ordering**: events are ordered by
       ``(created_at, id)`` with a stable tie-breaker.
 
-    SSE stream contract
-    -------------------
-    * **Tail-only** (default): omitting ``cursor`` starts after the
-      current tip — no historical replay.
-    * **Resume**: ``cursor=<event_id>`` delivers events strictly after
-      that checkpoint.
-    * **Explicit replay**: ``replay=true`` (without cursor) replays
-      from the beginning.
-    * **Stale cursor**: returns an SSE error frame with ``status: 410``
-      — the client should re-bootstrap.
-
     Bootstrap integration
     ---------------------
-    Bootstrap responses include a ``latest_event_cursor`` field:
+    Bootstrap responses include a durable event anchor field:
 
-    * **ChatLab**: ``SimulationOut`` (``GET /simulations/{id}/``)
+    * **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),
+      which is the newest replayable ChatLab durable event ID
     * **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``
       (``GET /trainerlab/simulations/{id}/state/``)
 
-    After loading state via REST, pass the cursor to the SSE stream
-    (``GET /simulations/{id}/events/stream/?cursor=<cursor>``) so only
-    events created after that point are delivered.
+    ChatLab clients use ``last_event_id`` during the WebSocket
+    ``session.hello`` / ``session.resume`` handshake for durable replay.
+    TrainerLab clients pass ``latest_event_cursor`` to the SSE stream.
 
     Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.
@@ -81,7 +71,6 @@ class EventEnvelope(BaseModel):
     - ``timestamp`` (str): ISO timestamp
     - ``image_requested`` (bool, optional): Whether images were requested
     - ``media_list`` (list, optional): Canonical media metadata with absolute URLs
-    - ``mediaList`` (list, optional): Compatibility alias for web clients
 
     ``patient.metadata.created``:
     - ``metadata_id`` (int): Metadata database ID
@@ -117,4 +106,22 @@ class EventEnvelope(BaseModel):
     payload: dict[str, Any] = Field(
         ...,
         description="Event-specific payload data (structure varies by event_type)",
+    )
+
+
+class EventReplayResponse(BaseModel):
+    """ChatLab durable replay response."""
+
+    items: list[EventEnvelope] = Field(
+        ...,
+        description="List of replayable durable events in canonical order",
+    )
+    next_event_id: str | None = Field(
+        default=None,
+        description="Event ID anchor for the next page, null if no more items remain",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
+    has_more: bool = Field(
+        ...,
+        description="Whether more durable events exist beyond this page",
     )
