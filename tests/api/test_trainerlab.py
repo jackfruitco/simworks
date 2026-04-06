@@ -2,9 +2,12 @@
 
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
+import threading
+import traceback
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.db import close_old_connections
 from django.test import Client
 import pytest
 
@@ -137,6 +140,36 @@ def auth_client_factory():
     return _build
 
 
+def _session_create_payload(*, tick_interval_seconds: int = 10) -> dict:
+    return {
+        "scenario_spec": {
+            "diagnosis": "Heat stroke",
+            "chief_complaint": "Altered mental status",
+            "tick_interval_seconds": tick_interval_seconds,
+        },
+        "directives": "Initial directives",
+        "modifiers": ["altitude", "dehydration"],
+    }
+
+
+def _threaded_json_request(request_fn):
+    result: dict[str, object] = {}
+
+    def worker():
+        close_old_connections()
+        try:
+            response = request_fn()
+            result["status_code"] = response.status_code
+            result["json"] = response.json()
+        except Exception:
+            result["traceback"] = traceback.format_exc()
+        finally:
+            close_old_connections()
+
+    thread = threading.Thread(target=worker)
+    return thread, result
+
+
 def _create_session(
     client: Client,
     *,
@@ -157,15 +190,7 @@ def _create_session(
     with context:
         response = client.post(
             "/api/v1/trainerlab/simulations/",
-            data={
-                "scenario_spec": {
-                    "diagnosis": "Heat stroke",
-                    "chief_complaint": "Altered mental status",
-                    "tick_interval_seconds": 10,
-                },
-                "directives": "Initial directives",
-                "modifiers": ["altitude", "dehydration"],
-            },
+            data=_session_create_payload(),
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
@@ -592,6 +617,24 @@ class TestTrainerLabSessionLifecycle:
             content_type="application/json",
         )
         assert response.status_code == 400
+
+    def test_create_session_rejects_legacy_x_idempotency_key_header(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+
+        response = client.post(
+            "/api/v1/trainerlab/simulations/",
+            data=_session_create_payload(),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="legacy-header",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Idempotency-Key header is required"
 
     def test_create_session_and_idempotent_retry(
         self,
@@ -2722,6 +2765,235 @@ class TestTrainerLabDictionaries:
         assert len(problems) >= 1
         hemorrhage = next(p for p in problems if p["kind"] == "hemorrhage")
         assert hemorrhage["previous_status"] is None
+
+
+@pytest.mark.django_db
+class TestTrainerLabGuardEndpoints:
+    def test_guard_state_endpoint_returns_default_active_payload_before_run(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="guard-state-default-session")
+
+        response = client.get(f"/api/v1/simulations/{session['simulation_id']}/guard-state/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["guard_state"] == "active"
+        assert body["guard_reason"] == "none"
+        assert body["engine_runnable"] is True
+        assert body["active_elapsed_seconds"] == 0
+        assert body["warnings"] == []
+        assert body["denial"] is None
+
+    def test_heartbeat_endpoint_updates_visibility_and_returns_guard_state(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.guards.enums import ClientVisibility
+        from apps.guards.models import SessionPresence
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="guard-heartbeat-session")
+        simulation_id = session["simulation_id"]
+
+        start = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="guard-heartbeat-start",
+        )
+        assert start.status_code == 200
+
+        response = client.post(
+            f"/api/v1/simulations/{simulation_id}/heartbeat/",
+            data={"client_visibility": "foreground"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["guard_state"] == "active"
+        assert body["guard_reason"] == "none"
+        assert body["engine_runnable"] is True
+
+        presence = SessionPresence.objects.get(simulation_id=simulation_id)
+        assert presence.client_visibility == ClientVisibility.FOREGROUND
+
+
+@pytest.mark.django_db
+class TestTrainerLabAnnotationsAPI:
+    def test_create_and_list_annotations_use_canonical_route(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import SIMULATION_ANNOTATION_CREATED
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="annotation-session")
+        simulation_id = session["simulation_id"]
+
+        created = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/annotations/",
+            data={
+                "learning_objective": "airway",
+                "observation_text": "Trainer noted delayed airway reassessment.",
+                "outcome": "missed",
+                "elapsed_seconds_at": 42,
+            },
+            content_type="application/json",
+        )
+
+        assert created.status_code == 201
+        created_body = created.json()
+        assert created_body["simulation_id"] == simulation_id
+        assert created_body["learning_objective"] == "airway"
+        assert created_body["outcome"] == "missed"
+
+        listed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/annotations/")
+        assert listed.status_code == 200
+        assert listed.json()[0]["id"] == created_body["id"]
+
+        outbox_event = OutboxEvent.objects.get(
+            simulation_id=simulation_id,
+            event_type=SIMULATION_ANNOTATION_CREATED,
+        )
+        assert outbox_event.payload["annotation_id"] == created_body["id"]
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTrainerLabIdempotencyConcurrency:
+    def test_parallel_duplicate_session_create_returns_single_session(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from api.v1.endpoints import trainerlab as trainerlab_endpoints
+        from apps.trainerlab.models import TrainerCommand, TrainerSession
+
+        create_started = threading.Event()
+        release_create = threading.Event()
+        call_count = {"value": 0}
+        real_create = trainerlab_endpoints.create_session_with_initial_generation
+
+        def _slow_create(*args, **kwargs):
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                create_started.set()
+                assert release_create.wait(timeout=2)
+            return real_create(*args, **kwargs)
+
+        monkeypatch.setattr(
+            trainerlab_endpoints,
+            "create_session_with_initial_generation",
+            _slow_create,
+        )
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            lambda *, session, correlation_id=None, retryable=None: "concurrent-call-id",
+        )
+
+        def _request():
+            client = auth_client_factory(instructor_user)
+            return client.post(
+                "/api/v1/trainerlab/simulations/",
+                data=_session_create_payload(),
+                content_type="application/json",
+                HTTP_IDEMPOTENCY_KEY="session-create-race",
+            )
+
+        thread_one, result_one = _threaded_json_request(_request)
+        thread_one.start()
+        assert create_started.wait(timeout=2)
+
+        thread_two, result_two = _threaded_json_request(_request)
+        thread_two.start()
+        release_create.set()
+
+        thread_one.join()
+        thread_two.join()
+
+        assert "traceback" not in result_one, result_one.get("traceback")
+        assert "traceback" not in result_two, result_two.get("traceback")
+        assert sorted([result_one["status_code"], result_two["status_code"]]) == [200, 201]
+
+        simulation_ids = {result_one["json"]["simulation_id"], result_two["json"]["simulation_id"]}
+        assert len(simulation_ids) == 1
+        assert call_count["value"] == 1
+        assert TrainerSession.objects.count() == 1
+        assert TrainerCommand.objects.filter(idempotency_key="session-create-race").count() == 1
+
+    def test_parallel_duplicate_injury_injection_reuses_single_command(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from api.v1.endpoints import trainerlab as trainerlab_endpoints
+        from apps.trainerlab.models import Injury, TrainerCommand
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="injury-race-session")
+        simulation_id = session["simulation_id"]
+
+        create_started = threading.Event()
+        release_create = threading.Event()
+        call_count = {"value": 0}
+        real_create_injury = trainerlab_endpoints._create_injury
+
+        def _slow_create_injury(session_obj, body):
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                create_started.set()
+                assert release_create.wait(timeout=2)
+            return real_create_injury(session_obj, body)
+
+        monkeypatch.setattr(trainerlab_endpoints, "_create_injury", _slow_create_injury)
+
+        def _request():
+            client = auth_client_factory(instructor_user)
+            return _post_injury_event(
+                client,
+                simulation_id=simulation_id,
+                idempotency_key="injury-race",
+                injury_description="Parallel laceration",
+            )
+
+        thread_one, result_one = _threaded_json_request(_request)
+        thread_one.start()
+        assert create_started.wait(timeout=2)
+
+        thread_two, result_two = _threaded_json_request(_request)
+        thread_two.start()
+        release_create.set()
+
+        thread_one.join()
+        thread_two.join()
+
+        assert "traceback" not in result_one, result_one.get("traceback")
+        assert "traceback" not in result_two, result_two.get("traceback")
+        assert result_one["status_code"] == 200
+        assert result_two["status_code"] == 200
+        assert result_one["json"]["command_id"] == result_two["json"]["command_id"]
+        assert call_count["value"] == 1
+        assert (
+            Injury.objects.filter(
+                simulation_id=simulation_id,
+                injury_description="Parallel laceration",
+            ).count()
+            == 1
+        )
+        assert TrainerCommand.objects.filter(idempotency_key="injury-race").count() == 1
 
 
 @pytest.mark.django_db

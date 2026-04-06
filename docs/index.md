@@ -9,6 +9,7 @@ MedSim is a medical simulation and training platform with AI-assisted workflows.
 - [Quick start](quick-start.md)
 - [Deployment tags and release flow](DEPLOYMENT_TAGS.md)
 - [WebSocket event contract](WEBSOCKET_EVENTS.md)
+- [TrainerLab iOS backend contract note](trainerlab-ios-backend-contract.md)
 - [TrainerLab roadmap and improvements](TRAINERLAB_IMPROVEMENTS.md)
 
 ## Package docs

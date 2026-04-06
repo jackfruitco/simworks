@@ -163,6 +163,36 @@ class TrainerCommand(models.Model):
         ]
 
 
+class TrainerIdempotencyClaim(models.Model):
+    """Claim table for idempotent requests that may not have a session yet."""
+
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    command_type = models.CharField(max_length=32, choices=TrainerCommand.CommandType.choices)
+    payload_json = models.JSONField(default=dict, blank=True)
+    session = models.ForeignKey(
+        "trainerlab.TrainerSession",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="idempotency_claims",
+    )
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trainerlab_idempotency_claims",
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["command_type", "issued_at"], name="idx_trainer_claim_type"),
+            models.Index(fields=["session", "issued_at"], name="idx_trainer_claim_session"),
+        ]
+
+
 class RuntimeEvent(models.Model):
     """Append-only TrainerLab event stream feeding outbox + SSE.
 
