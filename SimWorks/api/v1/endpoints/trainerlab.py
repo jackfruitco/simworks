@@ -2,8 +2,8 @@
 
 from collections.abc import Callable
 from datetime import UTC
-from typing import Any
 import time
+from typing import Any
 import uuid
 
 from django.contrib.auth import get_user_model

@@ -2,12 +2,12 @@
 
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
-from django.db import close_old_connections
 import threading
 import traceback
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.db import close_old_connections
 from django.test import Client
 import pytest
 

@@ -178,9 +178,10 @@ class TestOpenAPISchemaContent:
                 "/api/v1/simulations/{simulation_id}/heartbeat/",
             ],
         )
-        assert "/api/v1/trainerlab/simulations/{simulation_id}/events/annotations/" not in schema[
-            "paths"
-        ]
+        assert (
+            "/api/v1/trainerlab/simulations/{simulation_id}/events/annotations/"
+            not in schema["paths"]
+        )
 
     def test_schema_defines_response_schemas(self, schema):
         """Test that response schemas are defined."""
