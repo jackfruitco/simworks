@@ -53,7 +53,7 @@ def _make_message_media_enricher(simulation_id: int):
     """Return a payload-enricher callback for ``message.item.created`` events.
 
     The enricher fetches the related :class:`Message` with prefetched media
-    and merges ``media_list`` / ``mediaList`` keys into the payload.
+    and merges canonical ``media_list`` metadata into the payload.
     """
     from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
     from apps.chatlab.models import Message
@@ -66,7 +66,6 @@ def _make_message_media_enricher(simulation_id: int):
         msg_id = payload_message_id(payload)
         if msg_id is None:
             payload.setdefault("media_list", [])
-            payload.setdefault("mediaList", [])
             return payload
         try:
             message = await Message.objects.prefetch_related("media").aget(
@@ -75,7 +74,6 @@ def _make_message_media_enricher(simulation_id: int):
             payload.update(build_message_media_payload(message))
         except Message.DoesNotExist:
             payload.setdefault("media_list", [])
-            payload.setdefault("mediaList", [])
         return payload
 
     return _enrich

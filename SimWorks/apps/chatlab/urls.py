@@ -47,11 +47,6 @@ urlpatterns = [
         name="watch_simulation",
     ),
     path(
-        "simulation/<int:simulation_id>/watch/stream/",
-        views.watch_stream,
-        name="watch_stream",
-    ),
-    path(
         "simulation/<int:simulation_id>/watch/service-calls/",
         views.watch_service_calls,
         name="watch_service_calls",

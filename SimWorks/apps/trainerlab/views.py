@@ -98,6 +98,7 @@ def watch_simulation(request, simulation_id):
         outbox_events=outbox_qs,
         service_calls_qs=service_calls_qs,
         stream_url=reverse("trainerlab:watch_stream", args=[simulation_id]),
+        realtime_transport="sse",
         service_calls_url=reverse("trainerlab:watch_service_calls", args=[simulation_id]),
         watch_url=reverse("trainerlab:watch_simulation", args=[simulation_id]),
         back_url=run_url,

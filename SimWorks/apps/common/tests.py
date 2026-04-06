@@ -23,14 +23,11 @@ class EventTypeRegistryTests(SimpleTestCase):
                 self.assertTrue(subject.isalpha())
                 self.assertIn(action, event_types.CANONICAL_ACTIONS)
 
-    def test_legacy_aliases_canonicalize_to_registry_names(self) -> None:
+    def test_internal_aliases_canonicalize_to_registry_names(self) -> None:
         expected_aliases = {
-            "chat.message_created": event_types.MESSAGE_CREATED,
-            "message_status_update": event_types.MESSAGE_DELIVERY_UPDATED,
             "simulation.state_changed": event_types.SIMULATION_STATUS_UPDATED,
             "run.started": event_types.SIMULATION_STATUS_UPDATED,
             "session.failed": event_types.SIMULATION_STATUS_UPDATED,
-            "feedback.retrying": event_types.FEEDBACK_GENERATION_UPDATED,
             "trainerlab.intervention.assessed": event_types.PATIENT_INTERVENTION_UPDATED,
             "trainerlab.control_plane.patch_evaluated": (
                 event_types.SIMULATION_PATCH_EVALUATION_COMPLETED
@@ -45,6 +42,24 @@ class EventTypeRegistryTests(SimpleTestCase):
                 self.assertTrue(event_types.is_known_event_type(legacy_name))
                 self.assertNotEqual(legacy_name, canonical_name)
                 self.assertEqual(event_types.canonical_event_type(legacy_name), canonical_name)
+
+    def test_removed_chatlab_aliases_are_unknown(self) -> None:
+        removed_aliases = (
+            "chat.message_created",
+            "message_status_update",
+            "metadata.created",
+            "simulation.metadata.results_created",
+            "feedback.created",
+            "simulation.feedback_created",
+            "simulation.hotwash.created",
+            "feedback.failed",
+            "feedback.retrying",
+        )
+
+        for alias in removed_aliases:
+            with self.subTest(alias=alias):
+                self.assertFalse(event_types.is_known_event_type(alias))
+                self.assertEqual(event_types.canonical_event_type(alias), alias)
 
     def test_docs_and_typings_cover_all_canonical_event_types(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
@@ -67,21 +82,15 @@ class EventTypeRegistryTests(SimpleTestCase):
 
 
 class OutboxEventContractTests(TestCase):
-    def test_enqueue_event_sync_canonicalizes_legacy_aliases(self) -> None:
-        event = enqueue_event_sync(
-            event_type="chat.message_created",
-            simulation_id=101,
-            payload={"message_id": 7},
-            idempotency_key="legacy-alias-message-created",
-            correlation_id="corr-1",
-        )
-
-        assert event is not None
-        self.assertEqual(event.event_type, event_types.MESSAGE_CREATED)
-        self.assertEqual(
-            OutboxEvent.objects.get(id=event.id).event_type,
-            event_types.MESSAGE_CREATED,
-        )
+    def test_enqueue_event_sync_rejects_removed_chatlab_aliases(self) -> None:
+        with self.assertRaisesMessage(ValueError, "Invalid canonical outbox event type"):
+            enqueue_event_sync(
+                event_type="chat.message_created",
+                simulation_id=101,
+                payload={"message_id": 7},
+                idempotency_key="legacy-alias-message-created",
+                correlation_id="corr-1",
+            )
 
     def test_enqueue_event_sync_rejects_noncanonical_output(self) -> None:
         with self.assertRaisesMessage(ValueError, "Invalid canonical outbox event type"):

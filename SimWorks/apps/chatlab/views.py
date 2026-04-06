@@ -11,7 +11,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from api.v1.sse import build_outbox_events_stream_response, resolve_outbox_stream_anchor
 from apps.accounts.context import resolve_request_account
 from apps.chatlab.utils import (
     create_new_simulation,
@@ -283,7 +282,9 @@ def watch_simulation(request, simulation_id):
         simulation=simulation,
         outbox_events=outbox_qs,
         service_calls_qs=service_calls_qs,
-        stream_url=reverse("chatlab:watch_stream", args=[simulation_id]),
+        stream_url="/ws/v1/chatlab/",
+        realtime_transport="websocket",
+        realtime_session_payload={"simulation_id": simulation_id},
         service_calls_url=reverse("chatlab:watch_service_calls", args=[simulation_id]),
         watch_url=reverse("chatlab:watch_simulation", args=[simulation_id]),
         back_url=run_url,
@@ -296,32 +297,6 @@ def watch_simulation(request, simulation_id):
         request,
         "simulation_watch.html",
         context,
-    )
-
-
-@staff_member_required
-def watch_stream(request, simulation_id):
-    """SSE stream for the admin watch view (session-cookie auth)."""
-    logger.debug(
-        "watch_stream: SSE opened admin=%s sim=%s cursor=%s",
-        request.user.pk,
-        simulation_id,
-        request.GET.get("cursor"),
-    )
-    get_object_or_404(Simulation, id=simulation_id)
-    cursor = request.GET.get("cursor") or None
-    event_type_prefix = request.GET.get("event_prefix") or None
-    last_event = resolve_outbox_stream_anchor(
-        simulation_id=simulation_id,
-        cursor=cursor,
-        event_type_prefix=event_type_prefix,
-    )
-    return build_outbox_events_stream_response(
-        simulation_id=simulation_id,
-        last_event=last_event,
-        cursor=cursor,
-        event_type_prefix=event_type_prefix,
-        heartbeat_interval_seconds=10.0,
     )
 
 

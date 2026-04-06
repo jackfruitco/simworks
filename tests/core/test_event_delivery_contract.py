@@ -30,6 +30,8 @@ from apps.common.outbox.outbox import (
     build_ws_envelope,
     get_latest_cursor,
     get_latest_cursor_sync,
+    get_latest_event_id,
+    get_latest_event_id_sync,
 )
 
 # ---------------------------------------------------------------------------
@@ -360,6 +362,41 @@ class TestBootstrapCheckpoint:
         cursor = await get_latest_cursor(81)
         assert cursor == str(event.id)
 
+    def test_latest_event_id_sync_ignores_non_replayable_events(self):
+        replayable = OutboxEvent.objects.create(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=810,
+            payload={"status": "running"},
+            idempotency_key=f"latest-event-sync:replayable:{uuid.uuid4()}",
+        )
+        transient = OutboxEvent.objects.create(
+            event_type="typing.started",
+            simulation_id=810,
+            payload={"conversation_id": 123},
+            idempotency_key=f"latest-event-sync:transient:{uuid.uuid4()}",
+        )
+
+        assert get_latest_cursor_sync(810) == str(transient.id)
+        assert get_latest_event_id_sync(810) == str(replayable.id)
+
+    @pytest.mark.asyncio
+    async def test_latest_event_id_async_uses_replayable_event_space(self):
+        replayable = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=811,
+            payload={"status": "running"},
+            idempotency_key=f"latest-event-async:replayable:{uuid.uuid4()}",
+        )
+        transient = await OutboxEvent.objects.acreate(
+            event_type="typing.started",
+            simulation_id=811,
+            payload={"conversation_id": 456},
+            idempotency_key=f"latest-event-async:transient:{uuid.uuid4()}",
+        )
+
+        assert await get_latest_cursor(811) == str(transient.id)
+        assert await get_latest_event_id(811) == str(replayable.id)
+
     @pytest.mark.asyncio
     async def test_checkpoint_safe_resume(self, monkeypatch):
         """Connecting SSE with the bootstrap checkpoint should not replay."""
@@ -467,14 +504,6 @@ class TestMediaPayloadCompleteness:
                     "thumbnail_url": "/img/1_t.png",
                 }
             ],
-            "mediaList": [
-                {
-                    "id": 1,
-                    "uuid": "abc",
-                    "original_url": "/img/1.png",
-                    "thumbnail_url": "/img/1_t.png",
-                }
-            ],
         }
         event = OutboxEvent.objects.create(
             event_type=MESSAGE_CREATED,
@@ -484,5 +513,4 @@ class TestMediaPayloadCompleteness:
         )
         envelope = build_canonical_envelope(event)
         assert envelope["payload"]["media_list"] == payload["media_list"]
-        assert envelope["payload"]["mediaList"] == payload["mediaList"]
         assert envelope["payload"]["content"] == "Hello world"

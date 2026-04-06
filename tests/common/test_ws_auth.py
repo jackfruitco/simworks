@@ -1,15 +1,16 @@
-"""Tests for WebSocket authentication middleware.
+"""Tests for WebSocket authentication and account context middleware.
 
 Covers:
-- _extract_bearer_token: Authorization header and query param extraction
+- _extract_bearer_token: Authorization header extraction (query params removed)
 - JWTAuthMiddleware: sets scope["user"] from valid JWT, falls back to AnonymousUser
+- AccountContextMiddleware: resolves scope["account"] from X-Account-UUID header
 - SessionOrJWTAuthMiddlewareStack ordering: session auth runs first so JWT is
   not overwritten (regression test for the iOS 403 bug)
-- End-to-end WS connection through the full ASGI app using JWT
+- End-to-end WS connection through the full ASGI app using JWT + account headers
+- Query-param auth/account selection is no longer supported
 """
 
 from unittest.mock import AsyncMock, MagicMock
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from channels.testing import WebsocketCommunicator
@@ -18,6 +19,7 @@ import pytest
 
 from api.v1.auth import create_access_token
 from apps.common.ws_auth import (
+    AccountContextMiddleware,
     JWTAuthMiddleware,
     SessionOrJWTAuthMiddlewareStack,
     _extract_bearer_token,
@@ -57,19 +59,6 @@ class TestExtractBearerToken:
         scope = _make_scope(headers=[_header("Authorization", "Bearer MyToken")])
         assert _extract_bearer_token(scope) == "MyToken"
 
-    def test_extracts_token_from_query_param(self):
-        qs = urlencode({"token": "querytoken456"}).encode()
-        scope = _make_scope(query_string=qs)
-        assert _extract_bearer_token(scope) == "querytoken456"
-
-    def test_header_takes_priority_over_query_param(self):
-        qs = urlencode({"token": "querytoken"}).encode()
-        scope = _make_scope(
-            headers=[_header("authorization", "Bearer headertoken")],
-            query_string=qs,
-        )
-        assert _extract_bearer_token(scope) == "headertoken"
-
     def test_returns_none_when_no_token_present(self):
         scope = _make_scope()
         assert _extract_bearer_token(scope) is None
@@ -81,6 +70,22 @@ class TestExtractBearerToken:
     def test_strips_whitespace_from_token(self):
         scope = _make_scope(headers=[_header("authorization", "Bearer  spaced  ")])
         assert _extract_bearer_token(scope) == "spaced"
+
+    def test_query_param_token_is_ignored(self):
+        """Query-param tokens are no longer supported."""
+        from urllib.parse import urlencode
+
+        qs = urlencode({"token": "querytoken456"}).encode()
+        scope = _make_scope(query_string=qs)
+        assert _extract_bearer_token(scope) is None
+
+    def test_query_param_token_ignored_even_without_header(self):
+        """Ensure no fallback to query params when header is absent."""
+        from urllib.parse import urlencode
+
+        qs = urlencode({"token": "should_be_ignored"}).encode()
+        scope = _make_scope(query_string=qs)
+        assert _extract_bearer_token(scope) is None
 
 
 # ---------------------------------------------------------------------------
@@ -119,35 +124,21 @@ class TestJWTAuthMiddleware:
 
         assert result["user"].pk == user.pk
         assert result["user"].is_authenticated
-
-    async def test_sets_user_from_valid_jwt_in_query_param(self):
-        from apps.accounts.models import UserRole
-
-        role, _ = await UserRole.objects.aget_or_create(title="WS JWT QP Test")
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        user = await User.objects.acreate(email=f"ws_jwt_qp_{uuid4().hex[:6]}@test.com", role=role)
-        token = create_access_token(user)
-
-        qs = urlencode({"token": token}).encode()
-        scope = _make_scope(query_string=qs)
-        result = await self._call_middleware(scope)
-
-        assert result["user"].pk == user.pk
-        assert result["user"].is_authenticated
+        assert result["auth_mechanism"] == "bearer_token"
 
     async def test_falls_back_to_anonymous_when_no_token(self):
         scope = _make_scope()
         result = await self._call_middleware(scope)
 
         assert isinstance(result["user"], AnonymousUser)
+        assert result["auth_mechanism"] is None
 
     async def test_falls_back_to_anonymous_for_invalid_token(self):
         scope = _make_scope(headers=[_header("authorization", "Bearer not.a.valid.jwt")])
         result = await self._call_middleware(scope)
 
         assert isinstance(result["user"], AnonymousUser)
+        assert result["auth_mechanism"] is None
 
     async def test_skips_jwt_when_user_already_authenticated(self):
         """If session auth already populated scope['user'], JWT is not attempted."""
@@ -169,6 +160,7 @@ class TestJWTAuthMiddleware:
 
         # User must be the session user, not resolved from the (ignored) token
         assert result["user"].pk == session_user.pk
+        assert result["auth_mechanism"] == "session"
 
     async def test_falls_back_to_anonymous_for_inactive_user(self):
         from django.contrib.auth import get_user_model
@@ -188,6 +180,146 @@ class TestJWTAuthMiddleware:
         result = await self._call_middleware(scope)
 
         assert isinstance(result["user"], AnonymousUser)
+
+    async def test_query_param_jwt_is_not_accepted(self):
+        """Query-param JWT tokens are no longer supported for auth."""
+        from urllib.parse import urlencode
+
+        from apps.accounts.models import UserRole
+
+        role, _ = await UserRole.objects.aget_or_create(title="WS QP Reject")
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user = await User.objects.acreate(
+            email=f"ws_qp_reject_{uuid4().hex[:6]}@test.com", role=role
+        )
+        token = create_access_token(user)
+
+        qs = urlencode({"token": token}).encode()
+        scope = _make_scope(query_string=qs)
+        result = await self._call_middleware(scope)
+
+        assert isinstance(result["user"], AnonymousUser)
+
+
+# ---------------------------------------------------------------------------
+# AccountContextMiddleware (unit)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestAccountContextMiddleware:
+    """Unit tests for AccountContextMiddleware scope population."""
+
+    async def _call_middleware(self, scope):
+        """Run AccountContextMiddleware and return the scope it passed to the inner app."""
+        captured = {}
+
+        async def inner(s, receive, send):
+            captured["scope"] = s
+
+        middleware = AccountContextMiddleware(inner)
+        await middleware(scope, AsyncMock(), AsyncMock())
+        return captured.get("scope", scope)
+
+    async def _make_user_with_account(self):
+        from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
+        from apps.accounts.services import get_default_account_for_user
+
+        User = get_user_model()
+        role, _ = await UserRole.objects.aget_or_create(title="WS Account Test")
+        user = await User.objects.acreate(email=f"ws_acct_{uuid4().hex[:6]}@test.com", role=role)
+        from asgiref.sync import sync_to_async
+
+        account = await sync_to_async(get_default_account_for_user)(user)
+        return user, account
+
+    async def test_sets_scope_account_from_header(self):
+        user, account = await self._make_user_with_account()
+
+        scope = _make_scope(
+            headers=[_header("x-account-uuid", str(account.uuid))],
+        )
+        scope["user"] = user
+
+        result = await self._call_middleware(scope)
+        assert result["account"] is not None
+        assert result["account"].id == account.id
+        assert result["account_context_source"] == "header"
+
+    async def test_scope_account_uses_default_without_header(self):
+        user, account = await self._make_user_with_account()
+
+        scope = _make_scope()
+        scope["user"] = user
+
+        result = await self._call_middleware(scope)
+        # Without header, falls back to default account for user
+        assert result["account"] is not None
+        assert result["account"].id == account.id
+        assert result["account_context_source"] == "default"
+
+    async def test_scope_account_is_none_for_anonymous(self):
+        scope = _make_scope()
+        scope["user"] = AnonymousUser()
+
+        result = await self._call_middleware(scope)
+        assert result["account"] is None
+        assert result["account_context_source"] is None
+
+    async def test_scope_account_is_none_for_invalid_uuid(self):
+        user, _account = await self._make_user_with_account()
+
+        scope = _make_scope(
+            headers=[_header("x-account-uuid", "not-a-valid-uuid")],
+        )
+        scope["user"] = user
+
+        result = await self._call_middleware(scope)
+        assert result["account"] is None
+        assert result["account_context_source"] == "header"
+
+    async def test_scope_account_is_none_for_wrong_account(self):
+        """Valid UUID but user has no access to that account."""
+        user, _own_account = await self._make_user_with_account()
+
+        # Create a different account the user does NOT have access to
+        from apps.accounts.models import Account
+
+        other_account = await Account.objects.acreate(
+            name="Other Org",
+            slug=f"other-org-{uuid4().hex[:6]}",
+            account_type=Account.AccountType.ORGANIZATION,
+        )
+
+        scope = _make_scope(
+            headers=[_header("x-account-uuid", str(other_account.uuid))],
+        )
+        scope["user"] = user
+
+        result = await self._call_middleware(scope)
+        assert result["account"] is None
+        assert result["account_context_source"] == "header"
+
+    async def test_query_param_account_uuid_is_ignored(self):
+        """Query-param account_uuid is no longer supported."""
+        from urllib.parse import urlencode
+
+        user, account = await self._make_user_with_account()
+
+        qs = urlencode({"account_uuid": str(account.uuid)}).encode()
+        scope = _make_scope(query_string=qs)
+        scope["user"] = user
+
+        result = await self._call_middleware(scope)
+        # Should resolve default account, not the one in query param
+        # (the query param is ignored, default account is returned)
+        assert result["account"] is not None
+        assert result["account_context_source"] == "default"
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +365,37 @@ class TestSessionOrJWTAuthMiddlewareStackOrdering:
         assert depth > 0, (
             "JWTAuthMiddleware must not be the outermost layer — "
             "it should be wrapped by AuthMiddlewareStack so session auth runs first"
+        )
+
+    def test_account_context_middleware_is_innermost(self):
+        """AccountContextMiddleware should be the innermost middleware layer."""
+        inner = MagicMock()
+        stack = SessionOrJWTAuthMiddlewareStack(inner)
+
+        def find_account_depth(obj, depth=0):
+            if isinstance(obj, AccountContextMiddleware):
+                return depth, True
+            inner_app = getattr(obj, "inner", None)
+            if inner_app is None or inner_app is obj:
+                return depth, False
+            return find_account_depth(inner_app, depth + 1)
+
+        depth, found = find_account_depth(stack)
+        assert found, "AccountContextMiddleware not found in middleware stack"
+
+        # AccountContextMiddleware should be deeper than JWTAuthMiddleware
+        def find_jwt_depth(obj, depth=0):
+            if isinstance(obj, JWTAuthMiddleware):
+                return depth, True
+            inner_app = getattr(obj, "inner", None)
+            if inner_app is None or inner_app is obj:
+                return depth, False
+            return find_jwt_depth(inner_app, depth + 1)
+
+        jwt_depth, _ = find_jwt_depth(stack)
+        assert depth > jwt_depth, (
+            "AccountContextMiddleware must be inside JWTAuthMiddleware "
+            "so that scope['user'] is resolved before account resolution"
         )
 
 
@@ -289,68 +452,45 @@ class TestJWTWebSocketEndToEnd:
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
         connected, _ = await communicator.connect()
         assert connected is True
 
-        response = await communicator.receive_json_from()
-        assert response["type"] == "init_message"
-
-        await communicator.disconnect()
-
-    async def test_jwt_in_query_param_allows_ws_connection(self):
-        """Mobile client with ?token=<jwt> can connect."""
-        user, simulation = await self._make_user_and_simulation()
-        token = create_access_token(user)
-
-        communicator = WebsocketCommunicator(
-            _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/?token={token}",
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
         )
-        connected, _ = await communicator.connect()
-        assert connected is True
-
         response = await communicator.receive_json_from()
-        assert response["type"] == "init_message"
+        assert response["event_type"] == "session.ready"
 
         await communicator.disconnect()
 
     async def test_no_auth_rejects_ws_connection(self):
-        """WS connection without any auth is rejected (close code 4403)."""
-        _, simulation = await self._make_user_and_simulation()
+        """WS connection without any auth is rejected before accept."""
+        await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
         )
         connected, _ = await communicator.connect()
-        # Consumer accepts then immediately closes with 4403 for unauthenticated users
-        assert connected is True
-
-        response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-        assert "access" in response["message"].lower()
-
-        await communicator.disconnect()
+        assert connected is False
 
     async def test_invalid_jwt_rejects_ws_connection(self):
         """WS connection with a malformed JWT is treated as unauthenticated."""
-        _, simulation = await self._make_user_and_simulation()
+        await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", b"Bearer not.a.real.token")],
         )
         connected, _ = await communicator.connect()
-        assert connected is True
-
-        response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-
-        await communicator.disconnect()
+        assert connected is False
 
     async def test_jwt_user_cannot_access_other_users_simulation(self):
         """JWT-authenticated user is rejected for a simulation they don't own."""
@@ -369,16 +509,139 @@ class TestJWTWebSocketEndToEnd:
 
         communicator = WebsocketCommunicator(
             _make_ws_app(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
         connected, _ = await communicator.connect()
         assert connected is True
 
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
         response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-        assert "access" in response["message"].lower()
+        assert response["event_type"] == "error"
+        assert "access" in response["payload"]["code"]
 
+        await communicator.disconnect()
+
+    async def test_query_param_jwt_rejected_e2e(self):
+        """Query-param JWT tokens are no longer accepted end-to-end."""
+        user, _simulation = await self._make_user_and_simulation()
+        token = create_access_token(user)
+
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            f"/ws/v1/chatlab/?token={token}",
+        )
+        connected, _ = await communicator.connect()
+        # Without header-based auth, connection should be rejected
+        assert connected is False
+
+    async def test_jwt_with_account_header_e2e(self):
+        """Full stack: Bearer token + X-Account-UUID header resolves both user and account."""
+        from asgiref.sync import sync_to_async
+
+        from apps.accounts.services import get_default_account_for_user
+
+        user, simulation = await self._make_user_and_simulation()
+        account = await sync_to_async(get_default_account_for_user)(user)
+
+        # Link simulation to account
+        simulation.account = account
+        await simulation.asave(update_fields=["account"])
+
+        token = create_access_token(user)
+
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            "/ws/v1/chatlab/",
+            headers=[
+                (b"authorization", f"Bearer {token}".encode()),
+                (b"x-account-uuid", str(account.uuid).encode()),
+            ],
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
+        response = await communicator.receive_json_from()
+        assert response["event_type"] == "session.ready"
+        assert response["payload"]["simulation_id"] == simulation.id
+
+        await communicator.disconnect()
+
+    async def test_account_context_wrong_account_denied(self):
+        """Valid auth but wrong account UUID denies simulation access."""
+        from apps.accounts.models import Account
+
+        user, simulation = await self._make_user_and_simulation()
+        token = create_access_token(user)
+
+        # Create a different account the user doesn't have access to
+        other_account = await Account.objects.acreate(
+            name="Other Org",
+            slug=f"other-org-e2e-{uuid4().hex[:6]}",
+            account_type=Account.AccountType.ORGANIZATION,
+        )
+
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            "/ws/v1/chatlab/",
+            headers=[
+                (b"authorization", f"Bearer {token}".encode()),
+                (b"x-account-uuid", str(other_account.uuid).encode()),
+            ],
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
+        response = await communicator.receive_json_from()
+        assert response["event_type"] == "error"
+        assert response["payload"]["code"] == "access_denied"
+
+        await communicator.disconnect()
+
+    async def test_no_query_param_account_selection_e2e(self):
+        """Query-param account_uuid is not accepted for account context."""
+        from urllib.parse import urlencode
+
+        from apps.accounts.models import Account
+
+        user, _simulation = await self._make_user_and_simulation()
+        token = create_access_token(user)
+
+        # Create other account and try to select it via query param
+        other_account = await Account.objects.acreate(
+            name="QP Org",
+            slug=f"qp-org-{uuid4().hex[:6]}",
+            account_type=Account.AccountType.ORGANIZATION,
+        )
+
+        qs = urlencode({"account_uuid": str(other_account.uuid)}).encode()
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            f"/ws/v1/chatlab/?{qs.decode()}",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        # The query param should be ignored; account should resolve to default
+        # (the user's personal account), not the query-param one
         await communicator.disconnect()
 
 
@@ -395,6 +658,7 @@ class TestNotificationsWebSocketEndToEnd:
     Verifies that:
     - Anonymous connections are rejected with close code 4001 (not HTTP 403)
     - JWT-authenticated users can connect successfully
+    - Query-param tokens are no longer accepted
     """
 
     async def _make_user(self):
@@ -440,8 +704,8 @@ class TestNotificationsWebSocketEndToEnd:
 
         await communicator.disconnect()
 
-    async def test_jwt_in_query_param_allows_notifications_connection(self):
-        """JWT-authenticated user with ?token=<jwt> can connect to notifications."""
+    async def test_query_param_jwt_rejected_for_notifications(self):
+        """Query-param JWT tokens are no longer accepted for notifications."""
         user = await self._make_user()
         token = create_access_token(user)
 
@@ -450,7 +714,12 @@ class TestNotificationsWebSocketEndToEnd:
             f"/ws/notifications/?token={token}",
         )
         connected, _ = await communicator.connect()
+        # Without header auth, user is anonymous → accepted then closed with 4001
         assert connected is True
+
+        close_message = await communicator.receive_output()
+        assert close_message["type"] == "websocket.close"
+        assert close_message.get("code") == 4001
 
         await communicator.disconnect()
 

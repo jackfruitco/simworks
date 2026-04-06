@@ -11,8 +11,10 @@ Public API:
     poke_drain_sync()          - Trigger immediate delivery (sync)
     build_canonical_envelope() - Build transport envelope from outbox event
     build_ws_envelope()        - Alias for build_canonical_envelope (compat)
-    get_latest_cursor_sync()   - Latest outbox cursor for a simulation (sync)
-    get_latest_cursor()        - Latest outbox cursor for a simulation (async)
+    get_latest_cursor_sync()   - Latest raw outbox cursor for a simulation (sync)
+    get_latest_cursor()        - Latest raw outbox cursor for a simulation (async)
+    get_latest_event_id_sync() - Latest replayable ChatLab durable event ID (sync)
+    get_latest_event_id()      - Latest replayable ChatLab durable event ID (async)
     get_events_for_simulation() - Fetch events for catch-up API
 
 Usage:
@@ -48,9 +50,15 @@ from .outbox import (
     build_ws_envelope,
     enqueue_event,
     enqueue_event_sync,
+    get_events_after_event,
+    get_events_after_event_sync,
     get_events_for_simulation,
     get_latest_cursor,
     get_latest_cursor_sync,
+    get_latest_event_id,
+    get_latest_event_id_sync,
+    get_outbox_event,
+    get_outbox_event_sync,
     order_outbox_queryset,
     poke_drain,
     poke_drain_sync,
@@ -69,9 +77,15 @@ __all__ = [
     "enqueue_event",
     "enqueue_event_sync",
     "event_types",
+    "get_events_after_event",
+    "get_events_after_event_sync",
     "get_events_for_simulation",
     "get_latest_cursor",
     "get_latest_cursor_sync",
+    "get_latest_event_id",
+    "get_latest_event_id_sync",
+    "get_outbox_event",
+    "get_outbox_event_sync",
     "order_outbox_queryset",
     "poke_drain",
     "poke_drain_sync",

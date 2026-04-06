@@ -348,7 +348,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
         initializeSocket() {
             // Create socket instance (from apps.simulation-socket.js)
             this.socket = new SimulationSocket(this.simulation_id, {
-                contentMode: this.contentMode
+                onResyncRequired: () => window.location.reload(),
             });
         },
 
@@ -360,10 +360,12 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             this.eventBus.attachSocket(this.socket);
 
             // Subscribe to chat UI events only
-            this.eventBus.on('init_message', (data) => this.handleInitMessage(data));
+            this.eventBus.on('session.ready', (data) => this.handleSessionReady(data));
+            this.eventBus.on('session.resumed', (data) => this.handleSessionReady(data));
+            this.eventBus.on('session.resync_required', (data) => this.handleSessionResyncRequired(data));
             this.eventBus.on('message.item.created', (data) => this.handleChatMessage(data));
-            this.eventBus.on('typing', (data) => this.handleTyping(data, true));
-            this.eventBus.on('stopped_typing', (data) => this.handleTyping(data, false));
+            this.eventBus.on('typing.started', (data) => this.handleTyping(data, true));
+            this.eventBus.on('typing.stopped', (data) => this.handleTyping(data, false));
             this.eventBus.on('message.delivery.updated', (data) => this.handleMessageStatusUpdate(data));
             this.eventBus.on('error', (data) => this.handleError(data));
             this.eventBus.on('connected', () => this.handleSocketConnected());
@@ -390,10 +392,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                     refreshMode: 'checksum',
                 },
                 'simulation_feedback': {
-                    refreshOn: [
-                        'feedback.item.created',
-                        'feedback.created',
-                    ],
+                    refreshOn: ['feedback.item.created'],
                     refreshMode: 'html_inject',
                 },
                 'patient_results': {
@@ -406,19 +405,23 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             this.toolManager.autoDiscover();
         },
 
-        handleInitMessage(data) {
+        handleSessionReady(data) {
             if (!this.systemDisplayName || this.systemDisplayName === "Unknown") {
-                this.systemDisplayName = data.sim_display_name || "Unknown";
+                this.systemDisplayName = data.patient_display_name || "Unknown";
             }
             if (!this.systemDisplayInitials || this.systemDisplayInitials === "Unk") {
-                this.systemDisplayInitials = data.sim_display_initials || "Unk";
+                this.systemDisplayInitials = data.patient_initials || "Unk";
             }
+        },
+
+        handleSessionResyncRequired(_data) {
+            window.location.reload();
         },
 
         handleChatMessage(data) {
             // Determine if message is from AI (incoming) or from current user (outgoing)
-            const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? data.isFromAI ?? data.is_from_ai ?? false;
-            const senderId = data.senderId ?? data.sender_id;
+            const isFromSimulatedUser = data.is_from_ai ?? false;
+            const senderId = data.sender_id;
             const messageIdRaw = data.message_id ?? data.id;
             const messageIdParsed = Number.parseInt(messageIdRaw, 10);
             const messageId = Number.isFinite(messageIdParsed) ? messageIdParsed : null;
@@ -427,7 +430,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             );
             const activeConversationId = this._normalizeConversationId(this.activeConversationId);
             const senderIdNum = Number.parseInt(senderId, 10);
-            const senderEmail = data.user ?? data.sender_email ?? data.senderEmail ?? null;
+            const senderEmail = data.user ?? data.sender_email ?? null;
             const isFromSelf = !isFromSimulatedUser && (
                 (Number.isFinite(senderIdNum) && senderIdNum === this.currentUserId) ||
                 (!!senderEmail && !!this.currentUserEmail && senderEmail === this.currentUserEmail)
@@ -503,7 +506,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             const status = isFromSelf
                 ? (data.delivery_status || data.status || 'sent')
                 : null;
-            const displayName = data.display_name || data.displayName || data.user || 'Unknown';
+            const displayName = data.display_name || data.user || 'Unknown';
 
             // Parse content
             let content = data.content;
@@ -521,7 +524,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                 status,
                 displayName,
                 messageId,
-                data.mediaList ?? []
+                data.media_list ?? []
             );
             this._cacheConversationHtml(msgConversationId || activeConversationId, { dirty: false });
         },
@@ -634,15 +637,21 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
         },
 
         handleError(data) {
-            alert(data.message);
-            window.location.href = data.redirect || "/";
+            console.error('[ChatManager] Realtime error', data);
+            if (data.code === 'access_denied') {
+                alert(data.message || 'ChatLab access denied.');
+                window.location.href = '/chatlab/';
+                return;
+            }
+            if (window.Alpine?.store('toasts')) {
+                window.Alpine.store('toasts').add(data.message || 'Realtime error', 'error');
+            }
         },
 
         notifyTyping() {
             const now = Date.now();
             if (!this.typingTimeout && now - this.lastTypedTime > 2000) {
-                this.socket.send('typing', {
-                    user: this.currentUserEmail,
+                this.socket.send('typing.started', {
                     conversation_id: this.activeConversationId,
                 });
                 this.lastTypedTime = now;
@@ -650,8 +659,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
 
             clearTimeout(this.typingTimeout);
             this.typingTimeout = setTimeout(() => {
-                this.socket.send('stopped_typing', {
-                    user: this.currentUserEmail,
+                this.socket.send('typing.stopped', {
                     conversation_id: this.activeConversationId,
                 });
                 this.typingTimeout = null;
@@ -898,7 +906,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             status = "",
             displayName = "",
             messageId = null,
-            mediaList = [],
+            mediaItems = [],
             clientMessageId = null,
         ) {
             console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
@@ -913,7 +921,13 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             }
 
             const wasAtBottomBeforeAppend = this.isScrolledToBottom();
-            const bubble = this._buildMessageBubble(content, isFromSelf, displayName, status, mediaList);
+            const bubble = this._buildMessageBubble(
+                content,
+                isFromSelf,
+                displayName,
+                status,
+                mediaItems,
+            );
             if (messageId) bubble.dataset.messageId = messageId;
             if (clientMessageId) bubble.dataset.clientMessageId = clientMessageId;
 
@@ -953,7 +967,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             return false;
         },
 
-        _buildMessageBubble(content, isFromSelf, displayName, status, mediaList) {
+        _buildMessageBubble(content, isFromSelf, displayName, status, mediaItems) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-bubble relative block w-fit max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm sm:max-w-[75%] ${
                 isFromSelf
@@ -962,7 +976,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             }`;
 
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-            const mediaHtml = this._renderMediaHtml(mediaList);
+            const mediaHtml = this._renderMediaHtml(mediaItems);
             const retryButton = isFromSelf && status === 'failed'
                 ? '<button type="button" class="js-retry-message ml-1 rounded border border-red-300 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100">Try again</button>'
                 : '';
@@ -980,13 +994,13 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             return messageDiv;
         },
 
-        _renderMediaHtml(mediaList) {
-            if (!Array.isArray(mediaList) || mediaList.length === 0) return '';
+        _renderMediaHtml(mediaItems) {
+            if (!Array.isArray(mediaItems) || mediaItems.length === 0) return '';
             return `
                 <div class="media-container mb-2 grid grid-cols-2 gap-2">
-                    ${mediaList.map(media => `
+                    ${mediaItems.map(media => `
                         <div class="media-wrapper overflow-hidden rounded-md border border-border">
-                            <img src="${media.url}" class="media-image h-full w-full object-cover" alt="media-${media.id}">
+                            <img src="${media.thumbnail_url || media.original_url}" class="media-image h-full w-full object-cover" alt="media-${media.id}">
                         </div>
                     `).join('')}
                 </div>

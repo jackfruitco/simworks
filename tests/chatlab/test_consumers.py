@@ -1,466 +1,378 @@
-"""Tests for chatlab WebSocket consumers.
+"""Contract tests for the ChatLab v1 WebSocket consumer."""
 
-Tests:
-- Connection handling
-- message.item.created event delivery
-- patient.results.updated event delivery
-- Event handler routing
-
-Note: These tests use transaction=True for database isolation with async operations.
-"""
+from __future__ import annotations
 
 import asyncio
 from uuid import uuid4
 
+from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
+from django.utils import timezone
 import pytest
 
 from apps.chatlab.consumers import ChatConsumer
-from apps.common.outbox.event_types import MESSAGE_CREATED, PATIENT_RESULTS_UPDATED
+from apps.common.models import OutboxEvent
+from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
+from apps.common.outbox.outbox import build_canonical_envelope
 
 
-async def create_simulation_and_user():
-    """Create a simulation and user for testing (async helper)."""
-    from apps.accounts.models import User, UserRole
+async def create_simulation_and_user(*, in_progress: bool = False):
+    from django.contrib.auth import get_user_model
+
+    from apps.accounts.models import UserRole
     from apps.simcore.models import Simulation
 
-    role, _ = await UserRole.objects.aget_or_create(title="Test")
-    user = await User.objects.acreate(
-        email=f"test_{uuid4().hex[:8]}@test.com",
-        role=role,
-    )
+    User = get_user_model()
+    role, _ = await UserRole.objects.aget_or_create(title="Chat WS Test")
+    user = await User.objects.acreate(email=f"chatws_{uuid4().hex[:8]}@test.com", role=role)
     simulation = await Simulation.objects.acreate(
         user=user,
         sim_patient_full_name="Test Patient",
+        status=(
+            Simulation.SimulationStatus.IN_PROGRESS
+            if in_progress
+            else Simulation.SimulationStatus.COMPLETED
+        ),
+        end_timestamp=None if in_progress else timezone.now(),
     )
     return simulation, user
 
 
-class TestChatConsumerConnection:
-    """Tests for ChatConsumer connection handling."""
+async def connect_and_hello(simulation, user, *, last_event_id: str | None = None):
+    communicator = WebsocketCommunicator(
+        ChatConsumer.as_asgi(),
+        "/ws/v1/chatlab/",
+    )
+    communicator.scope["user"] = user
+    connected, _ = await communicator.connect()
+    assert connected is True
 
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_connect_valid_simulation(self):
-        """Test successful connection to valid simulation."""
+    payload = {"simulation_id": simulation.id}
+    if last_event_id is not None:
+        payload["last_event_id"] = last_event_id
+
+    await communicator.send_json_to(
+        {
+            "event_type": "session.hello",
+            "payload": payload,
+        }
+    )
+    return communicator
+
+
+async def connect_and_resume(simulation, user, *, last_event_id: str):
+    communicator = WebsocketCommunicator(
+        ChatConsumer.as_asgi(),
+        "/ws/v1/chatlab/",
+    )
+    communicator.scope["user"] = user
+    connected, _ = await communicator.connect()
+    assert connected is True
+    await communicator.send_json_to(
+        {
+            "event_type": "session.resume",
+            "payload": {
+                "simulation_id": simulation.id,
+                "last_event_id": last_event_id,
+            },
+        }
+    )
+    return communicator
+
+
+async def receive_json(communicator, timeout: float = 1.0):
+    return await asyncio.wait_for(communicator.receive_json_from(), timeout=timeout)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestChatConsumerContract:
+    async def test_session_ready_uses_canonical_envelope(self):
         simulation, user = await create_simulation_and_user()
+        communicator = await connect_and_hello(simulation, user)
 
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
+        response = await receive_json(communicator)
+        assert set(response.keys()) == {
+            "event_id",
+            "event_type",
+            "created_at",
+            "correlation_id",
+            "payload",
+        }
+        assert response["event_type"] == "session.ready"
+        assert response["payload"]["simulation_id"] == simulation.id
+        assert response["payload"]["patient_display_name"] == simulation.sim_patient_display_name
+
+        await communicator.disconnect()
+
+    async def test_invalid_inbound_payload_returns_structured_error(self):
+        _simulation, user = await create_simulation_and_user()
+        communicator = WebsocketCommunicator(ChatConsumer.as_asgi(), "/ws/v1/chatlab/")
         communicator.scope["user"] = user
 
         connected, _ = await communicator.connect()
         assert connected is True
 
-        # Should receive init message
-        response = await communicator.receive_json_from()
-        assert response["type"] == "init_message"
-        assert "sim_display_name" in response
-        assert response["new_simulation"] is True  # No messages yet
+        await communicator.send_json_to({"type": "legacy"})
+        response = await receive_json(communicator)
+        assert response["event_type"] == "error"
+        assert response["payload"]["code"] == "invalid_shape"
 
         await communicator.disconnect()
 
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_connect_rejects_non_owner(self):
-        from apps.accounts.models import User, UserRole
+    async def test_typing_events_are_live_only_and_enveloped(self):
+        simulation, user = await create_simulation_and_user(in_progress=True)
+        communicator = await connect_and_hello(simulation, user)
 
-        simulation, _owner = await create_simulation_and_user()
-        role, _ = await UserRole.objects.aget_or_create(title="Test Non Owner")
-        other_user = await User.objects.acreate(
-            email=f"other_{uuid4().hex[:8]}@test.com",
-            role=role,
-        )
+        ready = await receive_json(communicator)
+        assert ready["event_type"] == "session.ready"
 
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = other_user
+        initial_typing = await receive_json(communicator)
+        assert initial_typing["event_type"] == "typing.started"
 
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        response = await communicator.receive_json_from()
-        assert response["type"] == "error"
-        assert "do not have access" in response["message"]
-
-        await communicator.disconnect()
-
-
-class TestChatMessageCreatedHandler:
-    """Tests for chat_message_created handler behavior."""
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_chat_message_created_with_content_sends_to_client(self):
-        """Test that chat_message_created with content is forwarded to client."""
-        simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
-
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Wait for group add to complete
-        await asyncio.sleep(0.1)
-
-        # Directly call the handler method to test event format
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        # Mock the send method
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Test the handler directly
-        await consumer.chat_message_created(
+        await communicator.send_json_to(
             {
-                "type": MESSAGE_CREATED,
-                "id": 123,
-                "role": "A",
-                "content": "Test message content",
-                "timestamp": "2026-01-16T10:30:00Z",
-                "status": "completed",
-                "isFromAi": True,
+                "event_type": "typing.started",
+                "payload": {"conversation_id": 123},
             }
         )
+        typing_started = await receive_json(communicator)
+        assert typing_started["event_type"] == "typing.started"
+        assert typing_started["payload"]["conversation_id"] == 123
 
-        # Verify the message was sent
-        assert len(sent_messages) == 1
-        import json
-
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == MESSAGE_CREATED
-        assert sent_data["id"] == 123
-        assert sent_data["content"] == "Test message content"
-
-        await communicator.disconnect()
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_chat_message_created_without_content_or_media_not_sent(self):
-        """Test that chat_message_created without content/media is dropped."""
-        simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
-
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Test the handler directly with invalid event
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Event without content or media
-        await consumer.chat_message_created(
+        await communicator.send_json_to(
             {
-                "type": MESSAGE_CREATED,
-                "id": 456,
-                # No content, no media
+                "event_type": "typing.stopped",
+                "payload": {"conversation_id": 123},
             }
         )
-
-        # Verify NO message was sent (content required)
-        assert len(sent_messages) == 0
-
-        await communicator.disconnect()
-
-
-class TestSimulationMetadataResultsCreatedHandler:
-    """Tests for simulation_metadata_results_created handler behavior."""
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_metadata_results_created_forwards_to_client(self):
-        """Test that simulation_metadata_results_created events are forwarded."""
-        simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
-
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Test the handler directly
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Test metadata event
-        await consumer.simulation_metadata_results_created(
-            {
-                "type": PATIENT_RESULTS_UPDATED,
-                "tool": "patient_results",
-                "results": [
-                    {"key": "patient_name", "value": "John Smith"},
-                    {"key": "age", "value": "45"},
-                ],
-            }
-        )
-
-        # Verify the event was forwarded
-        assert len(sent_messages) == 1
-        import json
-
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == PATIENT_RESULTS_UPDATED
-        assert sent_data["tool"] == "patient_results"
-        assert len(sent_data["results"]) == 2
+        typing_stopped = await receive_json(communicator)
+        assert typing_stopped["event_type"] == "typing.stopped"
+        assert typing_stopped["payload"]["conversation_id"] == 123
 
         await communicator.disconnect()
 
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_metadata_results_created_minimal_event_forwarded(self):
-        """Test that minimal metadata event (for HTMX-get) is forwarded."""
+    async def test_resume_replays_durable_events_after_anchor_and_excludes_anchor(self):
         simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
+        first = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "running", "phase": "warmup"},
+            idempotency_key=f"resume-first:{uuid4()}",
+            correlation_id="corr-first",
         )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
-
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Test the handler directly
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Minimal event - no html (client will use HTMX-get)
-        await consumer.simulation_metadata_results_created(
-            {
-                "type": PATIENT_RESULTS_UPDATED,
-                "tool": "simulation_metadata",
-            }
+        second = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "completed", "phase": "done"},
+            idempotency_key=f"resume-second:{uuid4()}",
+            correlation_id="corr-second",
         )
 
-        # Verify the event was forwarded
-        assert len(sent_messages) == 1
-        import json
+        communicator = await connect_and_resume(
+            simulation,
+            user,
+            last_event_id=str(first.id),
+        )
 
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == PATIENT_RESULTS_UPDATED
-        assert sent_data["tool"] == "simulation_metadata"
-        assert "html" not in sent_data
+        replayed = await receive_json(communicator)
+        assert replayed["event_type"] == SIMULATION_STATUS_UPDATED
+        assert replayed["event_id"] == str(second.id)
+        assert replayed["payload"]["phase"] == "done"
+
+        resumed = await receive_json(communicator)
+        assert resumed["event_type"] == "session.resumed"
+        assert resumed["payload"]["replay_count"] == 1
 
         await communicator.disconnect()
 
-
-class TestOutboxEventHandler:
-    """Tests for durable outbox event forwarding."""
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_outbox_event_forwards_metadata_results_envelope(self):
-        """Outbox-delivered metadata results events are forwarded unchanged."""
+    async def test_unknown_last_event_id_requires_resync(self):
         simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
+        communicator = await connect_and_resume(
+            simulation,
+            user,
+            last_event_id=str(uuid4()),
         )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
 
-        connected, _ = await communicator.connect()
-        assert connected is True
+        response = await receive_json(communicator)
+        assert response["event_type"] == "session.resync_required"
+        assert response["payload"]["reason"] == "unknown_last_event_id"
 
-        await communicator.receive_json_from()
+        await communicator.disconnect()
+
+    async def test_non_replayable_last_event_id_requires_resync(self):
+        simulation, user = await create_simulation_and_user()
+        non_replayable = await OutboxEvent.objects.acreate(
+            event_type="typing.started",
+            simulation_id=simulation.id,
+            payload={"conversation_id": 123},
+            idempotency_key=f"resume-non-replayable:{uuid4()}",
+        )
+        communicator = await connect_and_resume(
+            simulation,
+            user,
+            last_event_id=str(non_replayable.id),
+        )
+
+        response = await receive_json(communicator)
+        assert response["event_type"] == "session.resync_required"
+        assert response["payload"]["reason"] == "unknown_last_event_id"
+
+        await communicator.disconnect()
+
+    async def test_resume_deduplicates_live_events_buffered_during_replay(self, monkeypatch):
+        simulation, user = await create_simulation_and_user()
+        anchor = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "running", "phase": "warmup"},
+            idempotency_key=f"resume-anchor:{uuid4()}",
+            correlation_id="corr-anchor",
+        )
+        replayed = await OutboxEvent.objects.acreate(
+            event_type=SIMULATION_STATUS_UPDATED,
+            simulation_id=simulation.id,
+            payload={"status": "completed", "phase": "done"},
+            idempotency_key=f"resume-replayed:{uuid4()}",
+            correlation_id="corr-replayed",
+        )
 
         consumer = ChatConsumer()
+        consumer.scope = {"user": user, "headers": [], "scheme": "http"}
+        consumer.simulation_id = simulation.id
         consumer.simulation = simulation
+        consumer.room_group_name = f"simulation_{simulation.id}"
 
-        sent_messages = []
+        sent_envelopes: list[dict] = []
 
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
+        async def capture_send(envelope):
+            sent_envelopes.append(envelope)
 
-        consumer.send = mock_send
+        consumer._send_envelope = capture_send
 
-        await consumer.outbox_event(
-            {
-                "event": {
-                    "event_id": "event-123",
-                    "event_type": PATIENT_RESULTS_UPDATED,
-                    "created_at": "2026-01-16T10:30:00Z",
-                    "correlation_id": "corr-123",
-                    "payload": {
-                        "tool": "patient_results",
-                        "results": [{"id": 1, "key": "lab_results_available"}],
-                    },
+        async def fake_get_events_after_event(*, simulation_id: int, last_event_id):
+            await consumer.outbox_event(
+                {
+                    "type": "outbox.event",
+                    "event": build_canonical_envelope(replayed),
                 }
-            }
+            )
+            return [replayed]
+
+        monkeypatch.setattr(
+            "apps.chatlab.consumers.get_events_after_event", fake_get_events_after_event
         )
 
-        assert len(sent_messages) == 1
-        import json
+        replay_ok, replay_count = await consumer._replay_after_event_id(
+            last_event_id=str(anchor.id),
+            correlation_id="corr-resume",
+            event_type="session.resume",
+        )
 
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["event_type"] == PATIENT_RESULTS_UPDATED
-        assert sent_data["payload"]["tool"] == "patient_results"
-        assert sent_data["payload"]["results"][0]["key"] == "lab_results_available"
+        assert replay_ok is True
+        assert replay_count == 1
+        assert [envelope["event_id"] for envelope in sent_envelopes] == [str(replayed.id)]
+
+    async def test_live_durable_event_delivery_uses_canonical_envelope(self):
+        simulation, user = await create_simulation_and_user()
+        communicator = await connect_and_hello(simulation, user)
+        ready = await receive_json(communicator)
+        assert ready["event_type"] == "session.ready"
+
+        channel_layer = get_channel_layer()
+        assert channel_layer is not None
+
+        durable_event = await OutboxEvent.objects.acreate(
+            event_type=MESSAGE_CREATED,
+            simulation_id=simulation.id,
+            payload={"message_id": 99, "content": "hello"},
+            idempotency_key=f"live-durable:{uuid4()}",
+            correlation_id="corr-live",
+        )
+        await channel_layer.group_send(
+            f"simulation_{simulation.id}",
+            {
+                "type": "outbox.event",
+                "event": {
+                    "event_id": str(durable_event.id),
+                    "event_type": MESSAGE_CREATED,
+                    "created_at": durable_event.created_at.isoformat(),
+                    "correlation_id": "corr-live",
+                    "payload": {"message_id": 99, "content": "hello"},
+                },
+            },
+        )
+
+        response = await receive_json(communicator)
+        assert response["event_type"] == MESSAGE_CREATED
+        assert response["correlation_id"] == "corr-live"
+        assert response["payload"]["content"] == "hello"
+        assert "media_list" in response["payload"]
 
         await communicator.disconnect()
 
-
-class TestTypingEventHandlers:
-    """Tests for typing event handlers."""
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_user_typing_handler_formats_correctly(self):
-        """Test that user_typing events are formatted correctly for client."""
+    async def test_ping_returns_pong(self):
         simulation, user = await create_simulation_and_user()
+        communicator = await connect_and_hello(simulation, user)
+        ready = await receive_json(communicator)
+        assert ready["event_type"] == "session.ready"
+
+        await communicator.send_json_to(
+            {
+                "event_type": "ping",
+                "correlation_id": "corr-ping",
+                "payload": {"client_nonce": "abc123"},
+            }
+        )
+        response = await receive_json(communicator)
+        assert response["event_type"] == "pong"
+        assert response["correlation_id"] == "corr-ping"
+        assert response["payload"]["client_nonce"] == "abc123"
+
+        await communicator.disconnect()
+
+    async def test_access_denied_is_generic_for_other_users(self):
+        simulation, _owner = await create_simulation_and_user()
+        _other_simulation, other_user = await create_simulation_and_user()
+
+        communicator = await connect_and_hello(simulation, other_user)
+        response = await receive_json(communicator)
+        assert response["event_type"] == "error"
+        assert response["payload"]["code"] == "access_denied"
+
+        await communicator.disconnect()
+
+    async def test_pre_resolved_scope_account_used_for_access(self):
+        """When scope['account'] is pre-set by middleware, consumer uses it."""
+        from asgiref.sync import sync_to_async
+
+        from apps.accounts.services import get_default_account_for_user
+
+        simulation, user = await create_simulation_and_user()
+        account = await sync_to_async(get_default_account_for_user)(user)
+
+        # Link simulation to account
+        simulation.account = account
+        await simulation.asave(update_fields=["account"])
 
         communicator = WebsocketCommunicator(
             ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
+            "/ws/v1/chatlab/",
         )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
         communicator.scope["user"] = user
+        communicator.scope["account"] = account
 
         connected, _ = await communicator.connect()
         assert connected is True
 
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Test the handler directly
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Test typing event
-        await consumer.user_typing(
+        await communicator.send_json_to(
             {
-                "type": "user_typing",
-                "user": "TestUser",
-                "display_initials": "TU",
-                "conversation_id": 42,
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
             }
         )
-
-        # Verify the event was formatted and sent
-        assert len(sent_messages) == 1
-        import json
-
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == "typing"
-        assert sent_data["display_initials"] == "TU"
-        assert sent_data["conversation_id"] == 42
-
-        await communicator.disconnect()
-
-    @pytest.mark.django_db(transaction=True)
-    @pytest.mark.asyncio
-    async def test_user_stopped_typing_handler_formats_correctly(self):
-        """Test that user_stopped_typing events are formatted correctly."""
-        simulation, user = await create_simulation_and_user()
-
-        communicator = WebsocketCommunicator(
-            ChatConsumer.as_asgi(),
-            f"/ws/simulation/{simulation.id}/",
-        )
-        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
-        communicator.scope["user"] = user
-
-        connected, _ = await communicator.connect()
-        assert connected is True
-
-        # Consume init message
-        await communicator.receive_json_from()
-
-        # Test the handler directly
-        consumer = ChatConsumer()
-        consumer.simulation = simulation
-
-        sent_messages = []
-
-        async def mock_send(text_data):
-            sent_messages.append(text_data)
-
-        consumer.send = mock_send
-
-        # Test stopped typing event
-        await consumer.user_stopped_typing(
-            {
-                "type": "user_stopped_typing",
-                "user": "TestUser",
-                "conversation_id": 42,
-            }
-        )
-
-        # Verify the event was formatted and sent
-        assert len(sent_messages) == 1
-        import json
-
-        sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == "stopped_typing"
-        assert sent_data["user"] == "TestUser"
-        assert sent_data["conversation_id"] == 42
+        response = await receive_json(communicator)
+        assert response["event_type"] == "session.ready"
+        assert response["payload"]["simulation_id"] == simulation.id
 
         await communicator.disconnect()

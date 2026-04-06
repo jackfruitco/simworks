@@ -13,7 +13,6 @@ class MessageMediaOut(BaseModel):
     uuid: str = Field(..., description="SimulationImage UUID")
     original_url: str = Field(..., description="Absolute URL to original image")
     thumbnail_url: str = Field(..., description="Absolute URL to thumbnail image")
-    url: str = Field(..., description="Compatibility alias for thumbnail_url")
     mime_type: str = Field(default="", description="Media MIME type")
     description: str = Field(default="", description="Short media description")
 
@@ -72,10 +71,6 @@ class MessageOut(BaseModel):
     media_list: list[MessageMediaOut] = Field(
         default_factory=list,
         description="Message media metadata (snake_case canonical API shape)",
-    )
-    mediaList: list[MessageMediaOut] = Field(
-        default_factory=list,
-        description="Compatibility alias for media_list",
     )
 
 
@@ -160,5 +155,4 @@ def message_to_out(msg, request=None) -> MessageOut:
         delivery_retry_count=getattr(msg, "delivery_retry_count", 0),
         is_read=bool(getattr(msg, "is_read", False)),
         media_list=media_payload.get("media_list", []),
-        mediaList=media_payload.get("mediaList", []),
     )

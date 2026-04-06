@@ -407,15 +407,17 @@
   (function () {
     const INITIAL_EVENTS = {{ outbox_events_json|safe }};
     const STREAM_URL = "{{ stream_url }}";
+    const REALTIME_TRANSPORT = "{{ realtime_transport }}";
+    const REALTIME_SESSION_PAYLOAD = {{ realtime_session_payload_json|safe }};
     const WATCH_URL = "{{ watch_url }}";
     const SERVICE_CALLS_URL = "{{ service_calls_url }}";
     const INITIAL_WATCH_STATE = {{ watch_state_json|safe }};
 
     const CATEGORIES = [
       { key: "all", label: "All", prefix: null, activeClass: "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900" },
-      { key: "chat", label: "Chat", prefix: "chat.", activeClass: "bg-blue-600 text-white" },
+      { key: "chat", label: "Chat", prefix: "message.", activeClass: "bg-blue-600 text-white" },
       { key: "simulation", label: "Simulation", prefix: "simulation.", activeClass: "bg-purple-600 text-white" },
-      { key: "metadata", label: "Metadata", prefix: "metadata.", activeClass: "bg-emerald-600 text-white" },
+      { key: "metadata", label: "Metadata", prefix: "patient.", activeClass: "bg-emerald-600 text-white" },
       { key: "feedback", label: "Feedback", prefix: "feedback.", activeClass: "bg-orange-600 text-white" },
       { key: "typing", label: "Typing", prefix: "typing.", activeClass: "bg-gray-500 text-white" },
       {
@@ -484,11 +486,12 @@
         categories: CATEGORIES,
         groupExpanded: {},
         leftWidth: 50,
-        _es: null,
+        _connection: null,
         _reconnectTimer: null,
         _reconnectDelay: 1000,
         _lastSequenceGroupId: 0,
         _syncPaused: false,
+        _wsSessionEstablished: false,
 
         init() {
           this._lastSequenceGroupId = this.events.reduce(
@@ -580,11 +583,24 @@
         },
 
         connect() {
+          if (REALTIME_TRANSPORT === 'sse') {
+            // TrainerLab admin watch keeps using SSE. ChatLab always passes websocket.
+            this.connectSSE();
+            return;
+          }
+          if (REALTIME_TRANSPORT === 'websocket') {
+            this.connectWebSocket();
+            return;
+          }
+          throw new Error(`Unsupported realtime transport: ${REALTIME_TRANSPORT}`);
+        },
+
+        connectSSE() {
           const lastId = this.events.length ? this.events[this.events.length - 1].event_id : null;
           const url = lastId ? `${STREAM_URL}?cursor=${lastId}` : STREAM_URL;
 
           const es = new EventSource(url);
-          this._es = es;
+          this._connection = es;
 
           es.addEventListener("simulation", (event) => {
             try {
@@ -604,6 +620,53 @@
           es.addEventListener("open", () => {
             this.connected = true;
             this._reconnectDelay = 1000;
+          });
+        },
+
+        connectWebSocket() {
+          // ChatLab admin watch uses the same strict WebSocket session protocol as the product UI.
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const socket = new WebSocket(`${protocol}//${window.location.host}${STREAM_URL}`);
+          this._connection = socket;
+
+          socket.addEventListener('open', () => {
+            const lastId = this.lastDurableEventId();
+            const eventType = this._wsSessionEstablished && lastId ? 'session.resume' : 'session.hello';
+            const payload = { ...REALTIME_SESSION_PAYLOAD };
+            if (lastId) {
+              payload.last_event_id = lastId;
+            }
+            socket.send(JSON.stringify({
+              event_type: eventType,
+              payload,
+            }));
+          });
+
+          socket.addEventListener('message', (event) => {
+            try {
+              const envelope = JSON.parse(event.data);
+              if (envelope.event_type === 'session.ready' || envelope.event_type === 'session.resumed') {
+                this.connected = true;
+                this._reconnectDelay = 1000;
+                this._wsSessionEstablished = true;
+              }
+              if (envelope.event_type === 'session.resync_required') {
+                window.location.reload();
+                return;
+              }
+              this.addEvent(envelope);
+            } catch (err) {
+              console.error("[WatchView] Failed to parse WebSocket event:", err, event.data);
+            }
+          });
+
+          socket.addEventListener('close', () => {
+            this.connected = false;
+            this.scheduleReconnect();
+          });
+
+          socket.addEventListener('error', () => {
+            this.connected = false;
           });
         },
 
@@ -651,6 +714,25 @@
               }
             });
           }
+        },
+
+        lastDurableEventId() {
+          const transientTypes = new Set([
+            'session.ready',
+            'session.resumed',
+            'session.resync_required',
+            'error',
+            'pong',
+            'typing.started',
+            'typing.stopped',
+          ]);
+          for (let index = this.events.length - 1; index >= 0; index -= 1) {
+            const event = this.events[index];
+            if (!transientTypes.has(event.event_type)) {
+              return event.event_id;
+            }
+          }
+          return null;
         },
 
         get filteredEvents() {

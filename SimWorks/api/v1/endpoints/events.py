@@ -1,20 +1,24 @@
-"""Event endpoints for API v1.
-
-Provides catch-up API for WebSocket event recovery after reconnection.
-"""
+"""ChatLab durable replay endpoints for API v1."""
 
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
 
 from api.v1.auth import JWTAuth
-from api.v1.schemas.common import ErrorResponse, PaginatedResponse
-from api.v1.schemas.events import EventEnvelope
-from api.v1.sse import build_outbox_events_stream_response, resolve_outbox_stream_anchor
+from api.v1.schemas.events import EventEnvelope, EventReplayResponse
 from api.v1.utils import get_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
+from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
+from apps.chatlab.models import Message
+from apps.chatlab.realtime import parse_event_id
+from apps.common.models import OutboxEvent
 from apps.common.outbox import event_types as outbox_events
-from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
+from apps.common.outbox.outbox import (
+    apply_outbox_cursor,
+    filter_replayable_outbox_queryset,
+    get_replayable_outbox_event_sync,
+    order_outbox_queryset,
+)
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
 
@@ -29,14 +33,15 @@ def _require_chatlab_access(request: HttpRequest):
 
 @router.get(
     "/{simulation_id}/events/",
-    response=PaginatedResponse[EventEnvelope],
-    summary="List events for explicit catch-up / replay",
+    response=EventReplayResponse,
+    summary="List replayable durable ChatLab events",
     description=(
-        "Returns outbox events for a simulation using cursor-based pagination.\n\n"
-        "Use this endpoint for **explicit** catch-up after reconnection or for\n"
-        "replaying historical events.  The live SSE stream (``/events/stream/``)\n"
-        "defaults to tail-only and does **not** replay.\n\n"
-        "Delivery semantics are at-least-once.  Clients must deduplicate by\n"
+        "Returns replayable durable ChatLab events in canonical order.\n\n"
+        "Use this endpoint for explicit hard resync and offline replay after a\n"
+        "ChatLab WebSocket session emits ``session.resync_required``. Normal\n"
+        "reconnects should prefer WebSocket ``session.resume`` with\n"
+        "``last_event_id``.\n\n"
+        "Delivery semantics are at-least-once. Clients must deduplicate by\n"
         "``event_id``."
     ),
 )
@@ -44,90 +49,91 @@ def _require_chatlab_access(request: HttpRequest):
 def list_events(
     request: HttpRequest,
     simulation_id: int,
-    cursor: str | None = Query(default=None, description="Cursor (event ID) to start after"),
+    last_event_id: str | None = Query(
+        default=None,
+        description="Replay anchor (event ID) to start strictly after",
+    ),
     limit: int = Query(default=50, ge=1, le=100, description="Max events to return"),
-) -> PaginatedResponse[EventEnvelope]:
-    """List events for catch-up after WebSocket reconnection.
-
-    Clients should:
-    1. Track lastSeenEventId from WebSocket events
-    2. On reconnect, call this endpoint with cursor=lastSeenEventId
-    3. Process returned events and update lastSeenEventId
-    4. Continue fetching while has_more is True
-    """
+) -> EventReplayResponse:
+    """List durable events for explicit ChatLab replay."""
     _require_chatlab_access(request)
-    import uuid as uuid_module
-
-    from apps.common.models import OutboxEvent
-
     user = request.auth
-
-    # Verify user owns the simulation
     get_simulation_for_user(simulation_id, user, request=request)
+    anchor_found: bool | None = None
 
-    # Build queryset
     queryset = order_outbox_queryset(
-        OutboxEvent.objects.filter(
-            simulation_id=simulation_id,
+        filter_replayable_outbox_queryset(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+            )
         )
     )
 
-    # Apply cursor-based pagination
-    if cursor:
+    if last_event_id:
         try:
-            cursor_uuid = uuid_module.UUID(cursor)
-        except ValueError:
-            raise HttpError(400, "Invalid cursor format: must be a valid UUID") from None
+            parsed_last_event_id = parse_event_id(last_event_id)
+        except Exception as exc:
+            logger.warning(
+                "chatlab.events.replay_invalid_anchor",
+                simulation_id=simulation_id,
+                user_id=getattr(user, "id", None),
+                last_event_id=last_event_id,
+                anchor_found=False,
+                page_limit=limit,
+            )
+            raise HttpError(400, "Invalid last_event_id: must be a valid UUID") from exc
 
-        # Get the created_at of the cursor event
-        try:
-            cursor_event = OutboxEvent.objects.get(id=cursor_uuid, simulation_id=simulation_id)
-            queryset = apply_outbox_cursor(queryset, cursor_event)
-        except OutboxEvent.DoesNotExist:
-            raise HttpError(400, "Invalid cursor: event not found") from None
+        anchor_event = get_replayable_outbox_event_sync(
+            simulation_id=simulation_id,
+            event_id=parsed_last_event_id,
+        )
+        if anchor_event is None:
+            logger.warning(
+                "chatlab.events.replay_unknown_anchor",
+                simulation_id=simulation_id,
+                user_id=getattr(user, "id", None),
+                last_event_id=last_event_id,
+                anchor_found=False,
+                page_limit=limit,
+            )
+            raise HttpError(400, "Unknown last_event_id for this simulation")
+        anchor_found = True
+        queryset = apply_outbox_cursor(queryset, anchor_event)
 
-    # Fetch one extra to check for more
     events = list(queryset[: limit + 1])
     has_more = len(events) > limit
     if has_more:
         events = events[:limit]
 
-    # Determine next cursor
-    next_cursor = str(events[-1].id) if has_more and events else None
-
-    # Enrich message.item.created payloads with canonical media metadata
-    from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
-    from apps.chatlab.models import Message
+    next_event_id = str(events[-1].id) if has_more and events else None
 
     message_ids = []
     for event in events:
         if outbox_events.canonical_event_type(event.event_type) != outbox_events.MESSAGE_CREATED:
             continue
         payload = event.payload or {}
-        msg_id = payload_message_id(payload)
-        if msg_id is not None:
-            message_ids.append(msg_id)
+        message_id = payload_message_id(payload)
+        if message_id is not None:
+            message_ids.append(message_id)
 
-    messages_by_id = {}
+    messages_by_id: dict[int, Message] = {}
     if message_ids:
-        for msg in Message.objects.filter(
+        for message in Message.objects.filter(
             simulation_id=simulation_id,
             id__in=message_ids,
         ).prefetch_related("media"):
-            messages_by_id[msg.id] = msg
+            messages_by_id[message.id] = message
 
-    # Convert to envelope format
-    items = []
+    items: list[EventEnvelope] = []
     for event in events:
         payload = dict(event.payload or {})
         if outbox_events.canonical_event_type(event.event_type) == outbox_events.MESSAGE_CREATED:
-            msg_id = payload_message_id(payload)
-            msg = messages_by_id.get(msg_id) if msg_id is not None else None
-            if msg is not None:
-                payload.update(build_message_media_payload(msg, request=request))
+            message_id = payload_message_id(payload)
+            message = messages_by_id.get(message_id) if message_id is not None else None
+            if message is not None:
+                payload.update(build_message_media_payload(message, request=request))
             else:
                 payload.setdefault("media_list", [])
-                payload.setdefault("mediaList", [])
 
         items.append(
             EventEnvelope(
@@ -139,68 +145,20 @@ def list_events(
             )
         )
 
-    logger.debug(
-        "events.catch_up",
+    logger.info(
+        "chatlab.events.replay_listed",
         simulation_id=simulation_id,
-        cursor=cursor,
+        user_id=getattr(user, "id", None),
+        last_event_id=last_event_id,
+        anchor_found=anchor_found,
+        page_limit=limit,
         returned=len(items),
         has_more=has_more,
+        next_event_id=next_event_id,
     )
 
-    return PaginatedResponse(
+    return EventReplayResponse(
         items=items,
-        next_cursor=next_cursor,
+        next_event_id=next_event_id,
         has_more=has_more,
-    )
-
-
-@router.get(
-    "/{simulation_id}/events/stream/",
-    response={200: None, 400: ErrorResponse, 410: ErrorResponse},
-    summary="SSE stream for simulation events",
-    description=(
-        "Streams outbox events for a simulation using a canonical transport envelope.\n\n"
-        "**Default (tail-only):** Omit ``cursor`` to receive only events created\n"
-        "after the current tip — no historical replay.\n\n"
-        "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
-        "that checkpoint.\n\n"
-        "**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\n"
-        "before any stream bytes are sent.  The client must re-bootstrap.\n\n"
-        "**Explicit replay:** Pass ``replay=true`` (without a cursor) to replay\n"
-        "all events from the beginning.\n\n"
-        "Delivery semantics are **at-least-once**.  Clients must deduplicate by\n"
-        "``event_id``."
-    ),
-)
-@api_rate_limit
-def stream_events(
-    request: HttpRequest,
-    simulation_id: int,
-    cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
-    replay: bool = Query(
-        default=False,
-        description="When true (and cursor is omitted), replay all events from the beginning.",
-    ),
-    event_prefix: str | None = Query(
-        default=None,
-        description="Optional event_type prefix filter (e.g. patient. or simulation.)",
-    ),
-):
-    _require_chatlab_access(request)
-    user = request.auth
-    get_simulation_for_user(simulation_id, user, request=request)
-    last_event = resolve_outbox_stream_anchor(
-        simulation_id=simulation_id,
-        cursor=cursor,
-        replay=replay,
-        event_type_prefix=event_prefix,
-    )
-    return build_outbox_events_stream_response(
-        simulation_id=simulation_id,
-        last_event=last_event,
-        cursor=cursor,
-        event_type_prefix=event_prefix,
-        sse_event_name="simulation",
-        heartbeat_interval_seconds=10.0,
-        heartbeat_comment=": keep-alive\n\n",
     )
