@@ -1,35 +1,59 @@
 from datetime import UTC, datetime
 import json
-import logging
 import uuid
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+from config.logging import get_logger
 from orchestrai.utils.json import json_default
 
-logger = logging.getLogger("notifications")
+logger = get_logger("notifications")
 
 
 class NotificationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
-            if self.scope["user"].is_anonymous:
-                logger.warning("Anonymous user attempted to connect to NotificationsConsumer.")
+            user = self.scope["user"]
+            if user.is_anonymous:
+                logger.warning(
+                    "notifications.ws.connect_rejected",
+                    path=self.scope.get("path"),
+                    channel_name=self.channel_name,
+                    reason="anonymous_user",
+                    close_code=4001,
+                )
                 await self.accept()
                 await self.close(code=4001)
             else:
-                self.user = self.scope["user"]
+                self.user = user
                 self.group_name = f"notifications_{self.user.id}"
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
                 await self.accept()
-        except Exception as e:
-            logger.exception("Failed to connect NotificationsConsumer: %s", str(e))
+                logger.info(
+                    "notifications.ws.connect_accepted",
+                    user_id=self.user.id,
+                    channel_name=self.channel_name,
+                    path=self.scope.get("path"),
+                    group_name=self.group_name,
+                )
+        except Exception:
+            logger.exception(
+                "notifications.ws.connect_failed",
+                channel_name=self.channel_name,
+                path=self.scope.get("path"),
+            )
             await self.close(code=1011)
 
     async def disconnect(self, close_code):
         group = getattr(self, "group_name", None)
         if group:
             await self.channel_layer.group_discard(group, self.channel_name)
+        logger.info(
+            "notifications.ws.disconnect",
+            user_id=getattr(getattr(self, "user", None), "id", None),
+            channel_name=self.channel_name,
+            close_code=close_code,
+        )
 
     # This method is called when a notification is sent to the group
     async def send_notification(self, event):
@@ -37,10 +61,10 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
         notification_type = event.get("notification_type", "info")
 
         logger.info(
-            "[Notification] Sent to user %s | Type: %s | Message: %s",
-            self.user.email,
-            notification_type,
-            notification,
+            "notifications.ws.notification_sent",
+            user_id=self.user.id,
+            user_email=self.user.email,
+            notification_type=notification_type,
         )
 
         await self.send(
@@ -65,13 +89,18 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
         # Validate envelope has required fields
         if not envelope.get("event_type"):
-            logger.warning("outbox event missing event_type")
+            logger.warning(
+                "notifications.ws.outbox_missing_event_type",
+                user_id=getattr(getattr(self, "user", None), "id", None),
+                channel_name=self.channel_name,
+            )
             return
 
         logger.info(
-            "[Notification] Outbox event for user %s | Type: %s",
-            self.user.email,
-            envelope.get("event_type"),
+            "notifications.ws.outbox_event",
+            user_id=self.user.id,
+            user_email=self.user.email,
+            event_type=envelope.get("event_type"),
         )
 
         # Forward the envelope to the client

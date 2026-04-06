@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from urllib.parse import parse_qs
 from uuid import UUID
 
 from apps.accounts.models import Account
@@ -27,11 +26,12 @@ def get_requested_account_uuid_from_request(request) -> str | None:
 
 
 def get_requested_account_uuid_from_scope(scope) -> str | None:
-    header_value = _header_value(scope.get("headers", []), ACCOUNT_HEADER_NAME)
-    if header_value:
-        return header_value
-    query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
-    return (query.get("account_uuid") or [None])[0]
+    """Extract account UUID from the X-Account-UUID header only.
+
+    Query-parameter account selection is no longer supported. Clients must use
+    the ``X-Account-UUID`` header for WebSocket account context.
+    """
+    return _header_value(scope.get("headers", []), ACCOUNT_HEADER_NAME)
 
 
 def resolve_account_for_user(user, *, account_uuid: str | None = None):

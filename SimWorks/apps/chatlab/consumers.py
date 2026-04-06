@@ -87,12 +87,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user = self.scope.get("user")
         user_id = getattr(user, "id", None)
         is_authenticated = bool(user and getattr(user, "is_authenticated", False))
+        auth_mechanism = self.scope.get("auth_mechanism")
+        account = self.scope.get("account")
+        account_id = getattr(account, "id", None)
+        account_uuid = str(getattr(account, "uuid", "")) if account else None
+        account_context_source = self.scope.get("account_context_source")
+
         logger.info(
             "chatlab.ws.connect_attempt",
             user_id=user_id,
             channel_name=self.channel_name,
             path=self.scope.get("path"),
             is_authenticated=is_authenticated,
+            auth_mechanism=auth_mechanism,
+            account_id=account_id,
+            account_uuid=account_uuid,
+            account_context_source=account_context_source,
         )
 
         if not is_authenticated:
@@ -102,6 +112,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 channel_name=self.channel_name,
                 reason="authentication_required",
                 close_code=AUTH_REQUIRED_CLOSE_CODE,
+                auth_mechanism=auth_mechanism,
             )
             await self.close(code=AUTH_REQUIRED_CLOSE_CODE)
             return
@@ -111,6 +122,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "chatlab.ws.connect_accepted",
             user_id=user_id,
             channel_name=self.channel_name,
+            auth_mechanism=auth_mechanism,
+            account_id=account_id,
+            account_uuid=account_uuid,
+            account_context_source=account_context_source,
         )
 
     async def disconnect(self, close_code: int) -> None:

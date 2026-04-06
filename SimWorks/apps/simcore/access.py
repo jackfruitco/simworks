@@ -34,7 +34,7 @@ def get_simulation_queryset_for_request(request, user):
 def get_simulation_queryset_for_scope(scope, user):
     from apps.simcore.models import Simulation
 
-    account = resolve_scope_account(scope, user)
+    account = scope.get("account") or resolve_scope_account(scope, user)
     if account is None:
         return Simulation.objects.none()
     return get_simulation_queryset_for_account(user, account)
@@ -54,7 +54,7 @@ def can_access_simulation_in_request(user, simulation, request) -> bool:
 def can_access_simulation_in_scope(user, simulation, scope) -> bool:
     if not can_view_simulation(user, simulation):
         return False
-    account = resolve_scope_account(scope, user)
+    account = scope.get("account") or resolve_scope_account(scope, user)
     if account is None:
         return False
     if simulation.account_id is None:
