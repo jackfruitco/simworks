@@ -110,6 +110,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "chatlab.ws.connect_rejected",
                 user_id=user_id,
                 channel_name=self.channel_name,
+                account_id=account_id,
+                account_uuid=account_uuid,
+                account_context_source=account_context_source,
                 reason="authentication_required",
                 close_code=AUTH_REQUIRED_CLOSE_CODE,
                 auth_mechanism=auth_mechanism,
@@ -384,6 +387,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user_id=getattr(user, "id", None),
             channel_name=self.channel_name,
             access_granted=has_access,
+            reason=None if has_access else "access_denied",
         )
         return simulation if has_access else None
 
@@ -645,6 +649,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             room_group_name=self.room_group_name,
             last_event_id=last_event_id,
             anchor_found=anchor_found,
+            correlation_id=correlation_id,
             reason=reason,
         )
         await self._send_envelope(
@@ -667,6 +672,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.warning(
             "chatlab.ws.force_close",
             simulation_id=self.simulation_id,
+            account_id=getattr(self.simulation, "account_id", None),
+            account_uuid=str(getattr(getattr(self.simulation, "account", None), "uuid", "") or ""),
             user_id=getattr(self.scope.get("user"), "id", None),
             channel_name=self.channel_name,
             room_group_name=self.room_group_name,

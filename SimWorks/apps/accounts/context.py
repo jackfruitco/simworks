@@ -35,26 +35,39 @@ def get_requested_account_uuid_from_scope(scope) -> str | None:
 
 
 def resolve_account_for_user(user, *, account_uuid: str | None = None):
+    account, _reason = resolve_account_for_user_with_reason(user, account_uuid=account_uuid)
+    return account
+
+
+def resolve_account_for_user_with_reason(
+    user,
+    *,
+    account_uuid: str | None = None,
+) -> tuple[Account | None, str]:
     if not getattr(user, "is_authenticated", False):
-        return None
+        return None, "anonymous_user"
 
     account = None
     if account_uuid:
         try:
             parsed_account_uuid = UUID(str(account_uuid))
         except (TypeError, ValueError):
-            return None
+            return None, "invalid_account_uuid"
         account = Account.objects.filter(uuid=parsed_account_uuid, is_active=True).first()
         if account is None:
-            return None
+            return None, "account_not_found"
     else:
         account = get_default_account_for_user(user)
+        if account is None:
+            return None, "default_account_unavailable"
 
-    if account is None:
-        return None
     if not can_access_account(user, account):
-        return None
-    return account
+        if account_uuid:
+            return None, "account_access_denied"
+        return None, "default_account_access_denied"
+    if account_uuid:
+        return account, "header_account_resolved"
+    return account, "default_account_resolved"
 
 
 def resolve_request_account(request, user=None):

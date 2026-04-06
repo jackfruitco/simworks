@@ -10,7 +10,7 @@ Covers:
 - Query-param auth/account selection is no longer supported
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from channels.testing import WebsocketCommunicator
@@ -132,6 +132,21 @@ class TestJWTAuthMiddleware:
 
         assert isinstance(result["user"], AnonymousUser)
         assert result["auth_mechanism"] is None
+
+    async def test_missing_bearer_token_logs_explicit_reason(self):
+        scope = _make_scope()
+
+        with patch("apps.common.ws_auth.logger.debug") as mock_debug:
+            result = await self._call_middleware(scope)
+
+        assert isinstance(result["user"], AnonymousUser)
+        fallback_call = next(
+            call
+            for call in mock_debug.call_args_list
+            if call.args[0] == "ws.auth.anonymous_fallback"
+        )
+        assert fallback_call.kwargs["had_bearer_token"] is False
+        assert fallback_call.kwargs["reason"] == "missing_bearer_token"
 
     async def test_falls_back_to_anonymous_for_invalid_token(self):
         scope = _make_scope(headers=[_header("authorization", "Bearer not.a.valid.jwt")])
@@ -263,6 +278,24 @@ class TestAccountContextMiddleware:
         assert result["account"].id == account.id
         assert result["account_context_source"] == "default"
 
+    async def test_default_account_resolution_logs_reason(self):
+        user, account = await self._make_user_with_account()
+
+        scope = _make_scope()
+        scope["user"] = user
+
+        with patch("apps.common.ws_auth.logger.info") as mock_info:
+            result = await self._call_middleware(scope)
+
+        assert result["account"] is not None
+        assert result["account"].id == account.id
+        resolved_call = next(
+            call for call in mock_info.call_args_list if call.args[0] == "ws.account.resolved"
+        )
+        assert resolved_call.kwargs["reason"] == "default_account_resolved"
+        assert resolved_call.kwargs["has_account_header"] is False
+        assert resolved_call.kwargs["requested_account_uuid"] is None
+
     async def test_scope_account_is_none_for_anonymous(self):
         scope = _make_scope()
         scope["user"] = AnonymousUser()
@@ -279,9 +312,19 @@ class TestAccountContextMiddleware:
         )
         scope["user"] = user
 
-        result = await self._call_middleware(scope)
+        with patch("apps.common.ws_auth.logger.warning") as mock_warning:
+            result = await self._call_middleware(scope)
+
         assert result["account"] is None
         assert result["account_context_source"] == "header"
+        warning_call = next(
+            call
+            for call in mock_warning.call_args_list
+            if call.args[0] == "ws.account.resolution_failed"
+        )
+        assert warning_call.kwargs["reason"] == "invalid_account_uuid"
+        assert warning_call.kwargs["requested_account_uuid"] == "not-a-valid-uuid"
+        assert warning_call.kwargs["has_account_header"] is True
 
     async def test_scope_account_is_none_for_wrong_account(self):
         """Valid UUID but user has no access to that account."""
@@ -301,9 +344,19 @@ class TestAccountContextMiddleware:
         )
         scope["user"] = user
 
-        result = await self._call_middleware(scope)
+        with patch("apps.common.ws_auth.logger.warning") as mock_warning:
+            result = await self._call_middleware(scope)
+
         assert result["account"] is None
         assert result["account_context_source"] == "header"
+        warning_call = next(
+            call
+            for call in mock_warning.call_args_list
+            if call.args[0] == "ws.account.resolution_failed"
+        )
+        assert warning_call.kwargs["reason"] == "account_access_denied"
+        assert warning_call.kwargs["requested_account_uuid"] == str(other_account.uuid)
+        assert warning_call.kwargs["has_account_header"] is True
 
     async def test_query_param_account_uuid_is_ignored(self):
         """Query-param account_uuid is no longer supported."""

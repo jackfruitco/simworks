@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
+from django.contrib.auth.models import AnonymousUser
 from django.utils import timezone
 import pytest
 
+from apps.chatlab import realtime as chat_realtime
 from apps.chatlab.consumers import ChatConsumer
 from apps.common.models import OutboxEvent
+from apps.common.outbox import event_types
 from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
 from apps.common.outbox.outbox import build_canonical_envelope
 
@@ -87,6 +91,27 @@ async def receive_json(communicator, timeout: float = 1.0):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 class TestChatConsumerContract:
+    async def test_chatlab_replay_registry_matches_canonical_outbox_event_types(self):
+        assert frozenset(event_types.canonical_event_types()) == chat_realtime.DURABLE_EVENT_TYPES
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_connect_logs_rejection_reason(self):
+        consumer = ChatConsumer()
+        consumer.scope = {"user": AnonymousUser(), "path": "/ws/v1/chatlab/"}
+        consumer.close = AsyncMock()
+
+        with patch("apps.chatlab.consumers.logger.warning") as mock_warning:
+            await consumer.connect()
+
+        consumer.close.assert_awaited_once_with(code=4401)
+        warning_call = next(
+            call
+            for call in mock_warning.call_args_list
+            if call.args[0] == "chatlab.ws.connect_rejected"
+        )
+        assert warning_call.kwargs["reason"] == "authentication_required"
+        assert warning_call.kwargs["close_code"] == 4401
+
     async def test_session_ready_uses_canonical_envelope(self):
         simulation, user = await create_simulation_and_user()
         communicator = await connect_and_hello(simulation, user)
@@ -117,6 +142,27 @@ class TestChatConsumerContract:
         response = await receive_json(communicator)
         assert response["event_type"] == "error"
         assert response["payload"]["code"] == "invalid_shape"
+
+        await communicator.disconnect()
+
+    async def test_unknown_inbound_event_type_returns_structured_error(self):
+        _simulation, user = await create_simulation_and_user()
+        communicator = WebsocketCommunicator(ChatConsumer.as_asgi(), "/ws/v1/chatlab/")
+        communicator.scope["user"] = user
+
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.send_json_to(
+            {
+                "event_type": "feedback.created",
+                "payload": {},
+            }
+        )
+        response = await receive_json(communicator)
+        assert response["event_type"] == "error"
+        assert response["payload"]["code"] == "unsupported_event_type"
+        assert response["payload"]["details"]["event_type"] == "feedback.created"
 
         await communicator.disconnect()
 
