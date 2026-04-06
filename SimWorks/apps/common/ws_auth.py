@@ -109,6 +109,11 @@ class JWTAuthMiddleware(BaseMiddleware):
                 "ws.auth.anonymous_fallback",
                 path=path,
                 had_bearer_token=has_bearer_token,
+                reason=(
+                    "invalid_or_inactive_bearer_token"
+                    if has_bearer_token
+                    else "missing_bearer_token"
+                ),
             )
 
         return await super().__call__(scope, receive, send)
@@ -116,9 +121,17 @@ class JWTAuthMiddleware(BaseMiddleware):
 
 @database_sync_to_async
 def _resolve_account_from_scope(scope, user):
-    from apps.accounts.context import resolve_scope_account
+    from apps.accounts.context import (
+        get_requested_account_uuid_from_scope,
+        resolve_account_for_user_with_reason,
+    )
 
-    return resolve_scope_account(scope, user)
+    requested_uuid = get_requested_account_uuid_from_scope(scope)
+    account, resolution_reason = resolve_account_for_user_with_reason(
+        user,
+        account_uuid=requested_uuid,
+    )
+    return account, requested_uuid, resolution_reason
 
 
 class AccountContextMiddleware(BaseMiddleware):
@@ -139,30 +152,33 @@ class AccountContextMiddleware(BaseMiddleware):
             logger.debug(
                 "ws.account.skip_anonymous",
                 path=path,
+                reason="anonymous_user",
             )
             return await super().__call__(scope, receive, send)
 
-        # Check for X-Account-UUID header presence
-        from apps.accounts.context import get_requested_account_uuid_from_scope
-
-        requested_uuid = get_requested_account_uuid_from_scope(scope)
+        account, requested_uuid, resolution_reason = await _resolve_account_from_scope(scope, user)
         has_account_header = requested_uuid is not None
-
-        account = await _resolve_account_from_scope(scope, user)
         account_id = getattr(account, "id", None)
         account_uuid = str(getattr(account, "uuid", "")) if account else None
 
         scope["account"] = account
         scope["account_context_source"] = "header" if has_account_header else "default"
+        log = logger.info
+        event_name = "ws.account.resolved"
+        if has_account_header and account is None:
+            log = logger.warning
+            event_name = "ws.account.resolution_failed"
 
-        logger.info(
-            "ws.account.resolved",
+        log(
+            event_name,
             path=path,
             user_id=getattr(user, "id", None),
             account_id=account_id,
             account_uuid=account_uuid,
+            requested_account_uuid=requested_uuid,
             account_context_source=scope["account_context_source"],
             has_account_header=has_account_header,
+            reason=resolution_reason,
         )
 
         return await super().__call__(scope, receive, send)
