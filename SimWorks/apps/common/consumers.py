@@ -92,7 +92,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
             logger.warning(
                 "notifications.ws.outbox_missing_event_type",
                 user_id=getattr(getattr(self, "user", None), "id", None),
-                channel_name=self.channel_name,
+                channel_name=getattr(self, "channel_name", None),
             )
             return
 
