@@ -341,3 +341,38 @@ class TestChatConsumerContract:
         assert response["payload"]["code"] == "access_denied"
 
         await communicator.disconnect()
+
+    async def test_pre_resolved_scope_account_used_for_access(self):
+        """When scope['account'] is pre-set by middleware, consumer uses it."""
+        from asgiref.sync import sync_to_async
+
+        from apps.accounts.services import get_default_account_for_user
+
+        simulation, user = await create_simulation_and_user()
+        account = await sync_to_async(get_default_account_for_user)(user)
+
+        # Link simulation to account
+        simulation.account = account
+        await simulation.asave(update_fields=["account"])
+
+        communicator = WebsocketCommunicator(
+            ChatConsumer.as_asgi(),
+            "/ws/v1/chatlab/",
+        )
+        communicator.scope["user"] = user
+        communicator.scope["account"] = account
+
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.send_json_to(
+            {
+                "event_type": "session.hello",
+                "payload": {"simulation_id": simulation.id},
+            }
+        )
+        response = await receive_json(communicator)
+        assert response["event_type"] == "session.ready"
+        assert response["payload"]["simulation_id"] == simulation.id
+
+        await communicator.disconnect()
