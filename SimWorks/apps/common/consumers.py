@@ -98,8 +98,8 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
         logger.info(
             "notifications.ws.outbox_event",
-            user_id=self.user.id,
-            user_email=self.user.email,
+            user_id=getattr(self.user, "id", None),
+            user_email=getattr(self.user, "email", None),
             event_type=envelope.get("event_type"),
         )
 
