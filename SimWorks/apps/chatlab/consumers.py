@@ -93,6 +93,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         account_uuid = str(getattr(account, "uuid", "")) if account else None
         account_context_source = self.scope.get("account_context_source")
 
+        header_map = {
+            key.decode("latin1").lower(): value.decode("latin1")
+            for key, value in self.scope.get("headers", [])
+        }
+        host = header_map.get("host")
+        origin = header_map.get("origin")
+        x_forwarded_proto = header_map.get("x-forwarded-proto")
+        x_forwarded_for = header_map.get("x-forwarded-for")
+        x_account_uuid = header_map.get("x-account-uuid")
+        authorization_present = "authorization" in header_map
+
         logger.info(
             "chatlab.ws.connect_attempt",
             user_id=user_id,
@@ -103,6 +114,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             account_id=account_id,
             account_uuid=account_uuid,
             account_context_source=account_context_source,
+            scheme=self.scope.get("scheme"),
+            host=host,
+            origin=origin,
+            x_forwarded_proto=x_forwarded_proto,
+            x_forwarded_for=x_forwarded_for,
+            x_account_uuid=x_account_uuid,
+            authorization_present=authorization_present,
         )
 
         if not is_authenticated:
@@ -116,6 +134,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reason="authentication_required",
                 close_code=AUTH_REQUIRED_CLOSE_CODE,
                 auth_mechanism=auth_mechanism,
+                scheme=self.scope.get("scheme"),
+                host=host,
+                origin=origin,
+                x_forwarded_proto=x_forwarded_proto,
+                x_forwarded_for=x_forwarded_for,
+                x_account_uuid=x_account_uuid,
+                authorization_present=authorization_present,
             )
             await self.close(code=AUTH_REQUIRED_CLOSE_CODE)
             return
@@ -129,6 +154,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             account_id=account_id,
             account_uuid=account_uuid,
             account_context_source=account_context_source,
+            scheme=self.scope.get("scheme"),
+            host=host,
+            origin=origin,
+            x_forwarded_proto=x_forwarded_proto,
+            x_forwarded_for=x_forwarded_for,
+            x_account_uuid=x_account_uuid,
+            authorization_present=authorization_present,
         )
 
     async def disconnect(self, close_code: int) -> None:
@@ -277,6 +309,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         simulation_id = int(inbound.payload["simulation_id"])
+        header_map = {
+            key.decode("latin1").lower(): value.decode("latin1")
+            for key, value in self.scope.get("headers", [])
+        }
         logger.info(
             "chatlab.ws.session_negotiation",
             event_type=inbound.event_type,
@@ -284,6 +320,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             last_event_id=inbound.payload.get("last_event_id"),
             user_id=getattr(self.scope.get("user"), "id", None),
             channel_name=self.channel_name,
+            host=header_map.get("host"),
+            origin=header_map.get("origin"),
+            x_forwarded_proto=header_map.get("x-forwarded-proto"),
+            x_forwarded_for=header_map.get("x-forwarded-for"),
+            requested_account_uuid=header_map.get("x-account-uuid"),
+            authorization_present="authorization" in header_map,
         )
 
         simulation = await self._resolve_authorized_simulation(simulation_id)
@@ -375,6 +417,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
         user = self.scope.get("user")
+        header_map = {
+            key.decode("latin1").lower(): value.decode("latin1")
+            for key, value in self.scope.get("headers", [])
+        }
+        scope_account = self.scope.get("account")
         has_access = bool(
             getattr(user, "is_staff", False)
             or await sync_to_async(can_access_simulation_in_scope)(user, simulation, self.scope)
@@ -388,6 +435,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             channel_name=self.channel_name,
             access_granted=has_access,
             reason=None if has_access else "access_denied",
+            scope_account_id=getattr(scope_account, "id", None),
+            scope_account_uuid=(str(getattr(scope_account, "uuid", "")) if scope_account else None),
+            account_context_source=self.scope.get("account_context_source"),
+            requested_account_uuid=header_map.get("x-account-uuid"),
+            host=header_map.get("host"),
+            origin=header_map.get("origin"),
+            x_forwarded_proto=header_map.get("x-forwarded-proto"),
+            x_forwarded_for=header_map.get("x-forwarded-for"),
         )
         return simulation if has_access else None
 

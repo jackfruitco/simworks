@@ -25,21 +25,93 @@ def _get_user_for_token_subject(subject: str):
     return user or AnonymousUser()
 
 
+def _header_names(scope) -> list[str]:
+    names: list[str] = []
+    for key, _value in scope.get("headers", []):
+        try:
+            names.append(key.decode("utf-8").lower())
+        except UnicodeDecodeError:
+            names.append(repr(key))
+    return sorted(names)
+
+
+def _header_value(scope, name: str) -> str | None:
+    target = name.lower().encode("utf-8")
+    for key, value in scope.get("headers", []):
+        if key.lower() != target:
+            continue
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return repr(value)
+    return None
+
+
+def _request_context(scope) -> dict[str, str | None]:
+    return {
+        "host": _header_value(scope, "host"),
+        "origin": _header_value(scope, "origin"),
+        "user_agent": _header_value(scope, "user-agent"),
+        "upgrade": _header_value(scope, "upgrade"),
+        "connection": _header_value(scope, "connection"),
+        "sec_websocket_version": _header_value(scope, "sec-websocket-version"),
+        "sec_websocket_protocol": _header_value(scope, "sec-websocket-protocol"),
+        "x_forwarded_for": _header_value(scope, "x-forwarded-for"),
+        "x_forwarded_proto": _header_value(scope, "x-forwarded-proto"),
+        "x_forwarded_host": _header_value(scope, "x-forwarded-host"),
+        "x_forwarded_port": _header_value(scope, "x-forwarded-port"),
+        "x_account_uuid": _header_value(scope, "x-account-uuid"),
+        "x_correlation_id": _header_value(scope, "x-correlation-id"),
+    }
+
+
 def _extract_bearer_token(scope) -> str | None:
     """Extract bearer token from the Authorization header only.
 
     Query-parameter tokens are no longer supported. Clients must use the
     ``Authorization: Bearer <token>`` header for WebSocket authentication.
     """
-    for key, value in scope.get("headers", []):
+    headers = scope.get("headers", [])
+    path = scope.get("path", "")
+    header_names = _header_names(scope)
+
+    for key, value in headers:
         if key.lower() != b"authorization":
             continue
         try:
             raw = value.decode("utf-8")
         except UnicodeDecodeError:
+            logger.warning(
+                "ws.auth.authorization_header_invalid_encoding",
+                path=path,
+                header_names=header_names,
+                **_request_context(scope),
+            )
             return None
         if raw.lower().startswith("bearer "):
+            logger.info(
+                "ws.auth.authorization_header_present",
+                path=path,
+                header_names=header_names,
+                authorization_prefix=raw[:24],
+                **_request_context(scope),
+            )
             return raw.split(" ", 1)[1].strip()
+        logger.warning(
+            "ws.auth.authorization_header_unexpected_format",
+            path=path,
+            header_names=header_names,
+            authorization_prefix=raw[:24],
+            **_request_context(scope),
+        )
+        return None
+
+    logger.warning(
+        "ws.auth.authorization_header_missing",
+        path=path,
+        header_names=header_names,
+        **_request_context(scope),
+    )
     return None
 
 
@@ -57,6 +129,7 @@ class JWTAuthMiddleware(BaseMiddleware):
                 path=path,
                 user_id=getattr(user, "id", None),
                 auth_mechanism="session",
+                **_request_context(scope),
             )
             scope["auth_mechanism"] = "session"
             return await super().__call__(scope, receive, send)
@@ -64,11 +137,16 @@ class JWTAuthMiddleware(BaseMiddleware):
         token = _extract_bearer_token(scope)
         has_bearer_token = token is not None
 
-        logger.debug(
+        logger.info(
             "ws.auth.start",
             path=path,
             has_session_user=False,
             has_bearer_token=has_bearer_token,
+            header_names=_header_names(scope),
+            has_account_header=any(
+                key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
+            ),
+            **_request_context(scope),
         )
 
         if token:
@@ -84,11 +162,13 @@ class JWTAuthMiddleware(BaseMiddleware):
                             path=path,
                             user_id=scope["user"].pk,
                             auth_mechanism="bearer_token",
+                            **_request_context(scope),
                         )
                     else:
                         logger.warning(
                             "ws.auth.jwt_user_inactive",
                             path=path,
+                            **_request_context(scope),
                         )
             except InvalidTokenError as exc:
                 logger.warning(
@@ -96,16 +176,25 @@ class JWTAuthMiddleware(BaseMiddleware):
                     path=path,
                     error=str(exc),
                     error_type=type(exc).__name__,
+                    header_names=_header_names(scope),
+                    has_account_header=any(
+                        key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
+                    ),
+                    **_request_context(scope),
                 )
             except Exception:
-                logger.exception("ws.auth.jwt_unexpected_error", path=path)
+                logger.exception(
+                    "ws.auth.jwt_unexpected_error",
+                    path=path,
+                    **_request_context(scope),
+                )
 
         if scope.get("user") is None:
             scope["user"] = AnonymousUser()
 
         if not getattr(scope["user"], "is_authenticated", False):
             scope["auth_mechanism"] = None
-            logger.debug(
+            logger.warning(
                 "ws.auth.anonymous_fallback",
                 path=path,
                 had_bearer_token=has_bearer_token,
@@ -114,6 +203,11 @@ class JWTAuthMiddleware(BaseMiddleware):
                     if has_bearer_token
                     else "missing_bearer_token"
                 ),
+                header_names=_header_names(scope),
+                has_account_header=any(
+                    key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
+                ),
+                **_request_context(scope),
             )
 
         return await super().__call__(scope, receive, send)
@@ -153,6 +247,7 @@ class AccountContextMiddleware(BaseMiddleware):
                 "ws.account.skip_anonymous",
                 path=path,
                 reason="anonymous_user",
+                **_request_context(scope),
             )
             return await super().__call__(scope, receive, send)
 
@@ -179,6 +274,7 @@ class AccountContextMiddleware(BaseMiddleware):
             account_context_source=scope["account_context_source"],
             has_account_header=has_account_header,
             reason=resolution_reason,
+            **_request_context(scope),
         )
 
         return await super().__call__(scope, receive, send)

@@ -21,6 +21,7 @@
       <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/3.14.3" />
+      <excludeFolder url="file://$MODULE_DIR$/nginx/certs" />
     </content>
     <orderEntry type="jdk" jdkName="uv (SimWorks)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
