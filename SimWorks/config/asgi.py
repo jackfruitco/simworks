@@ -25,6 +25,7 @@ from apps.common.routing import websocket_urlpatterns as core_ws  # noqa: E402
 from apps.common.ws_auth import SessionOrJWTAuthMiddlewareStack  # noqa: E402
 from django.conf import settings  # noqa: E402
 
+
 def _decode_header_value(value):
     try:
         return value.decode("utf-8")
@@ -95,6 +96,7 @@ class LoggingWebSocketGate:
             await send(message)
 
         return await self.app(scope, receive, logging_send)
+
 
 websocket_application = LoggingWebSocketGate(
     SessionOrJWTAuthMiddlewareStack(URLRouter(chatlab_ws + core_ws))
