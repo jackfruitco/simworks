@@ -4438,7 +4438,7 @@
         "type": "object"
       },
       "BackendBuildInfoOut": {
-        "description": "Backend runtime metadata for startup display.",
+        "description": "Backend artifact metadata for startup display.",
         "properties": {
           "version": {
             "anyOf": [

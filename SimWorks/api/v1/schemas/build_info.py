@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class BackendBuildInfoOut(BaseModel):
-    """Backend runtime metadata for startup display."""
+    """Backend artifact metadata for startup display."""
 
     version: str | None = Field(default=None, description="Installed backend package version")
     commit: str | None = Field(default=None, description="Injected backend source commit SHA")

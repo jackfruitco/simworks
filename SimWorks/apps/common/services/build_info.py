@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 import os
 from pathlib import Path
 import tomllib
-from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 ORCHESTRAI_PACKAGE_NAME = "orchestrai"
