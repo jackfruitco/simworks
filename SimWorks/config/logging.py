@@ -16,10 +16,10 @@ Usage:
 
 """
 
+import os
 from typing import Any
 
 import structlog
-import os
 
 from apps.common.utils.system import check_env
 

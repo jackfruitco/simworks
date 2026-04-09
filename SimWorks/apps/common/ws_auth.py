@@ -21,7 +21,12 @@ User = get_user_model()
 
 @database_sync_to_async
 def _get_user_for_token_subject(subject: str):
-    user = User.objects.filter(pk=subject, is_active=True).first()
+    try:
+        subject_pk = int(subject)
+    except (TypeError, ValueError):
+        return AnonymousUser()
+
+    user = User.objects.filter(pk=subject_pk, is_active=True).first()
     return user or AnonymousUser()
 
 
@@ -65,6 +70,11 @@ def _request_context(scope) -> dict[str, str | None]:
     }
 
 
+def _has_header(scope, name: str) -> bool:
+    target = name.lower().encode("utf-8")
+    return any(key.lower() == target for key, _value in scope.get("headers", []))
+
+
 def _extract_bearer_token(scope) -> str | None:
     """Extract bearer token from the Authorization header only.
 
@@ -74,6 +84,7 @@ def _extract_bearer_token(scope) -> str | None:
     headers = scope.get("headers", [])
     path = scope.get("path", "")
     header_names = _header_names(scope)
+    request_context = _request_context(scope)
 
     for key, value in headers:
         if key.lower() != b"authorization":
@@ -85,32 +96,30 @@ def _extract_bearer_token(scope) -> str | None:
                 "ws.auth.authorization_header_invalid_encoding",
                 path=path,
                 header_names=header_names,
-                **_request_context(scope),
+                **request_context,
             )
             return None
         if raw.lower().startswith("bearer "):
-            logger.info(
+            logger.debug(
                 "ws.auth.authorization_header_present",
                 path=path,
                 header_names=header_names,
-                authorization_prefix=raw[:24],
-                **_request_context(scope),
+                **request_context,
             )
             return raw.split(" ", 1)[1].strip()
         logger.warning(
             "ws.auth.authorization_header_unexpected_format",
             path=path,
             header_names=header_names,
-            authorization_prefix=raw[:24],
-            **_request_context(scope),
+            **request_context,
         )
         return None
 
-    logger.warning(
+    logger.debug(
         "ws.auth.authorization_header_missing",
         path=path,
         header_names=header_names,
-        **_request_context(scope),
+        **request_context,
     )
     return None
 
@@ -122,6 +131,9 @@ class JWTAuthMiddleware(BaseMiddleware):
         path = scope.get("path", "")
         user = scope.get("user")
         has_session_user = user is not None and getattr(user, "is_authenticated", False)
+        request_context = _request_context(scope)
+        header_names = _header_names(scope)
+        has_account_header = _has_header(scope, "x-account-uuid")
 
         if has_session_user:
             logger.debug(
@@ -129,7 +141,7 @@ class JWTAuthMiddleware(BaseMiddleware):
                 path=path,
                 user_id=getattr(user, "id", None),
                 auth_mechanism="session",
-                **_request_context(scope),
+                **request_context,
             )
             scope["auth_mechanism"] = "session"
             return await super().__call__(scope, receive, send)
@@ -137,16 +149,14 @@ class JWTAuthMiddleware(BaseMiddleware):
         token = _extract_bearer_token(scope)
         has_bearer_token = token is not None
 
-        logger.info(
+        logger.debug(
             "ws.auth.start",
             path=path,
             has_session_user=False,
             has_bearer_token=has_bearer_token,
-            header_names=_header_names(scope),
-            has_account_header=any(
-                key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
-            ),
-            **_request_context(scope),
+            header_names=header_names,
+            has_account_header=has_account_header,
+            **request_context,
         )
 
         if token:
@@ -162,13 +172,13 @@ class JWTAuthMiddleware(BaseMiddleware):
                             path=path,
                             user_id=scope["user"].pk,
                             auth_mechanism="bearer_token",
-                            **_request_context(scope),
+                            **request_context,
                         )
                     else:
                         logger.warning(
-                            "ws.auth.jwt_user_inactive",
+                            "ws.auth.jwt_user_not_found_or_inactive",
                             path=path,
-                            **_request_context(scope),
+                            **request_context,
                         )
             except InvalidTokenError as exc:
                 logger.warning(
@@ -176,17 +186,15 @@ class JWTAuthMiddleware(BaseMiddleware):
                     path=path,
                     error=str(exc),
                     error_type=type(exc).__name__,
-                    header_names=_header_names(scope),
-                    has_account_header=any(
-                        key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
-                    ),
-                    **_request_context(scope),
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
                 )
             except Exception:
                 logger.exception(
                     "ws.auth.jwt_unexpected_error",
                     path=path,
-                    **_request_context(scope),
+                    **request_context,
                 )
 
         if scope.get("user") is None:
@@ -203,11 +211,9 @@ class JWTAuthMiddleware(BaseMiddleware):
                     if has_bearer_token
                     else "missing_bearer_token"
                 ),
-                header_names=_header_names(scope),
-                has_account_header=any(
-                    key.lower() == b"x-account-uuid" for key, _value in scope.get("headers", [])
-                ),
-                **_request_context(scope),
+                header_names=header_names,
+                has_account_header=has_account_header,
+                **request_context,
             )
 
         return await super().__call__(scope, receive, send)
@@ -239,6 +245,7 @@ class AccountContextMiddleware(BaseMiddleware):
         user = scope.get("user")
         path = scope.get("path", "")
         is_authenticated = user is not None and getattr(user, "is_authenticated", False)
+        request_context = _request_context(scope)
 
         if not is_authenticated:
             scope["account"] = None
@@ -247,7 +254,7 @@ class AccountContextMiddleware(BaseMiddleware):
                 "ws.account.skip_anonymous",
                 path=path,
                 reason="anonymous_user",
-                **_request_context(scope),
+                **request_context,
             )
             return await super().__call__(scope, receive, send)
 
@@ -274,7 +281,7 @@ class AccountContextMiddleware(BaseMiddleware):
             account_context_source=scope["account_context_source"],
             has_account_header=has_account_header,
             reason=resolution_reason,
-            **_request_context(scope),
+            **request_context,
         )
 
         return await super().__call__(scope, receive, send)
