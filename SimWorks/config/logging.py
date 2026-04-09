@@ -16,6 +16,7 @@ Usage:
 
 """
 
+import os
 from typing import Any
 
 import structlog
@@ -24,6 +25,7 @@ from apps.common.utils.system import check_env
 
 LOG_LEVEL = check_env("DJANGO_LOG_LEVEL", "INFO").upper()
 LOGFIRE_LOG_LEVEL = check_env("LOGFIRE_LOG_LEVEL", "INFO").upper()
+UVICORN_LOG_LEVEL = os.getenv("UVICORN_LOG_LEVEL", LOG_LEVEL).upper()
 
 LOGGING = {
     "version": 1,
@@ -56,6 +58,36 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        "django.request": {
+            "handlers": ["console", "logfire"],
+            "level": check_env("DJANGO_REQUEST_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "channels": {
+            "handlers": ["console", "logfire"],
+            "level": check_env("CHANNELS_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn": {
+            "handlers": ["console", "logfire"],
+            "level": UVICORN_LOG_LEVEL or LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.error": {
+            "handlers": ["console", "logfire"],
+            "level": UVICORN_LOG_LEVEL or LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["console", "logfire"],
+            "level": UVICORN_LOG_LEVEL or LOG_LEVEL,
+            "propagate": False,
+        },
+        "daphne": {
+            "handlers": ["console", "logfire"],
+            "level": check_env("DAPHNE_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
         "py.warnings": {
             "handlers": ["console", "logfire"],
             "level": "WARNING",
@@ -76,9 +108,19 @@ LOGGING = {
             "level": check_env("CHATLAB_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
+        "apps.chatlab.consumers": {
+            "handlers": ["console", "logfire"],
+            "level": check_env("CHATLAB_CONSUMER_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
         "accounts": {
             "handlers": ["console"],
             "level": check_env("ACCOUNTS_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps.common.ws_auth": {
+            "handlers": ["console", "logfire"],
+            "level": check_env("WS_AUTH_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "notifications": {
