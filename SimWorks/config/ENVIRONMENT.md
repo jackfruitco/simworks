@@ -40,6 +40,7 @@ This project uses a single Django settings module and environment variables for 
 ## Site metadata
 - `SITE_NAME`
 - `SITE_ADMIN_NAME`, `SITE_ADMIN_EMAIL`
+- `APP_GIT_SHA` (optional backend commit SHA exposed by `/api/v1/build-info/`; `GIT_SHA` is also accepted as a fallback)
 
 ## Authentication / Social providers
 - `ACCOUNT_SIGNUP_FIELDS`

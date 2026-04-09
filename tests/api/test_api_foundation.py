@@ -23,6 +23,13 @@ class TestAPIMount:
 
         assert response.status_code == 200
 
+    def test_build_info_endpoint_is_mounted(self):
+        """Build info endpoint responds at /api/v1/build-info/."""
+        client = Client()
+        response = client.get("/api/v1/build-info/")
+
+        assert response.status_code == 200
+
     def test_unknown_route_returns_404(self):
         """Unknown API routes return 404."""
         client = Client()

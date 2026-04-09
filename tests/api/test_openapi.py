@@ -123,6 +123,7 @@ class TestOpenAPISchemaContent:
                 "/api/v1/health",
                 "/api/v1/health/auth",
                 "/api/v1/health/jwt",
+                "/api/v1/build-info/",
             ],
         )
 
