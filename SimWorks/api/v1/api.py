@@ -14,6 +14,7 @@ from api.v1.auth import JWTAuth
 from api.v1.endpoints.accounts import router as accounts_router
 from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.billing import router as billing_router
+from api.v1.endpoints.build_info import router as build_info_router
 from api.v1.endpoints.chatlab import router as chatlab_router
 from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
@@ -221,6 +222,7 @@ def health_check_jwt(request: HttpRequest) -> HealthResponse:
 api.add_router("/auth", auth_router)
 api.add_router("/accounts", accounts_router)
 api.add_router("/billing", billing_router)
+api.add_router("", build_info_router)
 api.add_router("/simulations", simulations_router)
 api.add_router("/simulations", conversations_router)  # Conversations nested under simulations
 api.add_router("/simulations", messages_router)  # Messages are nested under simulations
