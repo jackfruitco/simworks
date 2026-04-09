@@ -4,20 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      target_ref:
-        description: "Branch, tag, or SHA to deploy to staging"
-        required: true
-        type: choice
-        default: main
-        options:
-          - main
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 concurrency:
-  group: cd-staging-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_ref || github.ref }}
+  group: cd-staging-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -38,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_ref || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Read project metadata from pyproject.toml
         id: pyproject
@@ -90,9 +82,7 @@ jobs:
             const res = await github.rest.repos.createDeployment({
               owner,
               repo,
-              ref: context.eventName === 'workflow_dispatch'
-                ? context.payload.inputs.target_ref
-                : context.sha,
+              ref: context.ref,
               environment,
               auto_merge: false,
               required_contexts: [],
