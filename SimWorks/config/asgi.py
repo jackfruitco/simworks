@@ -10,6 +10,7 @@ https://docs.djangoproject.com/en/5.1/howto/deployment/asgi/
 import os
 
 from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
 
 from config.logging import get_logger
@@ -45,6 +46,8 @@ class LoggingWebSocketGate:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        print("ASGI WS GATE HIT", scope.get("path"), scope.get("headers"))
+
         if scope.get("type") != "websocket":
             return await self.app(scope, receive, send)
 
@@ -79,6 +82,8 @@ class LoggingWebSocketGate:
         )
 
         async def logging_send(message):
+            print("ASGI WS SEND", message)
+
             if message.get("type") == "websocket.close":
                 logger.warning(
                     "asgi.websocket.close",
