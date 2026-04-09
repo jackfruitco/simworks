@@ -10,7 +10,7 @@ class BackendBuildInfoOut(BaseModel):
     commit: str | None = Field(default=None, description="Injected backend source commit SHA")
     build_time: str | None = Field(
         default=None,
-        description="Backend build timestamp when available",
+        description="Backend artifact build timestamp in UTC when supplied by the build pipeline",
     )
 
 

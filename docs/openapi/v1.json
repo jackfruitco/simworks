@@ -554,7 +554,7 @@
             }
           }
         },
-        "description": "Returns best-effort backend build metadata for app startup screens.",
+        "description": "Returns best-effort backend build metadata for app startup and debug screens.",
         "tags": [
           "system"
         ]
@@ -4473,7 +4473,7 @@
                 "type": "null"
               }
             ],
-            "description": "Backend build timestamp when available",
+            "description": "Backend artifact build timestamp in UTC when supplied by the build pipeline",
             "title": "Build Time"
           }
         },
