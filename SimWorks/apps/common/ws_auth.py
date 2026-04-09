@@ -194,7 +194,8 @@ class JWTAuthMiddleware(BaseMiddleware):
 
         if not getattr(scope["user"], "is_authenticated", False):
             scope["auth_mechanism"] = None
-            logger.warning(
+            fallback_log = logger.warning if has_bearer_token else logger.debug
+            fallback_log(
                 "ws.auth.anonymous_fallback",
                 path=path,
                 had_bearer_token=has_bearer_token,
