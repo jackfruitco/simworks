@@ -29,13 +29,6 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
                 self.group_name = f"notifications_{self.user.id}"
                 await self.channel_layer.group_add(self.group_name, self.channel_name)
                 await self.accept()
-                logger.info(
-                    "notifications.ws.connect_accepted",
-                    user_id=self.user.id,
-                    channel_name=self.channel_name,
-                    path=self.scope.get("path"),
-                    group_name=self.group_name,
-                )
         except Exception:
             logger.exception(
                 "notifications.ws.connect_failed",
@@ -48,24 +41,11 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
         group = getattr(self, "group_name", None)
         if group:
             await self.channel_layer.group_discard(group, self.channel_name)
-        logger.info(
-            "notifications.ws.disconnect",
-            user_id=getattr(getattr(self, "user", None), "id", None),
-            channel_name=self.channel_name,
-            close_code=close_code,
-        )
 
     # This method is called when a notification is sent to the group
     async def send_notification(self, event):
         notification = event["notification"]
         notification_type = event.get("notification_type", "info")
-
-        logger.info(
-            "notifications.ws.notification_sent",
-            user_id=self.user.id,
-            user_email=self.user.email,
-            notification_type=notification_type,
-        )
 
         await self.send(
             text_data=json.dumps(
@@ -95,13 +75,6 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
                 channel_name=getattr(self, "channel_name", None),
             )
             return
-
-        logger.info(
-            "notifications.ws.outbox_event",
-            user_id=getattr(self.user, "id", None),
-            user_email=getattr(self.user, "email", None),
-            event_type=envelope.get("event_type"),
-        )
 
         # Forward the envelope to the client
         await self.send(text_data=json.dumps(envelope, default=json_default))

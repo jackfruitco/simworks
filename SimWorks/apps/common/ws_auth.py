@@ -39,12 +39,6 @@ def _get_user_for_token_subject(subject: str):
         )
         return AnonymousUser()
 
-    logger.info(
-        "ws.auth.subject_user_resolved",
-        subject=subject,
-        subject_pk=subject_pk,
-        user_id=user.pk,
-    )
     return user
 
 
@@ -118,13 +112,6 @@ def _extract_bearer_token(scope) -> str | None:
             )
             return None
         if raw.lower().startswith("bearer "):
-            logger.info(
-                "ws.auth.authorization_header_present",
-                path=path,
-                header_names=header_names,
-                authorization_prefix=raw[:24],
-                **request_context,
-            )
             return raw.split(" ", 1)[1].strip()
         logger.warning(
             "ws.auth.authorization_header_unexpected_format",
@@ -168,39 +155,14 @@ class JWTAuthMiddleware(BaseMiddleware):
         token = _extract_bearer_token(scope)
         has_bearer_token = token is not None
 
-        logger.info(
-            "ws.auth.start",
-            path=path,
-            has_session_user=False,
-            has_bearer_token=has_bearer_token,
-            header_names=header_names,
-            has_account_header=has_account_header,
-            **request_context,
-        )
-
         if token:
             try:
                 payload = decode_access_token(token)
-                logger.info(
-                    "ws.auth.jwt_decoded",
-                    path=path,
-                    token_subject=payload.get("sub"),
-                    token_type=payload.get("type"),
-                    token_email=payload.get("email"),
-                    **request_context,
-                )
                 subject = payload.get("sub")
                 if subject:
                     scope["user"] = await _get_user_for_token_subject(subject)
                     if getattr(scope["user"], "is_authenticated", False):
                         scope["auth_mechanism"] = "bearer_token"
-                        logger.info(
-                            "ws.auth.jwt_success",
-                            path=path,
-                            user_id=scope["user"].pk,
-                            auth_mechanism="bearer_token",
-                            **request_context,
-                        )
                     else:
                         logger.warning(
                             "ws.auth.jwt_user_not_found_or_inactive",
@@ -238,19 +200,16 @@ class JWTAuthMiddleware(BaseMiddleware):
 
         if not getattr(scope["user"], "is_authenticated", False):
             scope["auth_mechanism"] = None
-            fallback_reason = (
-                "invalid_or_inactive_bearer_token" if has_bearer_token else "missing_bearer_token"
-            )
-            log_anonymous_fallback = logger.warning if has_bearer_token else logger.debug
-            log_anonymous_fallback(
-                "ws.auth.anonymous_fallback",
-                path=path,
-                had_bearer_token=has_bearer_token,
-                reason=fallback_reason,
-                header_names=header_names,
-                has_account_header=has_account_header,
-                **request_context,
-            )
+            if has_bearer_token:
+                logger.warning(
+                    "ws.auth.anonymous_fallback",
+                    path=path,
+                    had_bearer_token=True,
+                    reason="invalid_or_inactive_bearer_token",
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
+                )
 
         return await super().__call__(scope, receive, send)
 
@@ -286,7 +245,7 @@ class AccountContextMiddleware(BaseMiddleware):
         if not is_authenticated:
             scope["account"] = None
             scope["account_context_source"] = None
-            logger.warning(
+            logger.debug(
                 "ws.account.skip_anonymous",
                 path=path,
                 reason="anonymous_user",

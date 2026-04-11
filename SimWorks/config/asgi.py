@@ -23,8 +23,6 @@ from apps.common.ws_auth import SessionOrJWTAuthMiddlewareStack  # noqa: E402
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
-        "websocket": SessionOrJWTAuthMiddlewareStack(
-            URLRouter(chatlab_ws + core_ws)
-        ),
+        "websocket": SessionOrJWTAuthMiddlewareStack(URLRouter(chatlab_ws + core_ws)),
     }
 )
