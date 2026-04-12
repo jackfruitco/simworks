@@ -216,9 +216,7 @@ class TestInterventionAdjudicationEvents:
         assert event.payload["target_problem_current_status"] == "controlled"
         assert event.payload["adjudication_reason"] == "intervention_adjudicated"
 
-    def test_effective_intervention_emits_problem_updated_with_controlled_status(
-        self, auth_client
-    ):
+    def test_effective_intervention_emits_problem_updated_with_controlled_status(self, auth_client):
         """patient.problem.updated must reflect the adjudicated (controlled) status."""
         from apps.common.models import OutboxEvent
 
@@ -287,9 +285,7 @@ class TestInterventionAdjudicationEvents:
                 "nested recommendations must reference the superseding problem, not the old one"
             )
 
-    def test_effective_intervention_emits_recommendation_removed_for_old_problem(
-        self, auth_client
-    ):
+    def test_effective_intervention_emits_recommendation_removed_for_old_problem(self, auth_client):
         """After adjudication, recommendations for the deactivated problem are removed.
 
         patient.recommendedintervention.removed must be emitted for each stale
@@ -393,9 +389,7 @@ class TestInterventionAdjudicationEvents:
         ).exists()
         assert not OutboxEvent.objects.filter(
             simulation_id=sim_id, event_type="patient.problem.updated"
-        ).exists(), (
-            "patient.problem.updated must NOT be emitted when adjudication has no effect"
-        )
+        ).exists(), "patient.problem.updated must NOT be emitted when adjudication has no effect"
 
     def test_state_reflects_controlled_problem_immediately_after_intervention(self, auth_client):
         """/state/ must show the superseding (controlled) problem immediately after
@@ -411,9 +405,7 @@ class TestInterventionAdjudicationEvents:
         )
         assert resp.status_code == 200
 
-        state = auth_client.get(
-            f"/api/v1/trainerlab/simulations/{sim_id}/state/"
-        ).json()
+        state = auth_client.get(f"/api/v1/trainerlab/simulations/{sim_id}/state/").json()
 
         problems = state["scenario_snapshot"]["problems"]
         problem_statuses = {p["problem_id"]: p["status"] for p in problems}
