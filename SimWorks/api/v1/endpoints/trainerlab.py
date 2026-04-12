@@ -1604,21 +1604,6 @@ def _inject_event_core(
             idempotency_key=f"{event_type}:{domain_event.id}",
         )
 
-    if event_kind == "intervention" and getattr(domain_event, "_adjudication_result", None):
-        adjudication_result = domain_event._adjudication_result
-        refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
-        if refreshed_problem is not None and adjudication_result.changed:
-            emit_domain_runtime_event(
-                session=session,
-                event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
-                obj=refreshed_problem,
-                created_by=user,
-                correlation_id=correlation_id,
-                idempotency_key=(
-                    f"{outbox_events.PATIENT_PROBLEM_UPDATED}:"
-                    f"post-intervention:{refreshed_problem.id}:{domain_event.id}"
-                ),
-            )
     commit_non_ai_mutation_side_effects(
         session=session,
         event_kind=event_kind,
@@ -1626,6 +1611,31 @@ def _inject_event_core(
         worker_kind="manual_injection",
         domains=[event_kind],
     )
+
+    # Emit patient.problem.updated AFTER recompute_active_recommendations has run
+    # (inside commit_non_ai_mutation_side_effects above) so the payload includes the
+    # full post-adjudication recommendation state for the superseding problem.
+    # Recommendation events (removed/created) are emitted first by the recompute step;
+    # this problem event then carries the authoritative complete snapshot the iOS client
+    # can apply as a full overlay without waiting for the next /state/ poll.
+    if event_kind == "intervention":
+        _adj = getattr(domain_event, "_adjudication_result", None)
+        if _adj is not None and _adj.changed:
+            refreshed_problem = Problem.objects.filter(
+                pk=domain_event.target_problem_id
+            ).first()
+            if refreshed_problem is not None:
+                emit_domain_runtime_event(
+                    session=session,
+                    event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
+                    obj=refreshed_problem,
+                    created_by=user,
+                    correlation_id=correlation_id,
+                    idempotency_key=(
+                        f"{outbox_events.PATIENT_PROBLEM_UPDATED}:"
+                        f"post-intervention:{refreshed_problem.id}:{domain_event.id}"
+                    ),
+                )
 
     # Guard: block runtime queueing if session is paused/locked — but
     # allow the domain record itself to be created (manual-edit rule).
