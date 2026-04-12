@@ -8,14 +8,12 @@ Verifies that after a trainer injects an intervention:
   4. /state/ reflects the adjudicated problem status without a further round-trip
 """
 
-from contextlib import nullcontext
 from unittest.mock import patch
 
 from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — minimal copies of the shared set from tests/api/test_trainerlab.py
@@ -292,7 +290,7 @@ class TestInterventionAdjudicationEvents:
         recommendation whose target_problem is now inactive.
         """
         from apps.common.models import OutboxEvent
-        from apps.trainerlab.models import Problem, RecommendedIntervention
+        from apps.trainerlab.models import RecommendedIntervention
 
         sim_id, _injury, problem = _setup_hemorrhage(auth_client, prefix="tq-rec-removed")
         original_problem_id = problem.id
@@ -326,7 +324,7 @@ class TestInterventionAdjudicationEvents:
         """patient.intervention.created must appear in the event stream before
         patient.problem.updated — causal ordering must be preserved.
         """
-        from apps.trainerlab.models import Problem, RuntimeEvent
+        from apps.trainerlab.models import RuntimeEvent
 
         sim_id, _injury, problem = _setup_hemorrhage(auth_client, prefix="tq-ordering")
 
@@ -428,7 +426,6 @@ class TestInterventionAdjudicationEvents:
         recompute_active_recommendations() before the problem.updated event fires.
         """
         from apps.common.models import OutboxEvent
-        from apps.trainerlab.models import Problem
 
         sim_id, _injury, problem = _setup_hemorrhage(auth_client, prefix="tq-rec-created")
         original_problem_id = problem.id

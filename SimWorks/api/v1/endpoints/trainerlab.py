@@ -1621,9 +1621,7 @@ def _inject_event_core(
     if event_kind == "intervention":
         _adj = getattr(domain_event, "_adjudication_result", None)
         if _adj is not None and _adj.changed:
-            refreshed_problem = Problem.objects.filter(
-                pk=domain_event.target_problem_id
-            ).first()
+            refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
             if refreshed_problem is not None:
                 emit_domain_runtime_event(
                     session=session,
