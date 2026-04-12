@@ -343,7 +343,7 @@ class TestInterventionAdjudicationEvents:
                     "patient.intervention.created",
                     "patient.problem.updated",
                 ],
-            ).order_by("created_at")
+            ).order_by("created_at", "id")
         )
         event_types = [e.event_type for e in events]
         assert "patient.intervention.created" in event_types
