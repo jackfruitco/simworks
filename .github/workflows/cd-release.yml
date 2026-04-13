@@ -48,7 +48,7 @@ jobs:
 
       - name: Resolve and validate release metadata
         id: release_meta
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           INPUT_TAG: ${{ inputs.release_tag }}
         with:
@@ -223,7 +223,7 @@ jobs:
 
       - name: Create GitHub deployment record
         id: deployment
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DEPLOY_ENVIRONMENT: production
           DEPLOY_REF: ${{ steps.release_ref.outputs.commit_sha }}
@@ -413,7 +413,7 @@ jobs:
 
       - name: Mark deployment success
         if: ${{ success() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: production
@@ -438,7 +438,7 @@ jobs:
 
       - name: Mark deployment failure
         if: ${{ failure() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: production
