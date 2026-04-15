@@ -210,6 +210,16 @@ class JWTAuthMiddleware(BaseMiddleware):
                     has_account_header=has_account_header,
                     **request_context,
                 )
+            else:
+                logger.debug(
+                    "ws.auth.anonymous_fallback",
+                    path=path,
+                    had_bearer_token=False,
+                    reason="missing_bearer_token",
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
+                )
 
         return await super().__call__(scope, receive, send)
 
