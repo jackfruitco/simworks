@@ -575,11 +575,11 @@ class BaseService[T: BaseModel](
         if self.use_native_output and output_type is not None:
             output_type = NativeOutput(output_type, strict=self.native_output_strict)
 
-        # Create agent
-        agent = Agent(
-            model=model,
-            output_type=output_type,
-        )
+        agent_kwargs = {"model": model}
+        if output_type is not None:
+            agent_kwargs["output_type"] = output_type
+
+        agent = Agent(**agent_kwargs)
 
         # Register instruction callbacks in deterministic order.
         for instruction_cls in self._instruction_classes:
