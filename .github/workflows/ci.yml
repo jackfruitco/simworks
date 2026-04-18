@@ -28,7 +28,7 @@ jobs:
 
       - name: Detect changed paths
         id: filter
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
         with:
           filters: |
             package_contracts:
@@ -58,7 +58,7 @@ jobs:
           python-version: '3.14.3'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: true
 
@@ -145,7 +145,7 @@ jobs:
           python-version: '3.14.3'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: true
 
@@ -187,7 +187,7 @@ jobs:
           python-version: '3.14.3'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: true
 
@@ -230,7 +230,7 @@ jobs:
           python-version: '3.14.3'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: true
 
@@ -280,7 +280,7 @@ jobs:
           python-version: '3.14.3'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: true
 
@@ -368,7 +368,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
-        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
         with:
           files: coverage-orchestrai.xml,coverage-orchestrai-django.xml,coverage-simworks.xml
           fail_ci_if_error: true
