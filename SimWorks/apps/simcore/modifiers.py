@@ -20,7 +20,7 @@ Usage:
 # Modifier group definitions
 # Format: group_name -> {description, modifiers: [{key, description}]}
 MODIFIER_GROUPS = {
-    "Environment": {
+    "Clinical Scenario": {
         "description": "Type of clinical encounter",
         "modifiers": [
             {
@@ -37,7 +37,7 @@ MODIFIER_GROUPS = {
             },
         ],
     },
-    "ClinicalDuration": {
+    "Clinical Duration": {
         "description": "Simulation time constraints",
         "modifiers": [
             {
