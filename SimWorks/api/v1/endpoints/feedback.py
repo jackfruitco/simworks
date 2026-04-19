@@ -4,8 +4,6 @@ Provides endpoints for submitting and querying user feedback.
 Staff endpoints are guarded by is_staff checks.
 """
 
-from __future__ import annotations
-
 import json
 
 from django.http import HttpRequest

@@ -1,7 +1,5 @@
 """Feedback schemas for API v1."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Literal
 
