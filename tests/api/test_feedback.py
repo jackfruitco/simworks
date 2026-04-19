@@ -609,7 +609,7 @@ class TestStaffFeedback:
         )
 
         cutoff = (timezone.now() - timedelta(days=7)).isoformat()
-        response = staff_auth_client.get(f"/api/v1/feedback/staff/?date_from={cutoff}")
+        response = staff_auth_client.get("/api/v1/feedback/staff/", {"date_from": cutoff})
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
