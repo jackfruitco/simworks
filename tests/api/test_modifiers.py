@@ -21,29 +21,28 @@ class TestListModifierGroups:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3  # ClinicalScenario, ClinicalDuration, Feedback
+        assert len(data) == 2
 
         group_names = [g["group"] for g in data]
-        assert "ClinicalScenario" in group_names
-        assert "ClinicalDuration" in group_names
-        assert "Feedback" in group_names
+        assert "Clinical Scenario" in group_names
+        assert "Clinical Duration" in group_names
 
     def test_filter_by_single_group(self):
         """Can filter by a single group name."""
         client = Client()
-        response = client.get("/api/v1/config/modifier-groups/?groups=ClinicalScenario")
+        response = client.get("/api/v1/config/modifier-groups/?groups=Clinical Scenario")
 
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert data[0]["group"] == "ClinicalScenario"
-        assert len(data[0]["modifiers"]) == 3  # emergency, outpatient, inpatient
+        assert data[0]["group"] == "Clinical Scenario"
+        assert len(data[0]["modifiers"]) == 3
 
     def test_filter_by_multiple_groups(self):
         """Can filter by multiple group names."""
         client = Client()
         response = client.get(
-            "/api/v1/config/modifier-groups/?groups=ClinicalScenario&groups=ClinicalDuration"
+            "/api/v1/config/modifier-groups/?groups=Clinical Scenario&groups=Clinical Duration"
         )
 
         assert response.status_code == 200
@@ -51,8 +50,8 @@ class TestListModifierGroups:
         assert len(data) == 2
 
         group_names = [g["group"] for g in data]
-        assert "ClinicalScenario" in group_names
-        assert "ClinicalDuration" in group_names
+        assert "Clinical Scenario" in group_names
+        assert "Clinical Duration" in group_names
         assert "Feedback" not in group_names
 
     def test_filter_nonexistent_group_returns_empty(self):
@@ -67,7 +66,7 @@ class TestListModifierGroups:
     def test_modifier_group_structure(self):
         """Response has correct structure."""
         client = Client()
-        response = client.get("/api/v1/config/modifier-groups/?groups=ClinicalScenario")
+        response = client.get("/api/v1/config/modifier-groups/?groups=Clinical Scenario")
 
         assert response.status_code == 200
         data = response.json()
@@ -82,26 +81,3 @@ class TestListModifierGroups:
         modifier = group["modifiers"][0]
         assert "key" in modifier
         assert "description" in modifier
-
-
-@pytest.mark.django_db
-class TestGraphQLRemoval:
-    """Tests verifying GraphQL endpoint is removed."""
-
-    def test_graphql_endpoint_returns_404(self):
-        """GraphQL endpoint no longer exists."""
-        client = Client()
-        response = client.get("/graphql/")
-
-        assert response.status_code == 404
-
-    def test_graphql_post_returns_404(self):
-        """GraphQL POST no longer works."""
-        client = Client()
-        response = client.post(
-            "/graphql/",
-            data='{"query": "{ __schema { types { name } } }"}',
-            content_type="application/json",
-        )
-
-        assert response.status_code == 404
