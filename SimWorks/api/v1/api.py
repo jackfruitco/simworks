@@ -16,6 +16,7 @@ from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.billing import router as billing_router
 from api.v1.endpoints.build_info import router as build_info_router
 from api.v1.endpoints.chatlab import router as chatlab_router
+from api.v1.endpoints.feedback import router as feedback_router
 from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
 from api.v1.endpoints.guards import router as guards_router
@@ -235,3 +236,4 @@ api.add_router("/config", modifiers_router)  # Configuration endpoints (modifier
 api.add_router("/simulations", guards_router)  # Guard heartbeat/state nested under simulations
 api.add_router("/chatlab", chatlab_router)
 api.add_router("/trainerlab", trainerlab_router)
+api.add_router("/feedback", feedback_router)
