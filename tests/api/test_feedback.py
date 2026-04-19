@@ -1,17 +1,16 @@
 """Tests for feedback API endpoints.
 
 Covers:
-- POST /api/v1/feedback/           – create (auth, validation, sim/conv access)
-- GET  /api/v1/feedback/categories/ – public category list
-- GET  /api/v1/feedback/me/         – own submissions with pagination
-- GET  /api/v1/feedback/staff/      – staff-only list with filters
+- POST /api/v1/feedback/            - create (auth, validation, sim/conv access)
+- GET  /api/v1/feedback/categories/ - public category list
+- GET  /api/v1/feedback/me/         - own submissions with pagination
+- GET  /api/v1/feedback/staff/      - staff-only list with filters
 """
 
 from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
-
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
 
@@ -592,9 +591,11 @@ class TestStaffFeedback:
 
     def test_valid_date_from_filters_correctly(self, staff_auth_client, test_user):
         """A valid ISO 8601 date_from filters out earlier records."""
-        from apps.feedback.models import UserFeedback
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.feedback.models import UserFeedback
 
         old = UserFeedback.objects.create(
             user=test_user, category=UserFeedback.Category.OTHER, body="Old entry"

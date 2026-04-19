@@ -16,9 +16,9 @@ from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.billing import router as billing_router
 from api.v1.endpoints.build_info import router as build_info_router
 from api.v1.endpoints.chatlab import router as chatlab_router
-from api.v1.endpoints.feedback import router as feedback_router
 from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
+from api.v1.endpoints.feedback import router as feedback_router
 from api.v1.endpoints.guards import router as guards_router
 from api.v1.endpoints.lab_orders import router as lab_orders_router
 from api.v1.endpoints.messages import router as messages_router

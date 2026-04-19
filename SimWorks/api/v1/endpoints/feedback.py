@@ -20,7 +20,6 @@ from api.v1.schemas.feedback import (
     FeedbackListResponse,
     FeedbackOut,
     FeedbackStaffListResponse,
-    FeedbackStaffOut,
     feedback_to_out,
     feedback_to_staff_out,
 )
@@ -213,7 +212,7 @@ def create_feedback(
 def list_categories(request: HttpRequest) -> list[FeedbackCategoryOut]:
     from apps.feedback.models import UserFeedback
 
-    return [FeedbackCategoryOut(value=v, label=l) for v, l in UserFeedback.Category.choices]
+    return [FeedbackCategoryOut(value=v, label=l) for v, l in UserFeedback.Category.choices]  # noqa: E741
 
 
 @router.get(

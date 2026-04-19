@@ -73,7 +73,7 @@ class FeedbackCreate(BaseModel):
     )
     rating: int | None = Field(
         default=None,
-        description="Optional 1–5 rating",
+        description="Optional 1-5 rating",
         ge=1,
         le=5,
     )
