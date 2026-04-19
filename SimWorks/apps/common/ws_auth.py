@@ -21,8 +21,70 @@ User = get_user_model()
 
 @database_sync_to_async
 def _get_user_for_token_subject(subject: str):
-    user = User.objects.filter(pk=subject, is_active=True).first()
-    return user or AnonymousUser()
+    try:
+        subject_pk = int(subject)
+    except (TypeError, ValueError):
+        logger.warning(
+            "ws.auth.subject_invalid",
+            subject=subject,
+        )
+        return AnonymousUser()
+
+    user = User.objects.filter(pk=subject_pk, is_active=True).first()
+    if user is None:
+        logger.warning(
+            "ws.auth.subject_user_not_found_or_inactive",
+            subject=subject,
+            subject_pk=subject_pk,
+        )
+        return AnonymousUser()
+
+    return user
+
+
+def _header_names(scope) -> list[str]:
+    names: list[str] = []
+    for key, _value in scope.get("headers", []):
+        try:
+            names.append(key.decode("utf-8").lower())
+        except UnicodeDecodeError:
+            names.append(repr(key))
+    return sorted(names)
+
+
+def _header_value(scope, name: str) -> str | None:
+    target = name.lower().encode("utf-8")
+    for key, value in scope.get("headers", []):
+        if key.lower() != target:
+            continue
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return repr(value)
+    return None
+
+
+def _request_context(scope) -> dict[str, str | None]:
+    return {
+        "host": _header_value(scope, "host"),
+        "origin": _header_value(scope, "origin"),
+        "user_agent": _header_value(scope, "user-agent"),
+        "upgrade": _header_value(scope, "upgrade"),
+        "connection": _header_value(scope, "connection"),
+        "sec_websocket_version": _header_value(scope, "sec-websocket-version"),
+        "sec_websocket_protocol": _header_value(scope, "sec-websocket-protocol"),
+        "x_forwarded_for": _header_value(scope, "x-forwarded-for"),
+        "x_forwarded_proto": _header_value(scope, "x-forwarded-proto"),
+        "x_forwarded_host": _header_value(scope, "x-forwarded-host"),
+        "x_forwarded_port": _header_value(scope, "x-forwarded-port"),
+        "x_account_uuid": _header_value(scope, "x-account-uuid"),
+        "x_correlation_id": _header_value(scope, "x-correlation-id"),
+    }
+
+
+def _has_header(scope, name: str) -> bool:
+    target = name.lower().encode("utf-8")
+    return any(key.lower() == target for key, _value in scope.get("headers", []))
 
 
 def _extract_bearer_token(scope) -> str | None:
@@ -31,15 +93,40 @@ def _extract_bearer_token(scope) -> str | None:
     Query-parameter tokens are no longer supported. Clients must use the
     ``Authorization: Bearer <token>`` header for WebSocket authentication.
     """
-    for key, value in scope.get("headers", []):
+    headers = scope.get("headers", [])
+    path = scope.get("path", "")
+    header_names = _header_names(scope)
+    request_context = _request_context(scope)
+
+    for key, value in headers:
         if key.lower() != b"authorization":
             continue
         try:
             raw = value.decode("utf-8")
         except UnicodeDecodeError:
+            logger.warning(
+                "ws.auth.authorization_header_invalid_encoding",
+                path=path,
+                header_names=header_names,
+                **request_context,
+            )
             return None
         if raw.lower().startswith("bearer "):
             return raw.split(" ", 1)[1].strip()
+        logger.warning(
+            "ws.auth.authorization_header_unexpected_format",
+            path=path,
+            header_names=header_names,
+            **request_context,
+        )
+        return None
+
+    logger.warning(
+        "ws.auth.authorization_header_missing",
+        path=path,
+        header_names=header_names,
+        **request_context,
+    )
     return None
 
 
@@ -50,6 +137,9 @@ class JWTAuthMiddleware(BaseMiddleware):
         path = scope.get("path", "")
         user = scope.get("user")
         has_session_user = user is not None and getattr(user, "is_authenticated", False)
+        request_context = _request_context(scope)
+        header_names = _header_names(scope)
+        has_account_header = _has_header(scope, "x-account-uuid")
 
         if has_session_user:
             logger.debug(
@@ -57,19 +147,13 @@ class JWTAuthMiddleware(BaseMiddleware):
                 path=path,
                 user_id=getattr(user, "id", None),
                 auth_mechanism="session",
+                **request_context,
             )
             scope["auth_mechanism"] = "session"
             return await super().__call__(scope, receive, send)
 
         token = _extract_bearer_token(scope)
         has_bearer_token = token is not None
-
-        logger.debug(
-            "ws.auth.start",
-            path=path,
-            has_session_user=False,
-            has_bearer_token=has_bearer_token,
-        )
 
         if token:
             try:
@@ -79,46 +163,80 @@ class JWTAuthMiddleware(BaseMiddleware):
                     scope["user"] = await _get_user_for_token_subject(subject)
                     if getattr(scope["user"], "is_authenticated", False):
                         scope["auth_mechanism"] = "bearer_token"
-                        logger.info(
-                            "ws.auth.jwt_success",
-                            path=path,
-                            user_id=scope["user"].pk,
-                            auth_mechanism="bearer_token",
-                        )
                     else:
                         logger.warning(
-                            "ws.auth.jwt_user_inactive",
+                            "ws.auth.jwt_user_not_found_or_inactive",
                             path=path,
+                            token_subject=subject,
+                            **request_context,
                         )
+                else:
+                    logger.warning(
+                        "ws.auth.jwt_missing_subject",
+                        path=path,
+                        token_type=payload.get("type"),
+                        token_email=payload.get("email"),
+                        **request_context,
+                    )
             except InvalidTokenError as exc:
                 logger.warning(
                     "ws.auth.jwt_failed",
                     path=path,
                     error=str(exc),
                     error_type=type(exc).__name__,
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
                 )
             except Exception:
-                logger.exception("ws.auth.jwt_unexpected_error", path=path)
+                logger.exception(
+                    "ws.auth.jwt_unexpected_error",
+                    path=path,
+                    **request_context,
+                )
 
         if scope.get("user") is None:
             scope["user"] = AnonymousUser()
 
         if not getattr(scope["user"], "is_authenticated", False):
             scope["auth_mechanism"] = None
-            logger.debug(
-                "ws.auth.anonymous_fallback",
-                path=path,
-                had_bearer_token=has_bearer_token,
-            )
+            if has_bearer_token:
+                logger.warning(
+                    "ws.auth.anonymous_fallback",
+                    path=path,
+                    had_bearer_token=True,
+                    reason="invalid_or_inactive_bearer_token",
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
+                )
+            else:
+                logger.debug(
+                    "ws.auth.anonymous_fallback",
+                    path=path,
+                    had_bearer_token=False,
+                    reason="missing_bearer_token",
+                    header_names=header_names,
+                    has_account_header=has_account_header,
+                    **request_context,
+                )
 
         return await super().__call__(scope, receive, send)
 
 
 @database_sync_to_async
 def _resolve_account_from_scope(scope, user):
-    from apps.accounts.context import resolve_scope_account
+    from apps.accounts.context import (
+        get_requested_account_uuid_from_scope,
+        resolve_account_for_user_with_reason,
+    )
 
-    return resolve_scope_account(scope, user)
+    requested_uuid = get_requested_account_uuid_from_scope(scope)
+    account, resolution_reason = resolve_account_for_user_with_reason(
+        user,
+        account_uuid=requested_uuid,
+    )
+    return account, requested_uuid, resolution_reason
 
 
 class AccountContextMiddleware(BaseMiddleware):
@@ -132,6 +250,7 @@ class AccountContextMiddleware(BaseMiddleware):
         user = scope.get("user")
         path = scope.get("path", "")
         is_authenticated = user is not None and getattr(user, "is_authenticated", False)
+        request_context = _request_context(scope)
 
         if not is_authenticated:
             scope["account"] = None
@@ -139,30 +258,35 @@ class AccountContextMiddleware(BaseMiddleware):
             logger.debug(
                 "ws.account.skip_anonymous",
                 path=path,
+                reason="anonymous_user",
+                **request_context,
             )
             return await super().__call__(scope, receive, send)
 
-        # Check for X-Account-UUID header presence
-        from apps.accounts.context import get_requested_account_uuid_from_scope
-
-        requested_uuid = get_requested_account_uuid_from_scope(scope)
+        account, requested_uuid, resolution_reason = await _resolve_account_from_scope(scope, user)
         has_account_header = requested_uuid is not None
-
-        account = await _resolve_account_from_scope(scope, user)
         account_id = getattr(account, "id", None)
         account_uuid = str(getattr(account, "uuid", "")) if account else None
 
         scope["account"] = account
         scope["account_context_source"] = "header" if has_account_header else "default"
+        log = logger.info
+        event_name = "ws.account.resolved"
+        if has_account_header and account is None:
+            log = logger.warning
+            event_name = "ws.account.resolution_failed"
 
-        logger.info(
-            "ws.account.resolved",
+        log(
+            event_name,
             path=path,
             user_id=getattr(user, "id", None),
             account_id=account_id,
             account_uuid=account_uuid,
+            requested_account_uuid=requested_uuid,
             account_context_source=scope["account_context_source"],
             has_account_header=has_account_header,
+            reason=resolution_reason,
+            **request_context,
         )
 
         return await super().__call__(scope, receive, send)

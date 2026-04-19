@@ -3,6 +3,7 @@ name: cd-staging
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
@@ -28,6 +29,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.ref }}
 
       - name: Read project metadata from pyproject.toml
         id: pyproject
@@ -67,7 +70,7 @@ jobs:
 
       - name: Create GitHub deployment record
         id: deployment
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOY_ENVIRONMENT: staging
         with:
@@ -79,7 +82,7 @@ jobs:
             const res = await github.rest.repos.createDeployment({
               owner,
               repo,
-              ref: context.sha,
+              ref: context.ref,
               environment,
               auto_merge: false,
               required_contexts: [],
@@ -94,7 +97,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Log in to GHCR
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -102,7 +105,7 @@ jobs:
 
       - name: Build and push staging image
         id: build
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
           file: docker/Dockerfile.prod
@@ -141,7 +144,7 @@ jobs:
           output: sbom.cdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: sbom-cdx
           path: sbom.cdx.json
@@ -156,7 +159,7 @@ jobs:
           push-to-registry: true
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003
 
       - name: Sign image digest with keyless OIDC
         env:
@@ -180,7 +183,7 @@ jobs:
 
       - name: Mark deployment success
         if: ${{ success() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: staging
@@ -205,7 +208,7 @@ jobs:
 
       - name: Mark deployment failure
         if: ${{ failure() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: staging

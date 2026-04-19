@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC
+import time
 from typing import Any
 import uuid
 
@@ -102,6 +103,7 @@ from apps.trainerlab.models import (
     SessionStatus,
     SimulationNote,
     TrainerCommand,
+    TrainerIdempotencyClaim,
     TrainerSession,
 )
 from apps.trainerlab.services import (
@@ -131,6 +133,8 @@ from apps.trainerlab.services import (
 
 router = Router(tags=["trainerlab"], auth=JWTAuth())
 UserModel = get_user_model()
+IDEMPOTENCY_POLL_INTERVAL_SECONDS = 0.01
+IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 5.0
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:
@@ -165,6 +169,23 @@ def _get_correlation_id(request: HttpRequest) -> str | None:
 
 def _accepted(command: TrainerCommand) -> TrainerCommandAck:
     return TrainerCommandAck(command_id=str(command.id), status="accepted")
+
+
+def _wait_for_command_settlement(command: TrainerCommand) -> TrainerCommand:
+    deadline = time.monotonic() + IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
+    while command.status == TrainerCommand.CommandStatus.PENDING and time.monotonic() < deadline:
+        time.sleep(IDEMPOTENCY_POLL_INTERVAL_SECONDS)
+        command.refresh_from_db(fields=["status", "error", "processed_at"])
+    return command
+
+
+def _resolve_existing_command(command: TrainerCommand) -> TrainerCommand:
+    settled = _wait_for_command_settlement(command)
+    if settled.status == TrainerCommand.CommandStatus.PROCESSED:
+        return settled
+    if settled.status == TrainerCommand.CommandStatus.FAILED:
+        raise HttpError(409, settled.error or "Command previously failed")
+    raise HttpError(409, "Idempotency-Key request is already in progress")
 
 
 def _reject_terminal_mutation(
@@ -243,35 +264,59 @@ def _ensure_command_compatible(
         raise HttpError(409, command.error or "Command previously failed")
 
 
-def _replay_create_session(
+def _claim_create_session_request(
     *,
     request: HttpRequest,
     user,
     idempotency_key: str,
     payload_json: dict[str, Any],
-) -> TrainerSession | None:
-    existing = (
-        TrainerCommand.objects.select_related("session__simulation", "session__simulation__account")
-        .filter(idempotency_key=idempotency_key)
-        .first()
-    )
-    if existing is None:
-        return None
-
-    if existing.command_type != TrainerCommand.CommandType.CREATE_SESSION:
-        raise HttpError(409, "Idempotency-Key already used for a different command")
-    if not existing.session_id or existing.session is None:
-        raise HttpError(409, "Idempotency-Key already used for a different command")
+) -> tuple[TrainerIdempotencyClaim, bool]:
     requested_account = get_account_for_request(request, user)
-    if existing.issued_by_id != user.id:
+    claim, created = TrainerIdempotencyClaim.objects.get_or_create(
+        idempotency_key=idempotency_key,
+        defaults={
+            "command_type": TrainerCommand.CommandType.CREATE_SESSION,
+            "payload_json": payload_json,
+            "issued_by": user,
+        },
+    )
+    if created:
+        return claim, True
+
+    if claim.command_type != TrainerCommand.CommandType.CREATE_SESSION:
+        raise HttpError(409, "Idempotency-Key already used for a different command")
+    if claim.issued_by_id != user.id:
         raise HttpError(409, "Idempotency-Key already used")
-    if existing.session.simulation.account_id != requested_account.id:
-        raise HttpError(409, "Idempotency-Key already used")
-    if not can_view_simulation(user, existing.session.simulation):
-        raise HttpError(409, "Idempotency-Key already used")
-    if (existing.payload_json or {}) != payload_json:
+    if (claim.payload_json or {}) != payload_json:
         raise HttpError(409, "Idempotency-Key already used for a different request payload")
-    return existing.session
+    if claim.session_id and claim.session is not None:
+        if claim.session.simulation.account_id != requested_account.id:
+            raise HttpError(409, "Idempotency-Key already used")
+        if not can_view_simulation(user, claim.session.simulation):
+            raise HttpError(409, "Idempotency-Key already used")
+    return claim, False
+
+
+def _wait_for_create_session_replay(
+    *,
+    claim: TrainerIdempotencyClaim,
+    request: HttpRequest,
+    user,
+) -> TrainerSession:
+    deadline = time.monotonic() + IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
+    while claim.session_id is None and time.monotonic() < deadline:
+        time.sleep(IDEMPOTENCY_POLL_INTERVAL_SECONDS)
+        claim.refresh_from_db(fields=["session", "modified_at"])
+
+    if claim.session_id is None or claim.session is None:
+        raise HttpError(409, "Idempotency-Key request is already in progress")
+
+    requested_account = get_account_for_request(request, user)
+    if claim.session.simulation.account_id != requested_account.id:
+        raise HttpError(409, "Idempotency-Key already used")
+    if not can_view_simulation(user, claim.session.simulation):
+        raise HttpError(409, "Idempotency-Key already used")
+    return claim.session
 
 
 def _instruction_queryset_for_user(user):
@@ -583,7 +628,8 @@ def apply_preset(
         issued_by=user,
         payload_json=payload,
     )
-    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+    if not created:
+        command = _resolve_existing_command(command)
         return PresetApplyOut(command_id=str(command.id), status="accepted")
     _reject_terminal_mutation(command=command, session=session)
 
@@ -668,32 +714,42 @@ def create_trainer_session(
         "directives": body.directives,
         "modifiers": body.modifiers,
     }
-    existing = _replay_create_session(
+    claim, created = _claim_create_session_request(
         request=request,
         user=user,
         idempotency_key=idempotency_key,
         payload_json=payload,
     )
-    if existing is not None:
+    if not created:
+        existing = _wait_for_create_session_replay(claim=claim, request=request, user=user)
         return 200, trainer_run_to_out(existing)
 
-    session, _call_id = create_session_with_initial_generation(
-        user=user,
-        account=account,
-        scenario_spec=body.scenario_spec,
-        directives=body.directives,
-        modifiers=body.modifiers,
-        correlation_id=_get_correlation_id(request),
-    )
+    try:
+        session, _call_id = create_session_with_initial_generation(
+            user=user,
+            account=account,
+            scenario_spec=body.scenario_spec,
+            directives=body.directives,
+            modifiers=body.modifiers,
+            correlation_id=_get_correlation_id(request),
+        )
+    except Exception:
+        claim.delete()
+        raise
 
-    TrainerCommand.objects.create(
-        session=session,
-        command_type=TrainerCommand.CommandType.CREATE_SESSION,
-        payload_json=payload,
-        status=TrainerCommand.CommandStatus.PROCESSED,
+    claim.session = session
+    claim.save(update_fields=["session", "modified_at"])
+
+    TrainerCommand.objects.get_or_create(
         idempotency_key=idempotency_key,
-        issued_by=user,
-        processed_at=session.created_at,
+        defaults={
+            "session": session,
+            "command_type": TrainerCommand.CommandType.CREATE_SESSION,
+            "payload_json": payload,
+            "status": TrainerCommand.CommandStatus.PROCESSED,
+            "issued_by": user,
+            "processed_at": session.created_at,
+        },
     )
 
     return 201, trainer_run_to_out(session)
@@ -805,7 +861,9 @@ def _process_run_command(
         issued_by=user,
         payload_json={},
     )
-    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+    if not created:
+        _resolve_existing_command(command)
+        session.refresh_from_db()
         return trainer_run_to_out(session)
 
     if session.status == SessionStatus.SEEDING:
@@ -926,7 +984,8 @@ def steer_prompt(
         issued_by=user,
         payload_json={"prompt": body.prompt},
     )
-    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+    if not created:
+        command = _resolve_existing_command(command)
         return _accepted(command)
     _reject_terminal_mutation(command=command, session=session)
 
@@ -993,7 +1052,8 @@ def adjust_simulation(
         issued_by=user,
         payload_json=payload,
     )
-    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+    if not created:
+        command = _resolve_existing_command(command)
         return SimulationAdjustAck(
             command_id=str(command.id),
             status="accepted",
@@ -1453,7 +1513,8 @@ def _inject_event_core(
         issued_by=user,
         payload_json=payload_json,
     )
-    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+    if not created:
+        command = _resolve_existing_command(command)
         return _accepted(command)
     event_kind = payload_json.get("event_kind")
     _reject_terminal_mutation(
@@ -1543,21 +1604,6 @@ def _inject_event_core(
             idempotency_key=f"{event_type}:{domain_event.id}",
         )
 
-    if event_kind == "intervention" and getattr(domain_event, "_adjudication_result", None):
-        adjudication_result = domain_event._adjudication_result
-        refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
-        if refreshed_problem is not None and adjudication_result.changed:
-            emit_domain_runtime_event(
-                session=session,
-                event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
-                obj=refreshed_problem,
-                created_by=user,
-                correlation_id=correlation_id,
-                idempotency_key=(
-                    f"{outbox_events.PATIENT_PROBLEM_UPDATED}:"
-                    f"post-intervention:{refreshed_problem.id}:{domain_event.id}"
-                ),
-            )
     commit_non_ai_mutation_side_effects(
         session=session,
         event_kind=event_kind,
@@ -1565,6 +1611,29 @@ def _inject_event_core(
         worker_kind="manual_injection",
         domains=[event_kind],
     )
+
+    # Emit patient.problem.updated AFTER recompute_active_recommendations has run
+    # (inside commit_non_ai_mutation_side_effects above) so the payload includes the
+    # full post-adjudication recommendation state for the superseding problem.
+    # Recommendation events (removed/created) are emitted first by the recompute step;
+    # this problem event then carries the authoritative complete snapshot the iOS client
+    # can apply as a full overlay without waiting for the next /state/ poll.
+    if event_kind == "intervention":
+        _adj = getattr(domain_event, "_adjudication_result", None)
+        if _adj is not None and _adj.changed:
+            refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
+            if refreshed_problem is not None:
+                emit_domain_runtime_event(
+                    session=session,
+                    event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
+                    obj=refreshed_problem,
+                    created_by=user,
+                    correlation_id=correlation_id,
+                    idempotency_key=(
+                        f"{outbox_events.PATIENT_PROBLEM_UPDATED}:"
+                        f"post-intervention:{refreshed_problem.id}:{domain_event.id}"
+                    ),
+                )
 
     # Guard: block runtime queueing if session is paused/locked — but
     # allow the domain record itself to be created (manual-edit rule).

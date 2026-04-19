@@ -123,6 +123,7 @@ class TestOpenAPISchemaContent:
                 "/api/v1/health",
                 "/api/v1/health/auth",
                 "/api/v1/health/jwt",
+                "/api/v1/build-info/",
             ],
         )
 
@@ -147,6 +148,41 @@ class TestOpenAPISchemaContent:
         paths = schema["paths"]
 
         assert "/api/v1/config/modifier-groups/" in paths
+
+    def test_schema_has_trainerlab_and_guard_contract_paths(self, schema):
+        """TrainerLab mobile contract endpoints stay explicitly documented."""
+        assert_schema_has_paths(
+            schema,
+            required_paths=[
+                "/api/v1/trainerlab/simulations/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/state/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/summary/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/run/pause/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/run/resume/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/run/stop/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/illnesses/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/problems/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/assessment-findings/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/diagnostic-results/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/resources/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/disposition/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/notes/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/events/vitals/",
+                "/api/v1/trainerlab/simulations/{simulation_id}/annotations/",
+                "/api/v1/trainerlab/dictionaries/injuries/",
+                "/api/v1/trainerlab/dictionaries/interventions/",
+                "/api/v1/simulations/{simulation_id}/guard-state/",
+                "/api/v1/simulations/{simulation_id}/heartbeat/",
+            ],
+        )
+        assert (
+            "/api/v1/trainerlab/simulations/{simulation_id}/events/annotations/"
+            not in schema["paths"]
+        )
 
     def test_schema_defines_response_schemas(self, schema):
         """Test that response schemas are defined."""

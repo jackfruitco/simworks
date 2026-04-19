@@ -537,6 +537,29 @@
         ]
       }
     },
+    "/api/v1/build-info/": {
+      "get": {
+        "operationId": "api_v1_endpoints_build_info_build_info",
+        "summary": "Get build metadata",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildInfoOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns best-effort backend build metadata for app startup and debug screens.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/api/v1/simulations/": {
       "get": {
         "operationId": "api_v1_endpoints_simulations_list_simulations",
@@ -4412,6 +4435,85 @@
           "cancel_url"
         ],
         "title": "CheckoutSessionIn",
+        "type": "object"
+      },
+      "BackendBuildInfoOut": {
+        "description": "Backend artifact metadata for startup display.",
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Installed backend package version",
+            "title": "Version"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Injected backend source commit SHA",
+            "title": "Commit"
+          },
+          "build_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Backend artifact build timestamp in UTC when supplied by the build pipeline",
+            "title": "Build Time"
+          }
+        },
+        "title": "BackendBuildInfoOut",
+        "type": "object"
+      },
+      "BuildInfoOut": {
+        "description": "Best-effort build metadata for the mobile splash screen.",
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/BackendBuildInfoOut"
+          },
+          "orchestrai": {
+            "$ref": "#/components/schemas/OrchestraiBuildInfoOut"
+          }
+        },
+        "required": [
+          "backend",
+          "orchestrai"
+        ],
+        "title": "BuildInfoOut",
+        "type": "object"
+      },
+      "OrchestraiBuildInfoOut": {
+        "description": "OrchestrAI package metadata for startup display.",
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Installed OrchestrAI package version",
+            "title": "Version"
+          }
+        },
+        "title": "OrchestraiBuildInfoOut",
         "type": "object"
       },
       "PaginatedResponse_SimulationOut_": {
