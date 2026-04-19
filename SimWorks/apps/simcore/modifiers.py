@@ -20,20 +20,20 @@ Usage:
 # Modifier group definitions
 # Format: group_name -> {description, modifiers: [{key, description}]}
 MODIFIER_GROUPS = {
-    "ClinicalScenario": {
+    "Environment": {
         "description": "Type of clinical encounter",
         "modifiers": [
             {
-                "key": "emergency",
-                "description": "Emergency/trauma scenario",
+                "key": "musculoskeletal",
+                "description": "musculoskeletal injury or issue scenario",
             },
             {
-                "key": "outpatient",
-                "description": "Outpatient clinic visit",
+                "key": "respiratory",
+                "description": "respiratory issue",
             },
             {
-                "key": "inpatient",
-                "description": "Inpatient hospital admission",
+                "key": "dermatologic",
+                "description": "dermatology issue/illness",
             },
         ],
     },
@@ -41,29 +41,16 @@ MODIFIER_GROUPS = {
         "description": "Simulation time constraints",
         "modifiers": [
             {
-                "key": "short_encounter",
-                "description": "Short encounter (5-10 minutes)",
+                "key": "acute",
+                "description": "New concerns beginning within last 4 weeks",
             },
             {
-                "key": "standard_encounter",
-                "description": "Standard encounter (15-20 minutes)",
+                "key": "subacute",
+                "description": "Concerns within the last 4-8 weeks",
             },
             {
-                "key": "extended_encounter",
-                "description": "Extended encounter (30+ minutes)",
-            },
-        ],
-    },
-    "Feedback": {
-        "description": "Feedback mode options",
-        "modifiers": [
-            {
-                "key": "immediate_feedback",
-                "description": "Provide feedback during simulation",
-            },
-            {
-                "key": "post_feedback",
-                "description": "Provide feedback after simulation ends",
+                "key": "chronic",
+                "description": "Concerns beginning over 8 weeks ago",
             },
         ],
     },
