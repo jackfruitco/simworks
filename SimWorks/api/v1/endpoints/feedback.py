@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 from django.http import HttpRequest
+from django.utils.dateparse import parse_datetime
 from ninja import Query, Router
 from ninja.errors import HttpError
 
@@ -30,24 +31,31 @@ logger = get_logger(__name__)
 
 router = Router(tags=["feedback"], auth=DualAuth())
 
-_CATEGORY_LABELS = {
-    "bug_report": "Bug Report",
-    "ux_issue": "UX Issue",
-    "simulation_content": "Simulation Content",
-    "feature_request": "Feature Request",
-    "other": "Other",
-}
-
 # Maximum serialised size of the client-provided context dict (bytes).
 _MAX_CONTEXT_BYTES = 10_240
 
 
-def _capture_client_metadata(request: HttpRequest) -> dict:
-    """Extract grounded request metadata without inventing new headers."""
+def _extract_request_metadata(request: HttpRequest) -> dict:
+    """Extract grounded request metadata from standard and project headers.
+
+    Returns a flat dict with keys for structured model fields and a
+    ``context_meta`` sub-dict suitable for merging into context_json.
+    Only reads headers that are present; never invents values.
+    """
+    headers = request.headers  # Case-insensitive in Django 2.2+
+    correlation_id = getattr(request, "correlation_id", None) or ""
     return {
-        "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-        "request_path": request.path,
-        "correlation_id": getattr(request, "correlation_id", None) or "",
+        "request_id": correlation_id,
+        "client_platform_raw": headers.get("X-Platform", "").strip().lower(),
+        "client_version": headers.get("X-App-Version", "").strip(),
+        "os_version": headers.get("X-OS-Version", "").strip(),
+        "device_model": headers.get("X-Device-Model", "").strip(),
+        "session_identifier": headers.get("X-Session-ID", "").strip(),
+        "context_meta": {
+            "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+            "request_path": request.path,
+            "correlation_id": correlation_id,
+        },
     }
 
 
@@ -71,7 +79,8 @@ def _resolve_lab_type(simulation) -> str:
     description=(
         "Create a user feedback entry. "
         "Server populates status, source, and all request metadata automatically. "
-        "If simulation_id is provided, the user must have access to that simulation."
+        "If simulation_id is provided, the user must have access to that simulation. "
+        "If conversation_id is provided, access is validated via the conversation's simulation."
     ),
 )
 @api_rate_limit
@@ -86,7 +95,7 @@ def create_feedback(
 
     user = request.auth
 
-    # Body must not be whitespace-only (min_length=1 allows a single space).
+    # Body must not be whitespace-only (min_length=1 catches empty string).
     if not body.body.strip():
         raise HttpError(400, "Feedback body cannot be empty or whitespace only")
 
@@ -102,7 +111,7 @@ def create_feedback(
     # Account — nullable; best-effort resolution.
     account = resolve_request_account(request, user=user)
 
-    # Simulation access check.
+    # ── Simulation access check ───────────────────────────────────────
     simulation = None
     if body.simulation_id is not None:
         from apps.simcore.models import Simulation
@@ -114,21 +123,47 @@ def create_feedback(
         if not can_view_simulation(user, simulation):
             raise HttpError(403, "You do not have access to this simulation")
 
-    # Conversation validation.
+    # ── Conversation validation ───────────────────────────────────────
+    # Always load and check access via the conversation's own simulation,
+    # regardless of whether simulation_id was also provided.
     conversation = None
     if body.conversation_id is not None:
         from apps.simcore.models import Conversation
 
-        conv_qs = Conversation.objects.filter(pk=body.conversation_id)
-        if simulation is not None:
-            conv_qs = conv_qs.filter(simulation=simulation)
-        conversation = conv_qs.first()
-        if conversation is None:
-            raise HttpError(404, "Conversation not found")
+        try:
+            conversation = Conversation.objects.select_related("simulation__account").get(
+                pk=body.conversation_id
+            )
+        except Conversation.DoesNotExist as err:
+            raise HttpError(404, "Conversation not found") from err
 
-    # Build merged context (server metadata + client payload).
-    server_meta = _capture_client_metadata(request)
-    merged_context: dict = {**server_meta, **(body.context or {})}
+        if not can_view_simulation(user, conversation.simulation):
+            raise HttpError(403, "You do not have access to this conversation's simulation")
+
+        # When both IDs are given, enforce they refer to the same simulation.
+        if simulation is not None and conversation.simulation_id != simulation.pk:
+            raise HttpError(
+                400,
+                "Conversation does not belong to the specified simulation",
+            )
+
+        # Inherit simulation from the conversation when simulation_id was omitted.
+        if simulation is None:
+            simulation = conversation.simulation
+
+    # ── Extract and populate structured metadata ──────────────────────
+    metadata = _extract_request_metadata(request)
+
+    # Normalise raw platform string to a known choice; fall back to UNKNOWN.
+    _valid_platforms = {v for v, _ in UserFeedback.ClientPlatform.choices}
+    client_platform = (
+        metadata["client_platform_raw"]
+        if metadata["client_platform_raw"] in _valid_platforms
+        else UserFeedback.ClientPlatform.UNKNOWN
+    )
+
+    # Merge server metadata with any client-supplied context.
+    merged_context: dict = {**metadata["context_meta"], **(body.context or {})}
 
     # Infer lab_type from guard session when simulation is linked.
     lab_type = _resolve_lab_type(simulation)
@@ -146,7 +181,13 @@ def create_feedback(
         body=body.body.strip(),
         rating=body.rating,
         allow_follow_up=body.allow_follow_up,
-        request_id=server_meta["correlation_id"],
+        # Structured metadata fields populated from request context.
+        request_id=metadata["request_id"],
+        client_platform=client_platform,
+        client_version=metadata["client_version"],
+        os_version=metadata["os_version"],
+        device_model=metadata["device_model"],
+        session_identifier=metadata["session_identifier"],
         context_json=merged_context,
     )
     fb.save()
@@ -170,7 +211,9 @@ def create_feedback(
     description="Returns the allowed feedback category choices.",
 )
 def list_categories(request: HttpRequest) -> list[FeedbackCategoryOut]:
-    return [FeedbackCategoryOut(value=v, label=l) for v, l in _CATEGORY_LABELS.items()]
+    from apps.feedback.models import UserFeedback
+
+    return [FeedbackCategoryOut(value=v, label=l) for v, l in UserFeedback.Category.choices]
 
 
 @router.get(
@@ -205,7 +248,7 @@ def my_feedback(
     description=(
         "Staff-only endpoint. Returns all feedback with full metadata. "
         "Supports filtering by status, category, source, severity, "
-        "user_id, simulation_id, lab_type, and date range."
+        "user_id, simulation_id, lab_type, and ISO 8601 date range."
     ),
 )
 @api_rate_limit
@@ -219,8 +262,8 @@ def staff_list_feedback(
     user_id: int | None = Query(default=None, description="Filter by user ID"),
     simulation_id: int | None = Query(default=None, description="Filter by simulation ID"),
     lab_type: str | None = Query(default=None, description="Filter by lab type"),
-    date_from: str | None = Query(default=None, description="ISO 8601 start date (inclusive)"),
-    date_to: str | None = Query(default=None, description="ISO 8601 end date (inclusive)"),
+    date_from: str | None = Query(default=None, description="ISO 8601 start datetime (inclusive)"),
+    date_to: str | None = Query(default=None, description="ISO 8601 end datetime (inclusive)"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> FeedbackStaffListResponse:
@@ -250,24 +293,18 @@ def staff_list_feedback(
         qs = qs.filter(simulation_id=simulation_id)
     if lab_type:
         qs = qs.filter(lab_type=lab_type)
-    if date_from:
-        try:
-            from django.utils.dateparse import parse_datetime
 
-            dt_from = parse_datetime(date_from)
-            if dt_from:
-                qs = qs.filter(created_at__gte=dt_from)
-        except (ValueError, TypeError):
-            raise HttpError(400, "Invalid date_from format; use ISO 8601")
-    if date_to:
-        try:
-            from django.utils.dateparse import parse_datetime
+    if date_from is not None:
+        dt_from = parse_datetime(date_from)
+        if dt_from is None:
+            raise HttpError(400, "Invalid date_from; expected ISO 8601 datetime")
+        qs = qs.filter(created_at__gte=dt_from)
 
-            dt_to = parse_datetime(date_to)
-            if dt_to:
-                qs = qs.filter(created_at__lte=dt_to)
-        except (ValueError, TypeError):
-            raise HttpError(400, "Invalid date_to format; use ISO 8601")
+    if date_to is not None:
+        dt_to = parse_datetime(date_to)
+        if dt_to is None:
+            raise HttpError(400, "Invalid date_to; expected ISO 8601 datetime")
+        qs = qs.filter(created_at__lte=dt_to)
 
     total = qs.count()
     page = list(qs[offset : offset + limit])
