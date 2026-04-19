@@ -70,7 +70,7 @@ jobs:
 
       - name: Create GitHub deployment record
         id: deployment
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOY_ENVIRONMENT: staging
         with:
@@ -183,7 +183,7 @@ jobs:
 
       - name: Mark deployment success
         if: ${{ success() }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: staging
@@ -208,7 +208,7 @@ jobs:
 
       - name: Mark deployment failure
         if: ${{ failure() }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           DEPLOY_ENVIRONMENT: staging
