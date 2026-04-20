@@ -10,6 +10,7 @@ from django.template.loader import render_to_string
 
 from .environment import (
     get_email_base_url,
+    get_email_environment_label,
     is_staging_email_context,
 )
 
@@ -28,13 +29,19 @@ def _build_standard_context(
     environment_hint: str | None = None,
 ) -> dict[str, Any]:
     merged = dict(context or {})
-    is_staging = environment_hint == "staging" if environment_hint else is_staging_email_context(request)
+    environment_label = get_email_environment_label(
+        request=request,
+        environment_hint=environment_hint,
+    )
     merged.setdefault("product_name", "MedSim")
     merged.setdefault("site_name", getattr(settings, "SITE_NAME", "MedSim"))
     merged.setdefault("support_email", getattr(settings, "EMAIL_REPLY_TO", "support@jackfruitco.com"))
-    merged["is_staging"] = is_staging
-    merged["environment_label"] = "staging" if is_staging else "production"
-    merged["email_base_url"] = get_email_base_url(request)
+    merged["is_staging"] = environment_label == "staging"
+    merged["environment_label"] = environment_label
+    merged["email_base_url"] = get_email_base_url(
+        request=request,
+        environment_hint=environment_hint,
+    )
     return merged
 
 
@@ -50,7 +57,7 @@ def send_transactional_email(
     request=None,
     environment_hint: str | None = None,
 ) -> int:
-    is_staging = environment_hint == "staging" if environment_hint else is_staging_email_context(request)
+    is_staging = is_staging_email_context(request=request, environment_hint=environment_hint)
     message = EmailMultiAlternatives(
         subject=_with_staging_subject_prefix(subject, is_staging=is_staging),
         body=text_body,

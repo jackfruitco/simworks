@@ -1,8 +1,12 @@
 from django.core import mail
 from django.test import RequestFactory, override_settings
 
-from apps.common.emailing.environment import get_email_base_url, is_staging_email_context
-from apps.common.emailing.service import send_transactional_email
+from apps.common.emailing.environment import (
+    get_email_base_url,
+    get_email_environment_label,
+    is_staging_email_context,
+)
+from apps.common.emailing.service import _build_standard_context, send_transactional_email
 from apps.common.emailing.tasks import send_templated_email_task
 
 
@@ -30,18 +34,38 @@ def test_send_transactional_email_applies_defaults_and_staging_prefix():
     assert message.alternatives[0].mimetype == "text/html"
 
 
+def test_environment_helper_staging_hint_without_request_uses_staging_url():
+    assert get_email_base_url(environment_hint="staging") == "https://medsim-staging.jackfruitco.com"
+    assert get_email_environment_label(environment_hint="staging") == "staging"
+    assert is_staging_email_context(environment_hint="staging") is True
+
+
+def test_environment_helper_production_hint_without_request_uses_production_url():
+    assert get_email_base_url(environment_hint="production") == "https://medsim.jackfruitco.com"
+    assert get_email_environment_label(environment_hint="production") == "production"
+    assert is_staging_email_context(environment_hint="production") is False
+
+
 def test_environment_helpers_select_prod_url_from_request_host():
     request = RequestFactory().get("/", HTTP_HOST="medsim.jackfruitco.com")
 
-    assert get_email_base_url(request) == "https://medsim.jackfruitco.com"
-    assert is_staging_email_context(request) is False
+    assert get_email_base_url(request=request) == "https://medsim.jackfruitco.com"
+    assert is_staging_email_context(request=request) is False
 
 
 def test_environment_helpers_select_staging_url_from_request_host():
     request = RequestFactory().get("/", HTTP_HOST="medsim-staging.jackfruitco.com")
 
-    assert get_email_base_url(request) == "https://medsim-staging.jackfruitco.com"
-    assert is_staging_email_context(request) is True
+    assert get_email_base_url(request=request) == "https://medsim-staging.jackfruitco.com"
+    assert is_staging_email_context(request=request) is True
+
+
+def test_build_standard_context_uses_environment_hint_for_links_without_request():
+    context = _build_standard_context({}, environment_hint="staging")
+
+    assert context["environment_label"] == "staging"
+    assert context["is_staging"] is True
+    assert context["email_base_url"] == "https://medsim-staging.jackfruitco.com"
 
 
 def test_send_templated_email_task_passes_simple_serializable_payload(monkeypatch):

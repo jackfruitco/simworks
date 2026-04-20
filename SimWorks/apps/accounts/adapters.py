@@ -19,6 +19,13 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
     """Custom allauth adapter that enforces invitation-only signup."""
 
     _simworks_email_request: HttpRequest | None = None
+    _simworks_environment_hint: str | None = None
+
+    def _extract_environment_hint(self, context: dict | None) -> str | None:
+        if not isinstance(context, dict):
+            return None
+        hint = context.get("environment_hint") or context.get("email_environment_hint")
+        return hint if isinstance(hint, str) else None
 
     def _build_email_context(
         self,
@@ -26,18 +33,31 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
         context: dict | None,
     ) -> dict:
         merged = dict(context or {})
+        environment_hint = self._extract_environment_hint(context)
         merged.setdefault("site_name", getattr(settings, "SITE_NAME", "MedSim"))
         merged.setdefault("product_name", "MedSim")
         merged.setdefault("product_tagline", "MedSim by Jackfruit")
         merged.setdefault("support_email", settings.EMAIL_REPLY_TO)
-        merged["is_staging"] = is_staging_email_context(request=request)
-        merged["environment_label"] = get_email_environment_label(request=request)
-        merged["email_base_url"] = get_email_base_url(request=request)
+        merged["is_staging"] = is_staging_email_context(
+            request=request,
+            environment_hint=environment_hint,
+        )
+        merged["environment_label"] = get_email_environment_label(
+            request=request,
+            environment_hint=environment_hint,
+        )
+        merged["email_base_url"] = get_email_base_url(
+            request=request,
+            environment_hint=environment_hint,
+        )
         return merged
 
     def format_email_subject(self, subject: str) -> str:
         subject = super().format_email_subject(subject)
-        if is_staging_email_context(request=self._simworks_email_request):
+        if is_staging_email_context(
+            request=self._simworks_email_request,
+            environment_hint=self._simworks_environment_hint,
+        ):
             prefix = str(getattr(settings, "EMAIL_STAGING_SUBJECT_PREFIX", "")).strip()
             if prefix and not subject.startswith(prefix):
                 return f"{prefix} {subject}"
@@ -49,6 +69,7 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             request = context.get("request")
 
         self._simworks_email_request = request
+        self._simworks_environment_hint = self._extract_environment_hint(context)
         try:
             return super().send_mail(
                 template_prefix,
@@ -57,13 +78,16 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             )
         finally:
             self._simworks_email_request = None
+            self._simworks_environment_hint = None
 
     def render_mail(self, template_prefix, email, context, headers=None):
         request = context.get("request") if isinstance(context, dict) else None
+        self._simworks_environment_hint = self._extract_environment_hint(context)
         merged_context = self._build_email_context(request=request, context=context)
         msg = super().render_mail(template_prefix, email, merged_context, headers=headers)
         if settings.EMAIL_REPLY_TO:
             msg.reply_to = [settings.EMAIL_REPLY_TO]
+        self._simworks_environment_hint = None
         return msg
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:

@@ -90,3 +90,20 @@ def test_adapter_render_mail_uses_custom_templates_and_reply_to():
     assert message.reply_to == ["support@jackfruitco.com"]
     assert message.subject.startswith("[STAGING]")
     assert "support@jackfruitco.com" in message.body
+
+
+@override_settings(
+    EMAIL_REPLY_TO="support@jackfruitco.com",
+    EMAIL_BASE_URL="https://medsim.jackfruitco.com",
+)
+def test_adapter_context_respects_environment_hint_without_request():
+    adapter = InvitationAccountAdapter()
+
+    context = adapter._build_email_context(
+        request=None,
+        context={"environment_hint": "staging"},
+    )
+
+    assert context["is_staging"] is True
+    assert context["environment_label"] == "staging"
+    assert context["email_base_url"] == "https://medsim-staging.jackfruitco.com"
