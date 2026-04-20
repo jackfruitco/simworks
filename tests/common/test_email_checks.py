@@ -10,14 +10,14 @@ def _ids(results):
 
 @override_settings(
     DEBUG=False,
+    EMAIL_ENVIRONMENT_NAME="production",
     EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend",
-    POSTMARK_SERVER_TOKEN="",
     DEFAULT_FROM_EMAIL="MedSim by Jackfruit <noreply@jackfruitco.com>",
     EMAIL_REPLY_TO="support@jackfruitco.com",
     SERVER_EMAIL="errors@jackfruitco.com",
     EMAIL_BASE_URL="https://medsim.jackfruitco.com",
 )
-def test_email_checks_error_for_console_backend_in_non_debug():
+def test_email_checks_error_for_console_backend_in_non_dev_environment():
     results = checks.check_email_configuration(None)
 
     assert any(isinstance(result, Error) for result in results)
@@ -26,23 +26,28 @@ def test_email_checks_error_for_console_backend_in_non_debug():
 
 @override_settings(
     DEBUG=False,
-    EMAIL_BACKEND="anymail.backends.postmark.EmailBackend",
-    POSTMARK_SERVER_TOKEN="",
+    EMAIL_ENVIRONMENT_NAME="staging",
+    EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+    EMAIL_HOST_USER="",
+    EMAIL_HOST_PASSWORD="",
     DEFAULT_FROM_EMAIL="MedSim by Jackfruit <noreply@jackfruitco.com>",
     EMAIL_REPLY_TO="support@jackfruitco.com",
     SERVER_EMAIL="errors@jackfruitco.com",
     EMAIL_BASE_URL="https://medsim.jackfruitco.com",
 )
-def test_email_checks_error_for_missing_postmark_token():
+def test_email_checks_error_for_missing_smtp_credentials():
     results = checks.check_email_configuration(None)
 
     assert "config.E015" in _ids(results)
+    assert "config.E020" in _ids(results)
 
 
 @override_settings(
     DEBUG=False,
-    EMAIL_BACKEND="anymail.backends.postmark.EmailBackend",
-    POSTMARK_SERVER_TOKEN="token",
+    EMAIL_ENVIRONMENT_NAME="production",
+    EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+    EMAIL_HOST_USER="user@example.com",
+    EMAIL_HOST_PASSWORD="secret",
     DEFAULT_FROM_EMAIL="broken",
     EMAIL_REPLY_TO="",
     SERVER_EMAIL="",

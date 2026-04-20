@@ -1,4 +1,9 @@
-"""Email and transactional messaging settings."""
+"""Email and transactional messaging settings.
+
+Temporary backend choice: iCloud SMTP for low-volume/private beta.
+Keep this module provider-replaceable so switching to Postmark later is mostly
+an EMAIL_BACKEND/settings change rather than app-code changes.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import os
 
 from .settings_parsers import bool_from_env
 
-POSTMARK_BACKEND = "anymail.backends.postmark.EmailBackend"
+SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 CONSOLE_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 EMAIL_ENVIRONMENT_NAME = os.getenv(
@@ -23,8 +28,15 @@ EMAIL_USE_CONSOLE_BACKEND = bool_from_env(
 )
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
-    CONSOLE_BACKEND if EMAIL_USE_CONSOLE_BACKEND else POSTMARK_BACKEND,
+    CONSOLE_BACKEND if EMAIL_USE_CONSOLE_BACKEND else SMTP_BACKEND,
 )
+
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.mail.me.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = bool_from_env("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = bool_from_env("EMAIL_USE_SSL", default=False)
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 
 DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL",
@@ -46,17 +58,8 @@ if EMAIL_ENVIRONMENT_NAME != "staging":
     _default_email_base_url = "https://medsim.jackfruitco.com"
 EMAIL_BASE_URL = os.getenv("EMAIL_BASE_URL", _default_email_base_url).rstrip("/")
 
-POSTMARK_SERVER_TOKEN = os.getenv("POSTMARK_SERVER_TOKEN", "")
-POSTMARK_MESSAGE_STREAM = os.getenv("POSTMARK_MESSAGE_STREAM", "")
-
-ANYMAIL: dict[str, object] = {}
-if POSTMARK_SERVER_TOKEN:
-    ANYMAIL["POSTMARK_SERVER_TOKEN"] = POSTMARK_SERVER_TOKEN
-if POSTMARK_MESSAGE_STREAM:
-    ANYMAIL["POSTMARK_SEND_DEFAULTS"] = {"message_stream": POSTMARK_MESSAGE_STREAM}
-
-_requires_postmark_token = EMAIL_BACKEND == POSTMARK_BACKEND and not _is_local_environment
-if _requires_postmark_token and not POSTMARK_SERVER_TOKEN:
+_requires_smtp_credentials = EMAIL_BACKEND == SMTP_BACKEND and not _is_local_environment
+if _requires_smtp_credentials and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
     raise ValueError(
-        "POSTMARK_SERVER_TOKEN is required when EMAIL_BACKEND uses Postmark outside local/dev."
+        "EMAIL_HOST_USER and EMAIL_HOST_PASSWORD are required when SMTP backend is active outside local/dev."
     )

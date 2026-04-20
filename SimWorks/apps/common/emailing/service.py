@@ -10,7 +10,6 @@ from django.template.loader import render_to_string
 
 from .environment import (
     get_email_base_url,
-    get_email_environment_label,
     is_staging_email_context,
 )
 

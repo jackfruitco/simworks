@@ -28,7 +28,13 @@ This project uses a single Django settings module and environment variables for 
 
 ## Email / transactional messaging
 - `EMAIL_USE_CONSOLE_BACKEND` (defaults true only in local/dev-style environments)
-- `EMAIL_BACKEND` (defaults to console in local/dev, Postmark backend elsewhere)
+- `EMAIL_BACKEND` (defaults to console in local/dev, SMTP backend elsewhere)
+- `EMAIL_HOST` (default: `smtp.mail.me.com`)
+- `EMAIL_PORT` (default: `587`)
+- `EMAIL_USE_TLS` (default: `true`)
+- `EMAIL_USE_SSL` (default: `false`)
+- `EMAIL_HOST_USER` (full iCloud Mail address used for SMTP auth)
+- `EMAIL_HOST_PASSWORD` (Apple app-specific password)
 - `EMAIL_ENVIRONMENT_NAME` (e.g. `local`, `staging`, `production`)
 - `EMAIL_BASE_URL` (defaults to `https://medsim.jackfruitco.com` for production-like, `https://medsim-staging.jackfruitco.com` for staging)
 - `DEFAULT_FROM_EMAIL` (default: `MedSim by Jackfruit <noreply@jackfruitco.com>`)
@@ -36,10 +42,9 @@ This project uses a single Django settings module and environment variables for 
 - `SERVER_EMAIL` (default: `errors@jackfruitco.com`)
 - `EMAIL_SUBJECT_PREFIX`
 - `EMAIL_STAGING_SUBJECT_PREFIX` (default: `[STAGING]`)
-- `EMAIL_STAGING_BANNER_ENABLED`
 - `ACCOUNT_DEFAULT_HTTP_PROTOCOL` (default: `https`)
-- `POSTMARK_SERVER_TOKEN` (required for Postmark backend in non-local environments)
-- `POSTMARK_MESSAGE_STREAM` (optional; useful for transactional stream routing)
+
+Current low-volume production-intended transport is iCloud SMTP (temporary for private beta). The app-level email abstraction remains provider-agnostic to keep future migration to Postmark as a backend/config swap.
 
 ## Tasks / Redis / Celery / Rate limits
 - `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD`

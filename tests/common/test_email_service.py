@@ -1,7 +1,9 @@
 from django.core import mail
-from django.test import override_settings
+from django.test import RequestFactory, override_settings
 
+from apps.common.emailing.environment import get_email_base_url, is_staging_email_context
 from apps.common.emailing.service import send_transactional_email
+from apps.common.emailing.tasks import send_templated_email_task
 
 
 @override_settings(
@@ -27,10 +29,6 @@ def test_send_transactional_email_applies_defaults_and_staging_prefix():
     assert message.subject.startswith("[STAGING]")
     assert message.alternatives[0].mimetype == "text/html"
 
-from django.test import RequestFactory
-
-from apps.common.emailing.environment import get_email_base_url, is_staging_email_context
-
 
 def test_environment_helpers_select_prod_url_from_request_host():
     request = RequestFactory().get("/", HTTP_HOST="medsim.jackfruitco.com")
@@ -44,3 +42,26 @@ def test_environment_helpers_select_staging_url_from_request_host():
 
     assert get_email_base_url(request) == "https://medsim-staging.jackfruitco.com"
     assert is_staging_email_context(request) is True
+
+
+def test_send_templated_email_task_passes_simple_serializable_payload(monkeypatch):
+    captured = {}
+
+    def fake_send_templated_email(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("apps.common.emailing.tasks.send_templated_email", fake_send_templated_email)
+
+    send_templated_email_task.run(
+        recipients=["clinician@example.com"],
+        subject="MedSim Notice",
+        template_prefix="emails/example",
+        context={"foo": "bar"},
+        environment_hint="staging",
+    )
+
+    assert captured["to"] == ["clinician@example.com"]
+    assert captured["subject"] == "MedSim Notice"
+    assert captured["template_prefix"] == "emails/example"
+    assert captured["context"] == {"foo": "bar"}
+    assert captured["environment_hint"] == "staging"

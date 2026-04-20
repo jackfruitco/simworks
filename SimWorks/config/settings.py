@@ -19,9 +19,14 @@ from .auth_settings import (
 )
 from .email_settings import (
     ACCOUNT_DEFAULT_HTTP_PROTOCOL,
-    ANYMAIL,
     DEFAULT_FROM_EMAIL,
     EMAIL_BACKEND,
+    EMAIL_HOST,
+    EMAIL_HOST_PASSWORD,
+    EMAIL_HOST_USER,
+    EMAIL_PORT,
+    EMAIL_USE_SSL,
+    EMAIL_USE_TLS,
     EMAIL_BASE_URL,
     EMAIL_ENVIRONMENT_NAME,
     EMAIL_REPLY_TO,
@@ -29,8 +34,6 @@ from .email_settings import (
     EMAIL_STAGING_SUBJECT_PREFIX,
     EMAIL_SUBJECT_PREFIX,
     EMAIL_USE_CONSOLE_BACKEND,
-    POSTMARK_MESSAGE_STREAM,
-    POSTMARK_SERVER_TOKEN,
     SERVER_EMAIL,
 )
 from .billing_settings import (
@@ -124,7 +127,6 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
-    "anymail",
     "allauth.socialaccount.providers.apple",
     "allauth.socialaccount.providers.google",
     "django_htmx",

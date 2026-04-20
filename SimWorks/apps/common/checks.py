@@ -9,9 +9,10 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.core.checks import Error, Tags, Warning, register
 
-POSTMARK_BACKEND = "anymail.backends.postmark.EmailBackend"
+SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 CONSOLE_BACKEND = "django.core.mail.backends.console.EmailBackend"
 APPROVED_EMAIL_HOSTS = {"medsim.jackfruitco.com", "medsim-staging.jackfruitco.com"}
+_LOCAL_ENVIRONMENTS = {"local", "development", "dev", "test"}
 
 
 def _missing_setting(name: str) -> bool:
@@ -23,16 +24,15 @@ def _prod_only() -> bool:
     return not settings.DEBUG
 
 
-def _redis_enabled() -> bool:
-    return bool(getattr(settings, "REDIS_ENABLED", False))
-
-
 def _smtp_enabled() -> bool:
-    return getattr(settings, "EMAIL_BACKEND", "") == "django.core.mail.backends.smtp.EmailBackend"
+    return getattr(settings, "EMAIL_BACKEND", "") == SMTP_BACKEND
 
 
-# condition, setting name, error id, message, hint
-# Use resolved Django setting names for all checks.
+def _is_non_dev_environment() -> bool:
+    environment = str(getattr(settings, "EMAIL_ENVIRONMENT_NAME", "")).strip().lower()
+    return environment not in _LOCAL_ENVIRONMENTS
+
+
 DEPLOY_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
     (
         _prod_only,
@@ -68,17 +68,17 @@ DEPLOY_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
 FEATURE_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
     (
         _smtp_enabled,
-        "EMAIL_HOST_PASSWORD",
+        "EMAIL_HOST_USER",
         "config.E006",
-        "EMAIL_HOST_PASSWORD is missing while SMTP email backend is enabled.",
-        "Set EMAIL_HOST_PASSWORD or use a different email backend.",
+        "EMAIL_HOST_USER is missing while SMTP email backend is enabled.",
+        "Set EMAIL_HOST_USER to the full iCloud Mail address used for SMTP auth.",
     ),
     (
-        _prod_only,
-        "REDIS_PASSWORD",
-        "config.E005",
-        "REDIS_PASSWORD is missing.",
-        "Set the `REDIS_PASSWORD` environment variable.",
+        _smtp_enabled,
+        "EMAIL_HOST_PASSWORD",
+        "config.E007",
+        "EMAIL_HOST_PASSWORD is missing while SMTP email backend is enabled.",
+        "Set EMAIL_HOST_PASSWORD to an Apple app-specific password.",
     ),
 ]
 
@@ -98,20 +98,13 @@ def check_required_env_vars(app_configs, **kwargs):
 
     for condition, setting_name, error_id, message, hint in setting_checks:
         if condition() and _missing_setting(setting_name):
-            errors.append(
-                Error(
-                    message,
-                    hint=hint,
-                    id=error_id,
-                )
-            )
+            errors.append(Error(message, hint=hint, id=error_id))
 
     return errors
 
 
 @register(Tags.security, deploy=True)
 def check_production_settings(app_configs, **kwargs):
-    """Validate production-unsafe settings when DEBUG=False."""
     errors = []
 
     if not _prod_only():
@@ -126,12 +119,11 @@ def check_production_settings(app_configs, **kwargs):
             )
         )
 
-    email_backend = getattr(settings, "EMAIL_BACKEND", "")
-    if email_backend == CONSOLE_BACKEND:
+    if getattr(settings, "EMAIL_BACKEND", "") == CONSOLE_BACKEND:
         errors.append(
             Error(
                 "Console email backend is not suitable for production.",
-                hint="Set EMAIL_BACKEND to Anymail Postmark backend in staging/production.",
+                hint="Set EMAIL_BACKEND to django.core.mail.backends.smtp.EmailBackend.",
                 id="config.E011",
             )
         )
@@ -166,23 +158,32 @@ def check_email_configuration(app_configs, **kwargs):
 
     email_backend = getattr(settings, "EMAIL_BACKEND", "")
 
-    if _prod_only() and email_backend == CONSOLE_BACKEND:
+    if _is_non_dev_environment() and email_backend == CONSOLE_BACKEND:
         errors.append(
             Error(
-                "EMAIL_BACKEND uses console backend while DEBUG=False.",
-                hint="Set EMAIL_BACKEND=anymail.backends.postmark.EmailBackend.",
+                "EMAIL_BACKEND uses console backend in a non-dev email environment.",
+                hint="Use SMTP backend for staging/production.",
                 id="config.E014",
             )
         )
 
-    if email_backend == POSTMARK_BACKEND and _missing_setting("POSTMARK_SERVER_TOKEN"):
-        errors.append(
-            Error(
-                "POSTMARK_SERVER_TOKEN is required when using Postmark backend.",
-                hint="Set POSTMARK_SERVER_TOKEN in the runtime environment.",
-                id="config.E015",
+    if email_backend == SMTP_BACKEND:
+        if _missing_setting("EMAIL_HOST_USER"):
+            errors.append(
+                Error(
+                    "EMAIL_HOST_USER is required when SMTP backend is active.",
+                    hint="Set EMAIL_HOST_USER to the full iCloud Mail address.",
+                    id="config.E015",
+                )
             )
-        )
+        if _missing_setting("EMAIL_HOST_PASSWORD"):
+            errors.append(
+                Error(
+                    "EMAIL_HOST_PASSWORD is required when SMTP backend is active.",
+                    hint="Set EMAIL_HOST_PASSWORD to an Apple app-specific password.",
+                    id="config.E020",
+                )
+            )
 
     for setting_name, error_id in (
         ("DEFAULT_FROM_EMAIL", "config.E016"),

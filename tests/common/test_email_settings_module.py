@@ -1,4 +1,5 @@
 import importlib
+
 import pytest
 
 
@@ -10,7 +11,8 @@ def reload_email_settings(monkeypatch):
             "EMAIL_ENVIRONMENT_NAME",
             "EMAIL_USE_CONSOLE_BACKEND",
             "EMAIL_BACKEND",
-            "POSTMARK_SERVER_TOKEN",
+            "EMAIL_HOST_USER",
+            "EMAIL_HOST_PASSWORD",
             "EMAIL_BASE_URL",
         ):
             monkeypatch.delenv(key, raising=False)
@@ -39,25 +41,30 @@ def test_email_settings_defaults_to_console_in_local_debug(reload_email_settings
     assert settings_mod.EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend"
 
 
-def test_email_settings_defaults_to_postmark_in_staging_when_token_present(reload_email_settings):
+def test_email_settings_defaults_to_smtp_in_staging_when_credentials_present(reload_email_settings):
     settings_mod = reload_email_settings(
         {
             "DJANGO_DEBUG": "false",
             "EMAIL_ENVIRONMENT_NAME": "staging",
-            "POSTMARK_SERVER_TOKEN": "postmark-token",
+            "EMAIL_HOST_USER": "noreply@icloud.example",
+            "EMAIL_HOST_PASSWORD": "app-specific-password",
         }
     )
 
-    assert settings_mod.EMAIL_BACKEND == "anymail.backends.postmark.EmailBackend"
+    assert settings_mod.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
+    assert settings_mod.EMAIL_HOST == "smtp.mail.me.com"
+    assert settings_mod.EMAIL_PORT == 587
+    assert settings_mod.EMAIL_USE_TLS is True
 
 
-def test_email_settings_raises_if_postmark_token_missing_outside_local(reload_email_settings):
-    with pytest.raises(ValueError, match="POSTMARK_SERVER_TOKEN"):
+def test_email_settings_raises_if_smtp_credentials_missing_outside_local(reload_email_settings):
+    with pytest.raises(ValueError, match="EMAIL_HOST_USER and EMAIL_HOST_PASSWORD"):
         reload_email_settings(
             {
                 "DJANGO_DEBUG": "false",
                 "EMAIL_ENVIRONMENT_NAME": "production",
-                "EMAIL_BACKEND": "anymail.backends.postmark.EmailBackend",
-                "POSTMARK_SERVER_TOKEN": "",
+                "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+                "EMAIL_HOST_USER": "",
+                "EMAIL_HOST_PASSWORD": "",
             }
         )
