@@ -24,6 +24,25 @@ from .billing_settings import (
     BILLING_STRIPE_SECRET_KEY,
     BILLING_STRIPE_WEBHOOK_SECRET,
 )
+from .email_settings import (
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL,
+    DEFAULT_FROM_EMAIL,
+    EMAIL_BACKEND,
+    EMAIL_BASE_URL,
+    EMAIL_ENVIRONMENT_NAME,
+    EMAIL_HOST,
+    EMAIL_HOST_PASSWORD,
+    EMAIL_HOST_USER,
+    EMAIL_PORT,
+    EMAIL_REPLY_TO,
+    EMAIL_STAGING_BANNER_ENABLED,
+    EMAIL_STAGING_SUBJECT_PREFIX,
+    EMAIL_SUBJECT_PREFIX,
+    EMAIL_USE_CONSOLE_BACKEND,
+    EMAIL_USE_SSL,
+    EMAIL_USE_TLS,
+    SERVER_EMAIL,
+)
 from .logging import LOGGING
 from .privacy_settings import (
     PRIVACY_ANALYTICS_ENABLED,
@@ -183,10 +202,6 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-EMAIL_BACKEND = check_env(
-    "EMAIL_BACKEND",
-    default="django.core.mail.backends.console.EmailBackend",
-)
 
 # CORS
 CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)

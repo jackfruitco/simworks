@@ -29,7 +29,7 @@ def new_invite(request):
             invitation = form.save(commit=False)
             invitation.invited_by = request.user
             invitation.save()
-            # Optionally, send an email with the invitation token/link here.
+            # Invite email delivery is intentionally not wired here yet.
             if request.headers.get("HX-Request"):
                 return render(request, "accounts/invite_success.html", {"invite": invitation})
             return redirect(reverse("accounts:invite-success", kwargs={"token": invitation.token}))

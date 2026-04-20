@@ -117,3 +117,12 @@ BILLING_APPLE_PRODUCT_PLAN_MAP = {}
 BILLING_STRIPE_WEBHOOK_SECRET = "test-stripe-webhook-secret"
 BILLING_STRIPE_SECRET_KEY = "test-stripe-secret"
 BILLING_STRIPE_CHECKOUT_ENABLED = False
+
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+DEFAULT_FROM_EMAIL = "MedSim by Jackfruit <noreply@jackfruitco.com>"
+EMAIL_REPLY_TO = "support@jackfruitco.com"
+SERVER_EMAIL = "errors@jackfruitco.com"
+EMAIL_STAGING_SUBJECT_PREFIX = "[STAGING]"
+EMAIL_BASE_URL = "https://medsim.jackfruitco.com"
+EMAIL_ENVIRONMENT_NAME = "production"
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
