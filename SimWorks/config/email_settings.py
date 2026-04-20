@@ -58,8 +58,5 @@ if EMAIL_ENVIRONMENT_NAME != "staging":
     _default_email_base_url = "https://medsim.jackfruitco.com"
 EMAIL_BASE_URL = os.getenv("EMAIL_BASE_URL", _default_email_base_url).rstrip("/")
 
-_requires_smtp_credentials = EMAIL_BACKEND == SMTP_BACKEND and not _is_local_environment
-if _requires_smtp_credentials and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
-    raise ValueError(
-        "EMAIL_HOST_USER and EMAIL_HOST_PASSWORD are required when SMTP backend is active outside local/dev."
-    )
+SMTP_CREDENTIALS_CONFIGURED = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+REQUIRES_SMTP_CREDENTIALS = EMAIL_BACKEND == SMTP_BACKEND and not _is_local_environment

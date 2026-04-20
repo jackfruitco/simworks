@@ -53,7 +53,11 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
         return merged
 
     def format_email_subject(self, subject: str) -> str:
-        subject = super().format_email_subject(subject)
+        subject = " ".join(subject.splitlines()).strip()
+        django_prefix = str(getattr(settings, "EMAIL_SUBJECT_PREFIX", ""))
+        if django_prefix and not subject.startswith(django_prefix):
+            subject = f"{django_prefix}{subject}"
+
         if is_staging_email_context(
             request=self._simworks_email_request,
             environment_hint=self._simworks_environment_hint,

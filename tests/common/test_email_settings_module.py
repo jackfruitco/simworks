@@ -3,6 +3,7 @@ import importlib
 import pytest
 
 
+
 @pytest.fixture
 def reload_email_settings(monkeypatch):
     def _load(env: dict[str, str | None]):
@@ -57,14 +58,16 @@ def test_email_settings_defaults_to_smtp_in_staging_when_credentials_present(rel
     assert settings_mod.EMAIL_USE_TLS is True
 
 
-def test_email_settings_raises_if_smtp_credentials_missing_outside_local(reload_email_settings):
-    with pytest.raises(ValueError, match="EMAIL_HOST_USER and EMAIL_HOST_PASSWORD"):
-        reload_email_settings(
-            {
-                "DJANGO_DEBUG": "false",
-                "EMAIL_ENVIRONMENT_NAME": "production",
-                "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
-                "EMAIL_HOST_USER": "",
-                "EMAIL_HOST_PASSWORD": "",
-            }
-        )
+def test_email_settings_flags_missing_smtp_credentials_outside_local(reload_email_settings):
+    settings_mod = reload_email_settings(
+        {
+            "DJANGO_DEBUG": "false",
+            "EMAIL_ENVIRONMENT_NAME": "production",
+            "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "EMAIL_HOST_USER": "",
+            "EMAIL_HOST_PASSWORD": "",
+        }
+    )
+
+    assert settings_mod.REQUIRES_SMTP_CREDENTIALS is True
+    assert settings_mod.SMTP_CREDENTIALS_CONFIGURED is False

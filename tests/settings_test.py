@@ -118,7 +118,6 @@ BILLING_STRIPE_WEBHOOK_SECRET = "test-stripe-webhook-secret"
 BILLING_STRIPE_SECRET_KEY = "test-stripe-secret"
 BILLING_STRIPE_CHECKOUT_ENABLED = False
 
-ACCOUNT_ADAPTER = "apps.accounts.adapters.InvitationAccountAdapter"
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 DEFAULT_FROM_EMAIL = "MedSim by Jackfruit <noreply@jackfruitco.com>"
 EMAIL_REPLY_TO = "support@jackfruitco.com"

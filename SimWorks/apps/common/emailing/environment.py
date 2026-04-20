@@ -5,6 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.core.exceptions import DisallowedHost
 from django.http import HttpRequest
 
 PRODUCTION_HOST = "medsim.jackfruitco.com"
@@ -32,7 +33,10 @@ def _request_environment_label(request: HttpRequest | None) -> str | None:
     if request is None:
         return None
 
-    host = _normalize_host(request.get_host())
+    try:
+        host = _normalize_host(request.get_host())
+    except DisallowedHost:
+        host = _normalize_host(request.META.get("HTTP_HOST"))
     if host == STAGING_HOST:
         return "staging"
     if host == PRODUCTION_HOST:
