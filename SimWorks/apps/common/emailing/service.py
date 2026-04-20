@@ -35,7 +35,9 @@ def _build_standard_context(
     )
     merged.setdefault("product_name", "MedSim")
     merged.setdefault("site_name", getattr(settings, "SITE_NAME", "MedSim"))
-    merged.setdefault("support_email", getattr(settings, "EMAIL_REPLY_TO", "support@jackfruitco.com"))
+    merged.setdefault(
+        "support_email", getattr(settings, "EMAIL_REPLY_TO", "support@jackfruitco.com")
+    )
     merged["is_staging"] = environment_label == "staging"
     merged["environment_label"] = environment_label
     merged["email_base_url"] = get_email_base_url(

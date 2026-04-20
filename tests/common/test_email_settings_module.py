@@ -3,7 +3,6 @@ import importlib
 import pytest
 
 
-
 @pytest.fixture
 def reload_email_settings(monkeypatch):
     def _load(env: dict[str, str | None]):

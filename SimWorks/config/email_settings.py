@@ -14,10 +14,14 @@ from .settings_parsers import bool_from_env
 SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 CONSOLE_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-EMAIL_ENVIRONMENT_NAME = os.getenv(
-    "EMAIL_ENVIRONMENT_NAME",
-    "local" if bool_from_env("DJANGO_DEBUG", default=False) else "production",
-).strip().lower()
+EMAIL_ENVIRONMENT_NAME = (
+    os.getenv(
+        "EMAIL_ENVIRONMENT_NAME",
+        "local" if bool_from_env("DJANGO_DEBUG", default=False) else "production",
+    )
+    .strip()
+    .lower()
+)
 
 _LOCAL_ENVIRONMENTS = {"local", "development", "dev", "test"}
 _is_local_environment = EMAIL_ENVIRONMENT_NAME in _LOCAL_ENVIRONMENTS

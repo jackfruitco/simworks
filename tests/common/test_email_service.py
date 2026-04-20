@@ -35,7 +35,9 @@ def test_send_transactional_email_applies_defaults_and_staging_prefix():
 
 
 def test_environment_helper_staging_hint_without_request_uses_staging_url():
-    assert get_email_base_url(environment_hint="staging") == "https://medsim-staging.jackfruitco.com"
+    assert (
+        get_email_base_url(environment_hint="staging") == "https://medsim-staging.jackfruitco.com"
+    )
     assert get_email_environment_label(environment_hint="staging") == "staging"
     assert is_staging_email_context(environment_hint="staging") is True
 
@@ -74,7 +76,9 @@ def test_send_templated_email_task_passes_simple_serializable_payload(monkeypatc
     def fake_send_templated_email(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr("apps.common.emailing.tasks.send_templated_email", fake_send_templated_email)
+    monkeypatch.setattr(
+        "apps.common.emailing.tasks.send_templated_email", fake_send_templated_email
+    )
 
     send_templated_email_task.run(
         recipients=["clinician@example.com"],
