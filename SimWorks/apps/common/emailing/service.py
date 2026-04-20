@@ -29,6 +29,10 @@ def _build_standard_context(
     environment_hint: str | None = None,
 ) -> dict[str, Any]:
     merged = dict(context or {})
+    is_staging = is_staging_email_context(
+        request=request,
+        environment_hint=environment_hint,
+    )
     environment_label = get_email_environment_label(
         request=request,
         environment_hint=environment_hint,
@@ -38,7 +42,7 @@ def _build_standard_context(
     merged.setdefault(
         "support_email", getattr(settings, "EMAIL_REPLY_TO", "support@jackfruitco.com")
     )
-    merged["is_staging"] = environment_label == "staging"
+    merged["is_staging"] = is_staging
     merged["environment_label"] = environment_label
     merged["email_base_url"] = get_email_base_url(
         request=request,

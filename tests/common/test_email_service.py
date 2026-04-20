@@ -62,6 +62,33 @@ def test_environment_helpers_select_staging_url_from_request_host():
     assert is_staging_email_context(request=request) is True
 
 
+@override_settings(
+    EMAIL_ENVIRONMENT_NAME="staging",
+    EMAIL_BASE_URL="https://custom-staging.example.com",
+)
+def test_environment_helper_uses_custom_base_url_for_matching_settings_environment():
+    assert get_email_base_url(environment_hint="staging") == "https://custom-staging.example.com"
+
+
+@override_settings(
+    EMAIL_ENVIRONMENT_NAME="staging",
+    EMAIL_BASE_URL="https://medsim.jackfruitco.com",
+)
+def test_environment_helper_ignores_opposite_canonical_base_url():
+    assert (
+        get_email_base_url(environment_hint="staging")
+        == "https://medsim-staging.jackfruitco.com"
+    )
+
+
+@override_settings(
+    EMAIL_ENVIRONMENT_NAME="staging",
+    EMAIL_BASE_URL="https://custom-staging.example.com",
+)
+def test_environment_helper_ignores_custom_base_url_for_explicit_other_environment():
+    assert get_email_base_url(environment_hint="production") == "https://medsim.jackfruitco.com"
+
+
 def test_build_standard_context_uses_environment_hint_for_links_without_request():
     context = _build_standard_context({}, environment_hint="staging")
 

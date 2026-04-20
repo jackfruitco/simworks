@@ -49,6 +49,26 @@ def _settings_environment_label() -> str:
     return "staging" if env_name == "staging" else "production"
 
 
+def _configured_base_url_for_environment(environment_label: str) -> str | None:
+    configured_base_url = str(getattr(settings, "EMAIL_BASE_URL", "")).strip().rstrip("/")
+    if not configured_base_url:
+        return None
+
+    configured_host = _normalize_host(urlparse(configured_base_url).hostname)
+    if not configured_host:
+        return None
+
+    if configured_host == STAGING_HOST:
+        return configured_base_url if environment_label == "staging" else None
+    if configured_host == PRODUCTION_HOST:
+        return configured_base_url if environment_label == "production" else None
+
+    settings_label = _settings_environment_label()
+    if environment_label == settings_label:
+        return configured_base_url
+    return None
+
+
 def get_email_environment_label(
     request: HttpRequest | None = None,
     environment_hint: str | None = None,
@@ -76,11 +96,8 @@ def get_email_base_url(
     environment_hint: str | None = None,
 ) -> str:
     environment_label = get_email_environment_label(request=request, environment_hint=environment_hint)
-    configured_base_url = str(getattr(settings, "EMAIL_BASE_URL", "")).strip().rstrip("/")
-    configured_host = _normalize_host(urlparse(configured_base_url).hostname) if configured_base_url else ""
-
-    settings_label = _settings_environment_label()
-    if configured_base_url and configured_host and environment_label == settings_label:
+    configured_base_url = _configured_base_url_for_environment(environment_label)
+    if configured_base_url:
         return configured_base_url
 
     if environment_label == "staging":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.core import context as allauth_context
 from django.conf import settings
 from django.http import HttpRequest
 
@@ -26,6 +27,15 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             return None
         hint = context.get("environment_hint") or context.get("email_environment_hint")
         return hint if isinstance(hint, str) else None
+
+    def _resolve_email_request(self, context: dict | None) -> HttpRequest | None:
+        if isinstance(context, dict) and isinstance(context.get("request"), HttpRequest):
+            return context["request"]
+        if isinstance(allauth_context.request, HttpRequest):
+            return allauth_context.request
+        if isinstance(self.request, HttpRequest):
+            return self.request
+        return None
 
     def _build_email_context(
         self,
@@ -68,10 +78,9 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
         return subject
 
     def send_mail(self, template_prefix, email, context):
-        request = None
-        if isinstance(context, dict):
-            request = context.get("request")
-
+        request = self._resolve_email_request(context)
+        previous_request = self._simworks_email_request
+        previous_environment_hint = self._simworks_environment_hint
         self._simworks_email_request = request
         self._simworks_environment_hint = self._extract_environment_hint(context)
         try:
@@ -81,18 +90,24 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
                 self._build_email_context(request=request, context=context),
             )
         finally:
-            self._simworks_email_request = None
-            self._simworks_environment_hint = None
+            self._simworks_email_request = previous_request
+            self._simworks_environment_hint = previous_environment_hint
 
     def render_mail(self, template_prefix, email, context, headers=None):
-        request = context.get("request") if isinstance(context, dict) else None
+        request = self._resolve_email_request(context)
+        previous_request = self._simworks_email_request
+        previous_environment_hint = self._simworks_environment_hint
+        self._simworks_email_request = request
         self._simworks_environment_hint = self._extract_environment_hint(context)
-        merged_context = self._build_email_context(request=request, context=context)
-        msg = super().render_mail(template_prefix, email, merged_context, headers=headers)
-        if settings.EMAIL_REPLY_TO:
-            msg.reply_to = [settings.EMAIL_REPLY_TO]
-        self._simworks_environment_hint = None
-        return msg
+        try:
+            merged_context = self._build_email_context(request=request, context=context)
+            msg = super().render_mail(template_prefix, email, merged_context, headers=headers)
+            if settings.EMAIL_REPLY_TO:
+                msg.reply_to = [settings.EMAIL_REPLY_TO]
+            return msg
+        finally:
+            self._simworks_email_request = previous_request
+            self._simworks_environment_hint = previous_environment_hint
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
         invitation_token = request.session.get("invitation_token")
