@@ -29,12 +29,12 @@ This project uses a single Django settings module and environment variables for 
 ## Email / transactional messaging
 - `EMAIL_USE_CONSOLE_BACKEND` (defaults true only in local/dev-style environments)
 - `EMAIL_BACKEND` (defaults to console in local/dev, SMTP backend elsewhere)
-- `EMAIL_HOST` (default: `smtp.mail.me.com`)
+- `EMAIL_HOST` (default: `smtp.sendgrid.net`)
 - `EMAIL_PORT` (default: `587`)
 - `EMAIL_USE_TLS` (default: `true`)
 - `EMAIL_USE_SSL` (default: `false`)
-- `EMAIL_HOST_USER` (full iCloud Mail address used for SMTP auth)
-- `EMAIL_HOST_PASSWORD` (Apple app-specific password)
+- `EMAIL_HOST_USER` (default: `apikey` when SMTP backend is active)
+- `EMAIL_HOST_PASSWORD` (SendGrid API key)
 - `EMAIL_ENVIRONMENT_NAME` (e.g. `local`, `staging`, `production`)
 - `EMAIL_BASE_URL` (defaults to `https://medsim.jackfruitco.com` for production-like, `https://medsim-staging.jackfruitco.com` for staging)
 - `DEFAULT_FROM_EMAIL` (default: `MedSim by Jackfruit <noreply@jackfruitco.com>`)
@@ -44,7 +44,25 @@ This project uses a single Django settings module and environment variables for 
 - `EMAIL_STAGING_SUBJECT_PREFIX` (default: `[STAGING]`)
 - `ACCOUNT_DEFAULT_HTTP_PROTOCOL` (default: `https`)
 
-Current low-volume production-intended transport is iCloud SMTP (temporary for private beta). The app-level email abstraction remains provider-agnostic to keep future migration to Postmark as a backend/config swap.
+Current low-volume staging/production transport is SendGrid SMTP through Django's SMTP backend abstraction. The app-level email service and auth-email templates remain provider-agnostic so future provider migration stays mostly a backend/config swap.
+
+Staging SendGrid SMTP values:
+
+- `EMAIL_ENVIRONMENT_NAME=staging`
+- `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`
+- `EMAIL_HOST=smtp.sendgrid.net`
+- `EMAIL_PORT=587`
+- `EMAIL_USE_TLS=true`
+- `EMAIL_USE_SSL=false`
+- `EMAIL_HOST_USER=apikey`
+- `EMAIL_HOST_PASSWORD=<SendGrid API key>`
+- `EMAIL_BASE_URL=https://medsim-staging.jackfruitco.com`
+
+Sender identity defaults may be omitted if the defaults are acceptable:
+
+- `DEFAULT_FROM_EMAIL="MedSim by Jackfruit <noreply@jackfruitco.com>"`
+- `EMAIL_REPLY_TO=support@jackfruitco.com`
+- `SERVER_EMAIL=errors@jackfruitco.com`
 
 ## Tasks / Redis / Celery / Rate limits
 - `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD`

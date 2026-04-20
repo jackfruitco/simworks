@@ -1,7 +1,7 @@
 """Email and transactional messaging settings.
 
-Temporary backend choice: iCloud SMTP for low-volume/private beta.
-Keep this module provider-replaceable so switching to Postmark later is mostly
+Current backend choice: SendGrid SMTP for low-volume staging/production sending.
+Keep this module provider-replaceable so future provider changes are mostly
 an EMAIL_BACKEND/settings change rather than app-code changes.
 """
 
@@ -35,11 +35,12 @@ EMAIL_BACKEND = os.getenv(
     CONSOLE_BACKEND if EMAIL_USE_CONSOLE_BACKEND else SMTP_BACKEND,
 )
 
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.mail.me.com")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.sendgrid.net")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = bool_from_env("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = bool_from_env("EMAIL_USE_SSL", default=False)
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+_default_email_host_user = "apikey" if EMAIL_BACKEND == SMTP_BACKEND else ""
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", _default_email_host_user)
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 
 DEFAULT_FROM_EMAIL = os.getenv(
