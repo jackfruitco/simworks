@@ -1,9 +1,17 @@
 # SimWorks/apps/common/checks.py
 
+from __future__ import annotations
+
 from collections.abc import Callable
+from email.utils import parseaddr
+from urllib.parse import urlparse
 
 from django.conf import settings
-from django.core.checks import Error, Tags, register
+from django.core.checks import Error, Tags, Warning, register
+
+POSTMARK_BACKEND = "anymail.backends.postmark.EmailBackend"
+CONSOLE_BACKEND = "django.core.mail.backends.console.EmailBackend"
+APPROVED_EMAIL_HOSTS = {"medsim.jackfruitco.com", "medsim-staging.jackfruitco.com"}
 
 
 def _missing_setting(name: str) -> bool:
@@ -75,6 +83,13 @@ FEATURE_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
 ]
 
 
+def _is_valid_email_identity(value: str | None) -> bool:
+    if not value or not isinstance(value, str):
+        return False
+    _, address = parseaddr(value)
+    return bool(address and "@" in address)
+
+
 @register(Tags.security, deploy=True)
 def check_required_env_vars(app_configs, **kwargs):
     errors = []
@@ -112,12 +127,11 @@ def check_production_settings(app_configs, **kwargs):
         )
 
     email_backend = getattr(settings, "EMAIL_BACKEND", "")
-    if email_backend == "django.core.mail.backends.console.EmailBackend":
+    if email_backend == CONSOLE_BACKEND:
         errors.append(
             Error(
                 "Console email backend is not suitable for production.",
-                hint="Set EMAIL_BACKEND to a real backend "
-                "(e.g. django.core.mail.backends.smtp.EmailBackend).",
+                hint="Set EMAIL_BACKEND to Anymail Postmark backend in staging/production.",
                 id="config.E011",
             )
         )
@@ -143,3 +157,68 @@ def check_production_settings(app_configs, **kwargs):
         )
 
     return errors
+
+
+@register(Tags.security, deploy=True)
+def check_email_configuration(app_configs, **kwargs):
+    errors = []
+    warnings = []
+
+    email_backend = getattr(settings, "EMAIL_BACKEND", "")
+
+    if _prod_only() and email_backend == CONSOLE_BACKEND:
+        errors.append(
+            Error(
+                "EMAIL_BACKEND uses console backend while DEBUG=False.",
+                hint="Set EMAIL_BACKEND=anymail.backends.postmark.EmailBackend.",
+                id="config.E014",
+            )
+        )
+
+    if email_backend == POSTMARK_BACKEND and _missing_setting("POSTMARK_SERVER_TOKEN"):
+        errors.append(
+            Error(
+                "POSTMARK_SERVER_TOKEN is required when using Postmark backend.",
+                hint="Set POSTMARK_SERVER_TOKEN in the runtime environment.",
+                id="config.E015",
+            )
+        )
+
+    for setting_name, error_id in (
+        ("DEFAULT_FROM_EMAIL", "config.E016"),
+        ("EMAIL_REPLY_TO", "config.E017"),
+        ("SERVER_EMAIL", "config.E018"),
+    ):
+        value = getattr(settings, setting_name, "")
+        if not _is_valid_email_identity(value):
+            errors.append(
+                Error(
+                    f"{setting_name} is empty or not a valid email identity.",
+                    hint=f"Set {setting_name} to a valid address (or display-name format).",
+                    id=error_id,
+                )
+            )
+
+    email_base_url = getattr(settings, "EMAIL_BASE_URL", "")
+    parsed = urlparse(email_base_url)
+    if not parsed.hostname:
+        errors.append(
+            Error(
+                "EMAIL_BASE_URL is missing a valid host.",
+                hint="Set EMAIL_BASE_URL to an absolute https URL for MedSim app host.",
+                id="config.E019",
+            )
+        )
+    elif parsed.hostname not in APPROVED_EMAIL_HOSTS:
+        warnings.append(
+            Warning(
+                "EMAIL_BASE_URL host is not one of the approved MedSim hosts.",
+                hint=(
+                    "Expected medsim.jackfruitco.com or medsim-staging.jackfruitco.com; "
+                    "verify this deployment intentionally uses a custom host."
+                ),
+                id="config.W001",
+            )
+        )
+
+    return [*errors, *warnings]

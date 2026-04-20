@@ -17,6 +17,22 @@ from .auth_settings import (
     SITE_ID,
     SOCIALACCOUNT_PROVIDERS,
 )
+from .email_settings import (
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL,
+    ANYMAIL,
+    DEFAULT_FROM_EMAIL,
+    EMAIL_BACKEND,
+    EMAIL_BASE_URL,
+    EMAIL_ENVIRONMENT_NAME,
+    EMAIL_REPLY_TO,
+    EMAIL_STAGING_BANNER_ENABLED,
+    EMAIL_STAGING_SUBJECT_PREFIX,
+    EMAIL_SUBJECT_PREFIX,
+    EMAIL_USE_CONSOLE_BACKEND,
+    POSTMARK_MESSAGE_STREAM,
+    POSTMARK_SERVER_TOKEN,
+    SERVER_EMAIL,
+)
 from .billing_settings import (
     BILLING_APPLE_PRODUCT_PLAN_MAP,
     BILLING_STRIPE_CHECKOUT_ENABLED,
@@ -108,6 +124,7 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
+    "anymail",
     "allauth.socialaccount.providers.apple",
     "allauth.socialaccount.providers.google",
     "django_htmx",
@@ -183,10 +200,6 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-EMAIL_BACKEND = check_env(
-    "EMAIL_BACKEND",
-    default="django.core.mail.backends.console.EmailBackend",
-)
 
 # CORS
 CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)

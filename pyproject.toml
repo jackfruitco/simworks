@@ -10,6 +10,7 @@ dependencies = [
     "daphne>=4.2.1",
     "uvicorn>=0.38.0",
     "django-allauth[socialaccount]>=65.15.1",
+    "django-anymail[postmark]>=12.0.1",
     "django-autoslug>=1.9.9",
     # "django-celery-beat>=2.8.1",
     "django-htmx>=1.27.0",

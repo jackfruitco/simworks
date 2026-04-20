@@ -1,34 +1,72 @@
-"""
-Django-allauth adapter for invitation-based signup.
+"""Django-allauth adapter for invitation-based signup and branded auth emails."""
 
-This adapter integrates the invitation system with allauth's signup flow,
-ensuring that users can only sign up with a valid invitation token.
-"""
+from __future__ import annotations
 
 from allauth.account.adapter import DefaultAccountAdapter
+from django.conf import settings
 from django.http import HttpRequest
+
+from apps.common.emailing.environment import (
+    get_email_base_url,
+    get_email_environment_label,
+    is_staging_email_context,
+)
 
 from .models import Invitation
 
 
 class InvitationAccountAdapter(DefaultAccountAdapter):
-    """
-    Custom allauth adapter that enforces invitation-only signup.
+    """Custom allauth adapter that enforces invitation-only signup."""
 
-    Features:
-    - Checks for invitation token in session
-    - Validates token is not claimed or expired
-    - Marks invitation as claimed after successful signup
-    - Works with both email/password AND social auth signups
-    """
+    _simworks_email_request: HttpRequest | None = None
+
+    def _build_email_context(
+        self,
+        request: HttpRequest | None,
+        context: dict | None,
+    ) -> dict:
+        merged = dict(context or {})
+        merged.setdefault("site_name", getattr(settings, "SITE_NAME", "MedSim"))
+        merged.setdefault("product_name", "MedSim")
+        merged.setdefault("product_tagline", "MedSim by Jackfruit")
+        merged.setdefault("support_email", settings.EMAIL_REPLY_TO)
+        merged["is_staging"] = is_staging_email_context(request=request)
+        merged["environment_label"] = get_email_environment_label(request=request)
+        merged["email_base_url"] = get_email_base_url(request=request)
+        return merged
+
+    def format_email_subject(self, subject: str) -> str:
+        subject = super().format_email_subject(subject)
+        if is_staging_email_context(request=self._simworks_email_request):
+            prefix = str(getattr(settings, "EMAIL_STAGING_SUBJECT_PREFIX", "")).strip()
+            if prefix and not subject.startswith(prefix):
+                return f"{prefix} {subject}"
+        return subject
+
+    def send_mail(self, template_prefix, email, context):
+        request = None
+        if isinstance(context, dict):
+            request = context.get("request")
+
+        self._simworks_email_request = request
+        try:
+            return super().send_mail(
+                template_prefix,
+                email,
+                self._build_email_context(request=request, context=context),
+            )
+        finally:
+            self._simworks_email_request = None
+
+    def render_mail(self, template_prefix, email, context, headers=None):
+        request = context.get("request") if isinstance(context, dict) else None
+        merged_context = self._build_email_context(request=request, context=context)
+        msg = super().render_mail(template_prefix, email, merged_context, headers=headers)
+        if settings.EMAIL_REPLY_TO:
+            msg.reply_to = [settings.EMAIL_REPLY_TO]
+        return msg
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
-        """
-        Check if signup is allowed.
-
-        Returns True only if a valid invitation token exists in the session.
-        This applies to BOTH regular signup and social auth signup.
-        """
         invitation_token = request.session.get("invitation_token")
 
         if not invitation_token:
@@ -41,27 +79,20 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             return False
 
     def save_user(self, request, user, form, commit=True):
-        """Save the user and mark invitation as claimed.
-
-        This is called after successful signup (both email/password and social auth).
-        """
         user = super().save_user(request, user, form, commit=False)
 
-        # If we have a signup form, populate required custom fields BEFORE saving.
-        # (Your User.role is NOT NULL, so the first save must include it.)
         if form is not None and hasattr(form, "cleaned_data"):
-            cd = form.cleaned_data
-            if "first_name" in cd:
-                user.first_name = cd.get("first_name") or ""
-            if "last_name" in cd:
-                user.last_name = cd.get("last_name") or ""
-            if "role" in cd and cd.get("role") is not None:
-                user.role = cd["role"]
+            cleaned_data = form.cleaned_data
+            if "first_name" in cleaned_data:
+                user.first_name = cleaned_data.get("first_name") or ""
+            if "last_name" in cleaned_data:
+                user.last_name = cleaned_data.get("last_name") or ""
+            if "role" in cleaned_data and cleaned_data.get("role") is not None:
+                user.role = cleaned_data["role"]
 
         if commit:
             user.save()
 
-            # Mark invitation as claimed
             invitation_token = request.session.get("invitation_token")
             if invitation_token:
                 try:
@@ -73,23 +104,12 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
                 except Invitation.DoesNotExist:
                     pass
                 finally:
-                    # Clear the token from session regardless
                     request.session.pop("invitation_token", None)
 
         return user
 
     def clean_email(self, email):
-        """
-        Validate the email address.
-
-        Override this if you want custom email validation logic.
-        """
         return super().clean_email(email)
 
     def get_login_redirect_url(self, request):
-        """
-        Redirect after successful login.
-
-        Can be overridden to provide custom redirect logic based on user role.
-        """
         return super().get_login_redirect_url(request)

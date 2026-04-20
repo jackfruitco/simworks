@@ -26,6 +26,21 @@ This project uses a single Django settings module and environment variables for 
 - `DJANGO_CORS_ALLOWED_ORIGINS_REGEX`
 - `DJANGO_CORS_ALLOW_ALL_ORIGINS`
 
+## Email / transactional messaging
+- `EMAIL_USE_CONSOLE_BACKEND` (defaults true only in local/dev-style environments)
+- `EMAIL_BACKEND` (defaults to console in local/dev, Postmark backend elsewhere)
+- `EMAIL_ENVIRONMENT_NAME` (e.g. `local`, `staging`, `production`)
+- `EMAIL_BASE_URL` (defaults to `https://medsim.jackfruitco.com` for production-like, `https://medsim-staging.jackfruitco.com` for staging)
+- `DEFAULT_FROM_EMAIL` (default: `MedSim by Jackfruit <noreply@jackfruitco.com>`)
+- `EMAIL_REPLY_TO` (default: `support@jackfruitco.com`)
+- `SERVER_EMAIL` (default: `errors@jackfruitco.com`)
+- `EMAIL_SUBJECT_PREFIX`
+- `EMAIL_STAGING_SUBJECT_PREFIX` (default: `[STAGING]`)
+- `EMAIL_STAGING_BANNER_ENABLED`
+- `ACCOUNT_DEFAULT_HTTP_PROTOCOL` (default: `https`)
+- `POSTMARK_SERVER_TOKEN` (required for Postmark backend in non-local environments)
+- `POSTMARK_MESSAGE_STREAM` (optional; useful for transactional stream routing)
+
 ## Tasks / Redis / Celery / Rate limits
 - `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD`
 - `DJANGO_TASKS_MAX_RETRIES`, `DJANGO_TASKS_RETRY_DELAY`
