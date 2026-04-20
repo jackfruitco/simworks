@@ -88,14 +88,18 @@ def is_staging_email_context(
     request: HttpRequest | None = None,
     environment_hint: str | None = None,
 ) -> bool:
-    return get_email_environment_label(request=request, environment_hint=environment_hint) == "staging"
+    return (
+        get_email_environment_label(request=request, environment_hint=environment_hint) == "staging"
+    )
 
 
 def get_email_base_url(
     request: HttpRequest | None = None,
     environment_hint: str | None = None,
 ) -> str:
-    environment_label = get_email_environment_label(request=request, environment_hint=environment_hint)
+    environment_label = get_email_environment_label(
+        request=request, environment_hint=environment_hint
+    )
     configured_base_url = _configured_base_url_for_environment(environment_label)
     if configured_base_url:
         return configured_base_url

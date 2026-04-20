@@ -76,8 +76,7 @@ def test_environment_helper_uses_custom_base_url_for_matching_settings_environme
 )
 def test_environment_helper_ignores_opposite_canonical_base_url():
     assert (
-        get_email_base_url(environment_hint="staging")
-        == "https://medsim-staging.jackfruitco.com"
+        get_email_base_url(environment_hint="staging") == "https://medsim-staging.jackfruitco.com"
     )
 
 
