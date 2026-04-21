@@ -167,11 +167,22 @@ class PatientSchemaContractInstruction(BaseInstruction):
     group = "patient"
     instruction = (
         "### Schema Contract\n"
-        "- Follow the active response schema exactly; include all required top-level keys and no extras.\n"
+        "- Follow the active response schema exactly; include all required top-level keys and "
+        "no extras.\n"
         "- Always include `llm_conditions_check` as concise key/value checks of rule compliance.\n"
-        "- If `metadata` is present in the schema, include only clinically relevant structured details suitable for key-based upsert.\n"
+        "- If `metadata` is present in the schema, include only clinically relevant structured "
+        "details suitable for key-based upsert.\n"
+        "- Metadata item examples:\n"
+        '  - `{"kind": "patient_demographics", "key": "patient_name", '
+        '"value": "<full name>"}`\n'
+        '  - `{"kind": "patient_demographics", "key": "age", "value": "<age>"}`\n'
+        '  - `{"kind": "patient_demographics", "key": "gender", "value": "<gender>"}`\n'
+        '  - `{"kind": "patient_history", "key": "<condition>", '
+        '"value": "<brief summary>", "is_resolved": false, "duration": "<duration>"}`\n'
         "- Keep patient-facing `messages` natural; do not dump structured metadata into visible chat text.\n"
-        "- If the user explicitly requests an image/scan, set `image_request` with `requested=true` and a clinically grounded prompt."
+        "- If the user explicitly requests an image/scan, set `image_request` with "
+        "`requested=true`, a clinically grounded `prompt`, optional `caption`, and optional "
+        "`clinical_focus`; keep the visible reply textual."
     )
 
 
@@ -188,8 +199,10 @@ class PatientInitialDetailInstruction(BaseInstruction):
         "- Do not volunteer associated symptoms, pertinent negatives, timelines, exposures, "
         "medications, past medical history, or risk factors unless they would naturally appear "
         "in an initial text from a lay patient.\n"
-        "- Initial-turn metadata must include at least patient_name, age, and gender.\n"
-        "- Include 1-2 `patient_history` items when history is available."
+        "- Mention only background details that would naturally come up in an initial text.\n"
+        "- Initial-turn metadata must include at least:\n"
+        "  - patient demographics for `patient_name`, `age`, and `gender`\n"
+        "  - 1-2 `patient_history` items when history is available"
     )
 
 

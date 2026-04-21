@@ -1,12 +1,14 @@
 """Integration tests for chatlab patient services."""
 
 from datetime import timedelta
+from pathlib import Path
 import threading
 import traceback
 
 from asgiref.sync import async_to_sync
 from django.utils import timezone
 import pytest
+import yaml
 
 from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
@@ -65,6 +67,10 @@ def history_user(django_user_model, user_role):
 def _set_start_timestamp(simulation, *, days_ago: int) -> None:
     timestamp = timezone.now() - timedelta(days=days_ago)
     type(simulation).objects.filter(pk=simulation.pk).update(start_timestamp=timestamp)
+
+
+def _normalized_instruction(text: str) -> str:
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
 
 
 class TestGenerateInitialResponseService:
@@ -147,6 +153,32 @@ class TestGenerateInitialResponseService:
             "Add metadata only when genuinely new structured facts emerge, using stable keys."
         )
         assert "Answer only the question that was asked" in text
+
+    def test_python_static_patient_instructions_match_yaml(self):
+        yaml_path = (
+            Path(__file__).resolve().parents[2]
+            / "SimWorks/apps/chatlab/orca/instructions/patient.yaml"
+        )
+        with yaml_path.open(encoding="utf-8") as fh:
+            yaml_data = yaml.safe_load(fh)
+
+        yaml_instructions = {
+            item["name"]: _normalized_instruction(item["instruction"])
+            for item in yaml_data["instructions"]
+        }
+        python_instructions = {
+            "PatientSafetyBoundariesInstruction": PatientSafetyBoundariesInstruction,
+            "PatientConversationBehaviorInstruction": PatientBaseInstruction,
+            "PatientInformationDisclosureInstruction": PatientInformationDisclosureInstruction,
+            "PatientSchemaContractInstruction": PatientSchemaContractInstruction,
+            "PatientInitialDetailInstruction": PatientInitialDetailInstruction,
+            "PatientReplyDetailInstruction": PatientReplyDetailInstruction,
+        }
+
+        for name, instruction_cls in python_instructions.items():
+            assert _normalized_instruction(instruction_cls.instruction or "") == yaml_instructions[
+                name
+            ]
 
 
 class TestGenerateReplyResponseService:
