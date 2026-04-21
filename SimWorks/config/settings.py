@@ -172,6 +172,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "apps.common.context_processors.debug_flag",
                 "apps.privacy.context_processors.privacy_flags",
+                "apps.feedback.context_processors.staff_feedback_awareness",
             ],
         },
     },

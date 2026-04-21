@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback Inbox - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <section class="rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-content sm:text-3xl">Feedback Inbox</h1>
+                <p class="mt-2 text-sm text-content-secondary">User-submitted app and product feedback for staff review.</p>
+            </div>
+            <a href="{% url 'feedback:staff-list' %}?reviewed=unreviewed" class="inline-flex min-h-10 items-center gap-2 rounded-lg bg-jckfrt-olive px-3 py-2 text-sm font-semibold text-content-light hover:bg-jckfrt-olive-hover">
+                <span class="iconify" data-icon="mdi:message-alert-outline"></span>
+                {{ analytics.unreviewed }} unreviewed
+            </a>
+        </div>
+    </section>
+
+    <section class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Open</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.open }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Planned</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.planned }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Resolved 30d</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.resolved_last_30_days }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Duplicate</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.duplicate }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Won't Fix</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.wont_fix }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+            <div class="text-xs font-semibold uppercase text-content-secondary">Unreviewed</div>
+            <div class="mt-1 text-2xl font-bold">{{ analytics.unreviewed }}</div>
+        </div>
+    </section>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface-alt p-4 shadow-xl">
+        <form method="get" class="grid gap-3 md:grid-cols-4 lg:grid-cols-6">
+            <label class="text-sm font-semibold">Search
+                <input type="search" name="q" value="{{ request.GET.q }}" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            </label>
+            <label class="text-sm font-semibold">Reviewed
+                <select name="reviewed" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    <option value="unreviewed" {% if request.GET.reviewed == "unreviewed" %}selected{% endif %}>Unreviewed</option>
+                    <option value="reviewed" {% if request.GET.reviewed == "reviewed" %}selected{% endif %}>Reviewed</option>
+                </select>
+            </label>
+            <label class="text-sm font-semibold">Archived
+                <select name="archived" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                    <option value="">Unarchived</option>
+                    <option value="all" {% if request.GET.archived == "all" %}selected{% endif %}>All</option>
+                    <option value="archived" {% if request.GET.archived == "archived" %}selected{% endif %}>Archived</option>
+                </select>
+            </label>
+            <label class="text-sm font-semibold">Category
+                <select name="category" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for value,label in categories %}
+                        <option value="{{ value }}" {% if request.GET.category == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="text-sm font-semibold">Status
+                <select name="status" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for value,label in statuses %}
+                        <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="text-sm font-semibold">Platform
+                <select name="platform" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for value,label in platforms %}
+                        <option value="{{ value }}" {% if request.GET.platform == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="text-sm font-semibold">User
+                <input type="text" name="user" value="{{ request.GET.user }}" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            </label>
+            <label class="text-sm font-semibold">Simulation
+                <input type="text" name="simulation" value="{{ request.GET.simulation }}" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            </label>
+            <label class="text-sm font-semibold">From
+                <input type="date" name="date_from" value="{{ request.GET.date_from }}" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            </label>
+            <label class="text-sm font-semibold">To
+                <input type="date" name="date_to" value="{{ request.GET.date_to }}" class="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            </label>
+            <div class="flex items-end gap-2">
+                <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light hover:bg-jckfrt-olive-hover">
+                    <span class="iconify" data-icon="mdi:filter-outline"></span>
+                    Filter
+                </button>
+                <a href="{% url 'feedback:staff-list' %}" class="inline-flex min-h-10 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-surface-alt">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface-alt shadow-xl">
+        <form method="post" action="{% url 'feedback:staff-list' %}{% if querystring %}?{{ querystring }}{% endif %}">
+            {% csrf_token %}
+            <div class="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm text-content-secondary">{{ page_obj.paginator.count }} feedback items</div>
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    {{ bulk_form.action }}
+                    <button type="submit" class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light hover:bg-jckfrt-olive-hover">
+                        <span class="iconify" data-icon="mdi:playlist-check"></span>
+                        Apply
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[1100px] text-left text-sm">
+                    <thead class="bg-surface text-xs uppercase text-content-secondary">
+                        <tr>
+                            <th class="p-3"><span class="sr-only">Select</span></th>
+                            <th class="p-3">Submitted</th>
+                            <th class="p-3">User</th>
+                            <th class="p-3">Category</th>
+                            <th class="p-3">Feedback</th>
+                            <th class="p-3">Simulation</th>
+                            <th class="p-3">Platform</th>
+                            <th class="p-3">Status</th>
+                            <th class="p-3">Reviewed</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        {% for feedback in feedback_items %}
+                            <tr class="{% if not feedback.is_reviewed %}bg-yellow-50{% else %}bg-surface{% endif %}">
+                                <td class="p-3 align-top">
+                                    <input type="checkbox" name="feedback_ids" value="{{ feedback.pk }}" class="h-4 w-4">
+                                </td>
+                                <td class="p-3 align-top whitespace-nowrap">{{ feedback.created_at|date:"Y-m-d H:i" }}</td>
+                                <td class="p-3 align-top">{{ feedback.user.email|default:"-" }}</td>
+                                <td class="p-3 align-top">{{ feedback.get_category_display }}</td>
+                                <td class="p-3 align-top">
+                                    <a href="{% url 'feedback:staff-detail' feedback.pk %}" class="font-semibold text-jckfrt-olive hover:underline">{{ feedback.title|default:"(No title)" }}</a>
+                                    <p class="mt-1 max-w-xl text-content-secondary">{{ feedback.body|truncatechars:140 }}</p>
+                                </td>
+                                <td class="p-3 align-top">{{ feedback.simulation_id|default:"-" }}</td>
+                                <td class="p-3 align-top">{{ feedback.client_platform }}{% if feedback.client_version %} / {{ feedback.client_version }}{% endif %}</td>
+                                <td class="p-3 align-top">{{ feedback.get_status_display }}</td>
+                                <td class="p-3 align-top">
+                                    {% if feedback.is_reviewed %}
+                                        <span class="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">Reviewed</span>
+                                        <div class="mt-1 text-xs text-content-secondary">{{ feedback.reviewed_by.email|default:"-" }}<br>{{ feedback.reviewed_at|date:"Y-m-d H:i" }}</div>
+                                    {% else %}
+                                        <span class="inline-flex rounded-full bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">Unreviewed</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="9" class="p-8 text-center text-content-secondary">No feedback matches these filters.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+
+        {% if page_obj.has_other_pages %}
+            <div class="flex items-center justify-between border-t border-border p-4 text-sm">
+                <div>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+                <div class="flex gap-2">
+                    {% if page_obj.has_previous %}
+                        <a class="rounded-lg border border-border bg-surface px-3 py-2 hover:bg-surface-alt" href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Previous</a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a class="rounded-lg border border-border bg-surface px-3 py-2 hover:bg-surface-alt" href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock content %}

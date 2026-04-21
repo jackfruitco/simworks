@@ -3780,11 +3780,75 @@
         ]
       }
     },
+    "/api/v1/feedback/staff/unreviewed-count/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_staff_unreviewed_count",
+        "summary": "[Staff] Unreviewed feedback count",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackUnreviewedCountOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Staff-only badge/toast count for unreviewed, unarchived feedback.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/feedback/staff/": {
       "get": {
         "operationId": "api_v1_endpoints_feedback_staff_list_feedback",
         "summary": "[Staff] List all feedback",
         "parameters": [
+          {
+            "in": "query",
+            "name": "reviewed",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "reviewed or unreviewed",
+              "title": "Reviewed"
+            },
+            "required": false,
+            "description": "reviewed or unreviewed"
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "archived or unarchived",
+              "title": "Archived"
+            },
+            "required": false,
+            "description": "archived or unarchived"
+          },
           {
             "in": "query",
             "name": "status",
@@ -4001,7 +4065,7 @@
             }
           }
         },
-        "description": "Staff-only endpoint. Returns all feedback with full metadata. Supports filtering by status, category, source, severity, user_id, simulation_id, lab_type, and ISO 8601 date range.",
+        "description": "Staff-only endpoint. Returns all feedback with full metadata. Supports filtering by reviewed, archived, status, category, source, severity, user_id, simulation_id, lab_type, and ISO 8601 date range.",
         "tags": [
           "feedback"
         ],
@@ -10719,6 +10783,30 @@
         "title": "FeedbackListResponse",
         "type": "object"
       },
+      "FeedbackUnreviewedCountOut": {
+        "description": "Staff unreviewed feedback badge count.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "label",
+          "url"
+        ],
+        "title": "FeedbackUnreviewedCountOut",
+        "type": "object"
+      },
       "FeedbackStaffListResponse": {
         "description": "Paginated staff list of feedback submissions.",
         "properties": {
@@ -10864,10 +10952,27 @@
             "title": "Client Version",
             "type": "string"
           },
-          "internal_notes": {
+          "email": {
             "default": "",
-            "title": "Internal Notes",
+            "title": "Email",
             "type": "string"
+          },
+          "is_reviewed": {
+            "default": false,
+            "title": "Is Reviewed",
+            "type": "boolean"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
           },
           "resolved_at": {
             "anyOf": [
@@ -10881,7 +10986,7 @@
             ],
             "title": "Resolved At"
           },
-          "resolved_by_id": {
+          "reviewed_by_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -10890,7 +10995,35 @@
                 "type": "null"
               }
             ],
-            "title": "Resolved By Id"
+            "title": "Reviewed By Id"
+          },
+          "is_archived": {
+            "default": false,
+            "title": "Is Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By Id"
           },
           "request_id": {
             "default": "",
@@ -10916,6 +11049,11 @@
             "additionalProperties": true,
             "title": "Context Json",
             "type": "object"
+          },
+          "attachments_json": {
+            "items": {},
+            "title": "Attachments Json",
+            "type": "array"
           }
         },
         "required": [
