@@ -27,6 +27,15 @@ x-app-env: &app_env
 
   JWT_SECRET_KEY: ${JWT_SECRET_KEY}
 
+  EMAIL_BACKEND: ${EMAIL_BACKEND:-"django.core.mail.backends.console.EmailBackend"}
+  EMAIL_HOST: ${EMAIL_HOST}
+  EMAIL_PORT: ${EMAIL_PORT}
+  EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+  EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+  EMAIL_USE_TLS: ${EMAIL_USE_TLS}
+
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
 services:
   server:
     image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-stable}
@@ -63,7 +72,7 @@ services:
     restart: always
     user: postgres
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - medsim-staging_db-data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB
       - POSTGRES_USER
@@ -182,7 +191,8 @@ services:
         max-file: "3"
 
 volumes:
-  db-data:
+  medsim-staging_db-data:
+    external: true
   static-vol:
   media-vol:
 networks:
