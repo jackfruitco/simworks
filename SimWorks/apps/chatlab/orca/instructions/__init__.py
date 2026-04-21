@@ -9,16 +9,7 @@ from .lab_orders import (
     LabOrderSchemaContractInstruction,
     LabOrderTestListInstruction,
 )
-from .patient import (
-    PatientConversationBehaviorInstruction,
-    PatientInformationDisclosureInstruction,
-    PatientInitialDetailInstruction,
-    PatientNameInstruction,
-    PatientRecentScenarioHistoryInstruction,
-    PatientReplyDetailInstruction,
-    PatientSafetyBoundariesInstruction,
-    PatientSchemaContractInstruction,
-)
+from .patient import PatientNameInstruction, PatientRecentScenarioHistoryInstruction
 from .stitch import (
     StitchConversationContextInstruction,
     StitchDebriefInstruction,
@@ -28,8 +19,6 @@ from .stitch import (
     StitchToneInstruction,
 )
 
-# Backwards-compatible alias used by older tests/callers.
-PatientBaseInstruction = PatientConversationBehaviorInstruction
 StitchReplyDetailInstruction = StitchDebriefInstruction
 
 __all__ = [
@@ -38,15 +27,8 @@ __all__ = [
     "LabOrderResultDetailInstruction",
     "LabOrderSchemaContractInstruction",
     "LabOrderTestListInstruction",
-    "PatientBaseInstruction",
-    "PatientConversationBehaviorInstruction",
-    "PatientInformationDisclosureInstruction",
-    "PatientInitialDetailInstruction",
     "PatientNameInstruction",
     "PatientRecentScenarioHistoryInstruction",
-    "PatientReplyDetailInstruction",
-    "PatientSafetyBoundariesInstruction",
-    "PatientSchemaContractInstruction",
     "StitchConversationContextInstruction",
     "StitchDebriefInstruction",
     "StitchPersonaInstruction",

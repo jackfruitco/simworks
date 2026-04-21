@@ -11,14 +11,9 @@ import pytest
 import yaml
 
 from apps.chatlab.orca.instructions import (
-    PatientBaseInstruction,
-    PatientInformationDisclosureInstruction,
-    PatientInitialDetailInstruction,
     PatientNameInstruction,
     PatientRecentScenarioHistoryInstruction,
-    PatientReplyDetailInstruction,
-    PatientSafetyBoundariesInstruction,
-    PatientSchemaContractInstruction,
+    patient as patient_instruction_module,
 )
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
@@ -28,6 +23,34 @@ from apps.chatlab.orca.services.patient import (
     GenerateImageResponse,
     GenerateInitialResponse,
     GenerateReplyResponse,
+)
+
+STATIC_PATIENT_INSTRUCTION_NAMES = (
+    "PatientSafetyBoundariesInstruction",
+    "PatientConversationBehaviorInstruction",
+    "PatientInformationDisclosureInstruction",
+    "PatientSchemaContractInstruction",
+    "PatientInitialDetailInstruction",
+    "PatientReplyDetailInstruction",
+)
+
+EXPECTED_INITIAL_INSTRUCTION_NAMES = (
+    "PatientNameInstruction",
+    "PatientSafetyBoundariesInstruction",
+    "PatientConversationBehaviorInstruction",
+    "PatientInformationDisclosureInstruction",
+    "PatientSchemaContractInstruction",
+    "PatientRecentScenarioHistoryInstruction",
+    "PatientInitialDetailInstruction",
+)
+
+EXPECTED_REPLY_INSTRUCTION_NAMES = (
+    "PatientNameInstruction",
+    "PatientSafetyBoundariesInstruction",
+    "PatientConversationBehaviorInstruction",
+    "PatientInformationDisclosureInstruction",
+    "PatientSchemaContractInstruction",
+    "PatientReplyDetailInstruction",
 )
 
 
@@ -69,8 +92,29 @@ def _set_start_timestamp(simulation, *, days_ago: int) -> None:
     type(simulation).objects.filter(pk=simulation.pk).update(start_timestamp=timestamp)
 
 
-def _normalized_instruction(text: str) -> str:
-    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+def _instruction_names(service) -> tuple[str, ...]:
+    return tuple(cls.__name__ for cls in service._instruction_classes)
+
+
+def _instruction_by_name(service, name: str):
+    for instruction_cls in service._instruction_classes:
+        if instruction_cls.__name__ == name:
+            return instruction_cls
+    raise AssertionError(f"Instruction {name!r} was not resolved")
+
+
+def _yaml_instruction_text(name: str) -> str:
+    yaml_path = (
+        Path(__file__).resolve().parents[2]
+        / "SimWorks/apps/chatlab/orca/instructions/patient.yaml"
+    )
+    with yaml_path.open(encoding="utf-8") as fh:
+        yaml_data = yaml.safe_load(fh)
+
+    for item in yaml_data["instructions"]:
+        if item["name"] == name:
+            return item["instruction"]
+    raise AssertionError(f"Instruction {name!r} was not found in patient.yaml")
 
 
 class TestGenerateInitialResponseService:
@@ -85,38 +129,15 @@ class TestGenerateInitialResponseService:
     def test_service_collects_instruction_classes(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
         assert PatientNameInstruction in service._instruction_classes
-        assert PatientBaseInstruction in service._instruction_classes
-        assert PatientSafetyBoundariesInstruction in service._instruction_classes
-        assert PatientInformationDisclosureInstruction in service._instruction_classes
-        assert PatientSchemaContractInstruction in service._instruction_classes
         assert PatientRecentScenarioHistoryInstruction in service._instruction_classes
 
-    def test_instruction_ordering_layers(self):
+    def test_resolves_expected_instruction_names_in_order(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
-        names = [cls.__name__ for cls in service._instruction_classes]
-
-        assert names.index("PatientNameInstruction") < names.index(
-            "PatientSafetyBoundariesInstruction"
-        )
-        assert names.index("PatientSafetyBoundariesInstruction") < names.index(
-            "PatientConversationBehaviorInstruction"
-        )
-        assert names.index("PatientConversationBehaviorInstruction") < names.index(
-            "PatientInformationDisclosureInstruction"
-        )
-        assert names.index("PatientInformationDisclosureInstruction") < names.index(
-            "PatientSchemaContractInstruction"
-        )
-        assert names.index("PatientSchemaContractInstruction") < names.index(
-            "PatientRecentScenarioHistoryInstruction"
-        )
-        assert names.index("PatientRecentScenarioHistoryInstruction") < names.index(
-            "PatientInitialDetailInstruction"
-        )
+        assert _instruction_names(service) == EXPECTED_INITIAL_INSTRUCTION_NAMES
 
     def test_instruction_classes_are_unique(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
-        names = [cls.__name__ for cls in service._instruction_classes]
+        names = _instruction_names(service)
         assert len(names) == len(set(names))
 
     def test_service_instantiates_in_fresh_thread(self):
@@ -128,12 +149,16 @@ class TestGenerateInitialResponseService:
         assert PatientNameInstruction in service._instruction_classes
 
     def test_safety_instruction_blocks_out_of_character_admission(self):
-        text = PatientSafetyBoundariesInstruction.instruction or ""
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientSafetyBoundariesInstruction")
+        text = instruction_cls.instruction or ""
         assert "Never acknowledge being an AI" in text
         assert "are you acting?" in text
 
     def test_initial_instruction_requires_baseline_metadata(self):
-        text = PatientInitialDetailInstruction.instruction or ""
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInitialDetailInstruction")
+        text = instruction_cls.instruction or ""
         assert "patient_name" in text
         assert "age" in text
         assert "gender" in text
@@ -141,44 +166,34 @@ class TestGenerateInitialResponseService:
         assert "Do not front-load the history of present illness" in text
 
     def test_disclosure_instruction_prefers_gradual_under_disclosure(self):
-        text = PatientInformationDisclosureInstruction.instruction or ""
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+        text = instruction_cls.instruction or ""
         assert "Reveal information gradually" in text
         assert "Prefer realistic under-disclosure" in text
 
     def test_reply_instruction_marks_metadata_optional(self):
-        text = PatientReplyDetailInstruction.instruction or ""
+        service = GenerateReplyResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientReplyDetailInstruction")
+        text = instruction_cls.instruction or ""
         assert "optional after the initial turn" in text
         assert "Add metadata only when genuinely new structured facts emerge" in text
-        assert text.endswith(
+        assert text.rstrip().endswith(
             "Add metadata only when genuinely new structured facts emerge, using stable keys."
         )
         assert "Answer only the question that was asked" in text
 
-    def test_python_static_patient_instructions_match_yaml(self):
-        yaml_path = (
-            Path(__file__).resolve().parents[2]
-            / "SimWorks/apps/chatlab/orca/instructions/patient.yaml"
+    def test_static_patient_instructions_are_yaml_backed(self):
+        for name in STATIC_PATIENT_INSTRUCTION_NAMES:
+            assert not hasattr(patient_instruction_module, name)
+
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+
+        assert instruction_cls.instruction == _yaml_instruction_text(
+            "PatientInformationDisclosureInstruction"
         )
-        with yaml_path.open(encoding="utf-8") as fh:
-            yaml_data = yaml.safe_load(fh)
-
-        yaml_instructions = {
-            item["name"]: _normalized_instruction(item["instruction"])
-            for item in yaml_data["instructions"]
-        }
-        python_instructions = {
-            "PatientSafetyBoundariesInstruction": PatientSafetyBoundariesInstruction,
-            "PatientConversationBehaviorInstruction": PatientBaseInstruction,
-            "PatientInformationDisclosureInstruction": PatientInformationDisclosureInstruction,
-            "PatientSchemaContractInstruction": PatientSchemaContractInstruction,
-            "PatientInitialDetailInstruction": PatientInitialDetailInstruction,
-            "PatientReplyDetailInstruction": PatientReplyDetailInstruction,
-        }
-
-        for name, instruction_cls in python_instructions.items():
-            assert _normalized_instruction(instruction_cls.instruction or "") == yaml_instructions[
-                name
-            ]
+        assert "Reveal information gradually" in instruction_cls.instruction
 
 
 class TestGenerateReplyResponseService:
@@ -196,21 +211,11 @@ class TestGenerateReplyResponseService:
 
     def test_service_collects_disclosure_instruction(self):
         service = GenerateReplyResponse(context={"simulation_id": 1})
-        assert PatientInformationDisclosureInstruction in service._instruction_classes
+        assert "PatientInformationDisclosureInstruction" in _instruction_names(service)
 
-    def test_instruction_ordering_layers(self):
+    def test_resolves_expected_instruction_names_in_order(self):
         service = GenerateReplyResponse(context={"simulation_id": 1})
-        names = [cls.__name__ for cls in service._instruction_classes]
-
-        assert names.index("PatientConversationBehaviorInstruction") < names.index(
-            "PatientInformationDisclosureInstruction"
-        )
-        assert names.index("PatientInformationDisclosureInstruction") < names.index(
-            "PatientSchemaContractInstruction"
-        )
-        assert names.index("PatientSchemaContractInstruction") < names.index(
-            "PatientReplyDetailInstruction"
-        )
+        assert _instruction_names(service) == EXPECTED_REPLY_INSTRUCTION_NAMES
 
 
 class TestGenerateImageResponseService:
