@@ -318,6 +318,31 @@ def _autopause_trainerlab_session(simulation_id: int) -> None:
         )
 
 
+def _autofreeze_trainerlab_session(simulation_id: int) -> None:
+    """Pause the TrainerLab session when a runtime-cap guard fires.
+
+    Guard state is already set to PAUSED_RUNTIME_CAP before this is called.
+    This stops the tick loop and freezes active elapsed time in TrainerLab.
+    The re-entrant _sync_guard_pause() inside pause_session() is a no-op
+    because it sees the presence already in NON_RUNNABLE_STATES.
+    """
+    try:
+        from apps.trainerlab.models import SessionStatus, TrainerSession
+        from apps.trainerlab.services import pause_session
+
+        try:
+            session = TrainerSession.objects.get(simulation_id=simulation_id)
+        except TrainerSession.DoesNotExist:
+            return
+        if session.status == SessionStatus.RUNNING:
+            pause_session(session=session, user=None, correlation_id=None)
+    except Exception:
+        logger.exception(
+            "guards.autofreeze.runtime_cap_trainerlab_pause_failed",
+            simulation_id=simulation_id,
+        )
+
+
 # ───────────────────────────────────────────────────────────────────────
 # Runtime cap evaluation
 # ───────────────────────────────────────────────────────────────────────
@@ -383,6 +408,7 @@ def _transition_to_runtime_cap_paused(presence: SessionPresence) -> None:
         "guards.runtime_cap_reached",
         simulation_id=presence.simulation_id,
     )
+    _autofreeze_trainerlab_session(presence.simulation_id)
 
 
 # ───────────────────────────────────────────────────────────────────────

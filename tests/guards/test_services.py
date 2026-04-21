@@ -173,6 +173,107 @@ class TestEvaluateRuntimeCap:
         result = evaluate_runtime_cap(simulation.pk, active_elapsed=99999)
         assert result is None
 
+    def test_runtime_cap_pause_also_pauses_trainerlab_session(self, db):
+        """runtime-cap transition must also freeze the TrainerLab session."""
+        from datetime import UTC, timedelta
+
+        from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
+        from apps.guards.policy import GuardPolicy
+        from apps.trainerlab.models import SessionStatus
+        from apps.trainerlab.services import build_runtime_state_defaults, create_session
+
+        User = get_user_model()
+        role = UserRole.objects.create(title="RC Freeze Test Role")
+        user = User.objects.create_user(
+            email="rc-freeze@example.com", password="pass12345", role=role
+        )
+        session = create_session(user=user, scenario_spec={}, directives="", modifiers=[])
+
+        now = timezone.now()
+        anchor = (now - timedelta(seconds=30)).astimezone(UTC).isoformat()
+        state = build_runtime_state_defaults(state={
+            "active_elapsed_seconds": 0,
+            "active_elapsed_anchor_started_at": anchor,
+        })
+        session.status = SessionStatus.RUNNING
+        session.runtime_state_json = state
+        session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+
+        presence = SessionPresence.objects.create(
+            simulation=session.simulation,
+            lab_type=LabType.TRAINERLAB,
+            guard_state=GuardState.ACTIVE,
+            last_presence_at=now,
+            wall_clock_started_at=now,
+            wall_clock_expires_at=now + timedelta(hours=2),
+            engine_runnable=True,
+        )
+
+        capped_policy = GuardPolicy(runtime_cap_seconds=1200)
+        with unittest.mock.patch(
+            "apps.guards.services.resolve_policy_for_simulation",
+            return_value=("trainerlab", "trainerlab_go", capped_policy),
+        ):
+            result = evaluate_runtime_cap(session.simulation_id, active_elapsed=99999)
+
+        assert result == GuardState.PAUSED_RUNTIME_CAP
+
+        # Guard presence must be locked.
+        presence.refresh_from_db()
+        assert presence.guard_state == GuardState.PAUSED_RUNTIME_CAP
+        assert presence.engine_runnable is False
+
+        # TrainerLab session must be paused and anchor cleared.
+        session.refresh_from_db()
+        assert session.status == SessionStatus.PAUSED
+        assert session.runtime_state_json.get("active_elapsed_anchor_started_at") is None
+
+    def test_runtime_cap_freeze_is_idempotent_when_session_already_paused(self, db):
+        """No error when runtime-cap fires but TrainerSession is already PAUSED."""
+        from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
+        from apps.guards.policy import GuardPolicy
+        from apps.trainerlab.models import SessionStatus
+        from apps.trainerlab.services import create_session
+
+        User = get_user_model()
+        role = UserRole.objects.create(title="RC Idempotent Test Role")
+        user = User.objects.create_user(
+            email="rc-idempotent@example.com", password="pass12345", role=role
+        )
+        session = create_session(user=user, scenario_spec={}, directives="", modifiers=[])
+        session.status = SessionStatus.PAUSED
+        session.save(update_fields=["status", "modified_at"])
+
+        now = timezone.now()
+        presence = SessionPresence.objects.create(
+            simulation=session.simulation,
+            lab_type=LabType.TRAINERLAB,
+            guard_state=GuardState.ACTIVE,
+            last_presence_at=now,
+            wall_clock_started_at=now,
+            wall_clock_expires_at=now + timedelta(hours=2),
+            engine_runnable=True,
+        )
+
+        capped_policy = GuardPolicy(runtime_cap_seconds=1200)
+        with unittest.mock.patch(
+            "apps.guards.services.resolve_policy_for_simulation",
+            return_value=("trainerlab", "trainerlab_go", capped_policy),
+        ):
+            result = evaluate_runtime_cap(session.simulation_id, active_elapsed=99999)
+
+        assert result == GuardState.PAUSED_RUNTIME_CAP
+
+        # Session must remain PAUSED without error.
+        session.refresh_from_db()
+        assert session.status == SessionStatus.PAUSED
+        presence.refresh_from_db()
+        assert presence.guard_state == GuardState.PAUSED_RUNTIME_CAP
+
 
 class TestEvaluateWallClock:
     def test_not_expired_no_transition(self, simulation, trainerlab_presence):
