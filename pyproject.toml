@@ -46,6 +46,7 @@ dependencies = [
     "pytest-xdist>=3.8.0",
     "urllib3>=2.6.3",
     "pydantic-ai-slim>=1.65.0",
+    "celery-types>=0.26.0",
 ]
 
 [tool.uv.workspace]

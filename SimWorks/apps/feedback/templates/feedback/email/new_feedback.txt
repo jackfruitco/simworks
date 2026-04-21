@@ -1,0 +1,19 @@
+New MedSim feedback needs review.
+
+Category: {{ category_label }}
+Title: {{ feedback.title|default:"(No title)" }}
+Submitted by: {{ submitted_by }}
+Submitted at: {{ feedback.created_at }}
+Simulation ID: {{ feedback.simulation_id|default:"-" }}
+Conversation ID: {{ feedback.conversation_id|default:"-" }}
+Platform: {{ platform_summary }}
+Request ID: {{ feedback.request_id|default:"-" }}
+
+Preview:
+{{ body_preview }}
+
+Open feedback:
+{{ detail_url }}
+
+Unreviewed inbox:
+{{ unreviewed_url }}

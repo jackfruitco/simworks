@@ -34,14 +34,20 @@ class FeedbackOut(BaseModel):
 class FeedbackStaffOut(FeedbackOut):
     """Output schema for staff — extends FeedbackOut with internal fields."""
 
-    internal_notes: str = ""
+    email: str = ""
+    is_reviewed: bool = False
+    reviewed_at: datetime | None = None
     resolved_at: datetime | None = None
-    resolved_by_id: int | None = None
+    reviewed_by_id: int | None = None
+    is_archived: bool = False
+    archived_at: datetime | None = None
+    archived_by_id: int | None = None
     request_id: str = ""
     session_identifier: str = ""
     os_version: str = ""
     device_model: str = ""
     context_json: dict = Field(default_factory=dict)
+    attachments_json: list = Field(default_factory=list)
 
 
 class FeedbackCreate(BaseModel):
@@ -106,6 +112,14 @@ class FeedbackStaffListResponse(BaseModel):
     items: list[FeedbackStaffOut]
     count: int
     total: int
+
+
+class FeedbackUnreviewedCountOut(BaseModel):
+    """Staff unreviewed feedback badge count."""
+
+    count: int
+    label: str
+    url: str
 
 
 def feedback_to_out(fb) -> FeedbackOut:

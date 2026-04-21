@@ -24,6 +24,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("chatlab/", include("apps.chatlab.urls")),
     path("trainerlab/", include("apps.trainerlab.urls")),
+    path("staff/feedback/", include("apps.feedback.urls")),
     path("privacy/", include("apps.privacy.urls")),
     path(
         "robots.txt",
