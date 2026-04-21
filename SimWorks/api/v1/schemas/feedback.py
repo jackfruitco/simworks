@@ -37,6 +37,7 @@ class FeedbackStaffOut(FeedbackOut):
     email: str = ""
     is_reviewed: bool = False
     reviewed_at: datetime | None = None
+    resolved_at: datetime | None = None
     reviewed_by_id: int | None = None
     is_archived: bool = False
     archived_at: datetime | None = None

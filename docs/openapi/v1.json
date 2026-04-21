@@ -10974,6 +10974,18 @@
             ],
             "title": "Reviewed At"
           },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
           "reviewed_by_id": {
             "anyOf": [
               {

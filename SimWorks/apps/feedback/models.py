@@ -124,6 +124,7 @@ class UserFeedback(PersistModel):
     # ── Staff-only fields ─────────────────────────────────────────────
     is_reviewed = models.BooleanField(default=False, db_index=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -168,7 +169,9 @@ class FeedbackRemark(PersistModel):
     )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="feedback_remarks",
     )
     body = models.TextField()

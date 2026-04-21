@@ -354,13 +354,21 @@ class FeedbackWorkflowService:
             raise ValueError(f"Unsupported feedback status: {status}")
 
         old_status = feedback.status
+        now = timezone.now()
         if old_status == status:
             if status in self.REVIEWED_STATUSES and not feedback.is_reviewed:
                 self.mark_reviewed(feedback, actor)
+            if status == UserFeedback.Status.RESOLVED and feedback.resolved_at is None:
+                feedback.resolved_at = now
+                feedback.save(update_fields=["resolved_at", "updated_at"])
             return feedback
 
         feedback.status = status
-        feedback.save(update_fields=["status", "updated_at"])
+        if status == UserFeedback.Status.RESOLVED:
+            feedback.resolved_at = now
+        elif old_status == UserFeedback.Status.RESOLVED:
+            feedback.resolved_at = None
+        feedback.save(update_fields=["status", "resolved_at", "updated_at"])
         FeedbackAuditEvent.objects.create(
             feedback=feedback,
             actor=actor,
@@ -557,7 +565,7 @@ class FeedbackQueryService:
             "planned": base.filter(is_archived=False, status=UserFeedback.Status.PLANNED).count(),
             "resolved_last_30_days": base.filter(
                 status=UserFeedback.Status.RESOLVED,
-                reviewed_at__gte=recent_cutoff,
+                resolved_at__gte=recent_cutoff,
             ).count(),
             "duplicate": base.filter(
                 is_archived=False, status=UserFeedback.Status.DUPLICATE

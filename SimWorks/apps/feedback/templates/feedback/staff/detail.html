@@ -52,6 +52,7 @@
                 <div><dt class="font-semibold">Status</dt><dd>{{ feedback.get_status_display }}</dd></div>
                 <div><dt class="font-semibold">Reviewed by</dt><dd>{{ feedback.reviewed_by.email|default:"-" }}</dd></div>
                 <div><dt class="font-semibold">Reviewed at</dt><dd>{{ feedback.reviewed_at|date:"Y-m-d H:i"|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Resolved at</dt><dd>{{ feedback.resolved_at|date:"Y-m-d H:i"|default:"-" }}</dd></div>
                 <div><dt class="font-semibold">Archived by</dt><dd>{{ feedback.archived_by.email|default:"-" }}</dd></div>
                 <div><dt class="font-semibold">Archived at</dt><dd>{{ feedback.archived_at|date:"Y-m-d H:i"|default:"-" }}</dd></div>
             </dl>
@@ -129,7 +130,7 @@
         <div class="mt-4 space-y-3">
             {% for remark in remarks %}
                 <article class="rounded-lg border border-border bg-surface p-4">
-                    <div class="text-xs font-semibold text-content-secondary">{{ remark.author.email }} · {{ remark.created_at|date:"Y-m-d H:i" }}</div>
+                    <div class="text-xs font-semibold text-content-secondary">{{ remark.author.email|default:"System" }} · {{ remark.created_at|date:"Y-m-d H:i" }}</div>
                     <p class="mt-2 whitespace-pre-wrap text-sm">{{ remark.body }}</p>
                 </article>
             {% empty %}

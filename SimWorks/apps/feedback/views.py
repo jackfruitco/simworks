@@ -25,8 +25,12 @@ def staff_feedback_list(request):
     if request.method == "POST":
         form = FeedbackBulkActionForm(request.POST)
         if form.is_valid():
+            selected_ids = [item.pk for item in form.cleaned_data["feedback_ids"]]
+            allowed_feedback = query_service.staff_inbox_queryset(request.GET).filter(
+                pk__in=selected_ids
+            )
             count = workflow_service.bulk_update(
-                form.cleaned_data["feedback_ids"],
+                allowed_feedback,
                 request.user,
                 form.cleaned_data["action"],
             )

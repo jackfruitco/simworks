@@ -9,6 +9,7 @@ from django.utils import timezone
 def migrate_legacy_feedback_workflow(apps, schema_editor):
     UserFeedback = apps.get_model("feedback", "UserFeedback")
     FeedbackAuditEvent = apps.get_model("feedback", "FeedbackAuditEvent")
+    FeedbackRemark = apps.get_model("feedback", "FeedbackRemark")
     now = timezone.now()
     status_map = {
         "new": "new",
@@ -36,24 +37,35 @@ def migrate_legacy_feedback_workflow(apps, schema_editor):
         if is_reviewed:
             feedback.reviewed_at = feedback.resolved_at or now
             feedback.reviewed_by_id = feedback.resolved_by_id
+        if new_status == "resolved" and not feedback.resolved_at:
+            feedback.resolved_at = feedback.reviewed_at or now
+        elif new_status != "resolved":
+            feedback.resolved_at = None
         feedback.save(
             update_fields=[
                 "status",
                 "is_reviewed",
                 "reviewed_at",
                 "reviewed_by",
+                "resolved_at",
                 "updated_at",
             ]
         )
 
         internal_notes = (feedback.internal_notes or "").strip()
         if internal_notes:
+            remark = FeedbackRemark.objects.create(
+                feedback_id=feedback.pk,
+                author_id=feedback.resolved_by_id,
+                body=internal_notes,
+            )
             FeedbackAuditEvent.objects.create(
                 feedback_id=feedback.pk,
                 actor_id=feedback.resolved_by_id,
                 event_type="legacy_internal_note_migrated",
                 metadata_json={
-                    "body": internal_notes,
+                    "remark_id": remark.pk,
+                    "remark_migrated": True,
                     "old_status": old_status,
                     "new_status": new_status,
                 },
@@ -148,7 +160,9 @@ class Migration(migrations.Migration):
                 (
                     "author",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
                         related_name="feedback_remarks",
                         to=settings.AUTH_USER_MODEL,
                     ),
@@ -247,10 +261,6 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name="userfeedback",
             name="internal_notes",
-        ),
-        migrations.RemoveField(
-            model_name="userfeedback",
-            name="resolved_at",
         ),
         migrations.RemoveField(
             model_name="userfeedback",

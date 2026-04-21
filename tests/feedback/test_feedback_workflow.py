@@ -3,13 +3,19 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.core import mail
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, RequestFactory
 from django.utils import timezone
 import pytest
 
 from api.v1.schemas.feedback import FeedbackCreate
 from apps.feedback.models import FeedbackAuditEvent, FeedbackRemark, UserFeedback
-from apps.feedback.services import FeedbackSubmissionService, FeedbackWorkflowService
+from apps.feedback.services import (
+    FeedbackQueryService,
+    FeedbackSubmissionService,
+    FeedbackWorkflowService,
+)
 
 
 @pytest.fixture
@@ -174,6 +180,18 @@ class TestFeedbackWorkflowService:
             event_type=FeedbackAuditEvent.EventType.UNARCHIVED
         ).exists()
 
+    def test_resolved_status_sets_and_clears_resolved_at(self, user, staff_user):
+        feedback = UserFeedback.objects.create(user=user, category="other", body="Resolve me")
+        service = FeedbackWorkflowService()
+
+        service.set_status(feedback, UserFeedback.Status.RESOLVED, staff_user)
+        feedback.refresh_from_db()
+        assert feedback.resolved_at is not None
+
+        service.set_status(feedback, UserFeedback.Status.PLANNED, staff_user)
+        feedback.refresh_from_db()
+        assert feedback.resolved_at is None
+
     def test_bulk_update_creates_bulk_audit(self, user, staff_user):
         items = [
             UserFeedback.objects.create(user=user, category="other", body=f"Bulk {idx}")
@@ -194,6 +212,78 @@ class TestFeedbackWorkflowService:
             ).count()
             == 2
         )
+
+
+@pytest.mark.django_db
+class TestFeedbackAnalytics:
+    def test_resolved_last_30_days_uses_resolved_at_not_reviewed_at(self, user, staff_user):
+        now = timezone.now()
+        UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Old resolution",
+            status=UserFeedback.Status.RESOLVED,
+            is_reviewed=True,
+            reviewed_at=now,
+            reviewed_by=staff_user,
+            resolved_at=now - timedelta(days=45),
+        )
+        UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Recent resolution",
+            status=UserFeedback.Status.RESOLVED,
+            is_reviewed=True,
+            reviewed_at=now - timedelta(days=45),
+            reviewed_by=staff_user,
+            resolved_at=now,
+        )
+
+        analytics = FeedbackQueryService().analytics()
+
+        assert analytics["resolved_last_30_days"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+class TestFeedbackMigration:
+    def test_legacy_internal_notes_migrate_to_remarks(self, user, staff_user):
+        executor = MigrationExecutor(connection)
+        old_target = [("feedback", "0001_initial")]
+        new_target = [("feedback", "0002_feedback_workflow")]
+        executor.migrate(old_target)
+        old_apps = executor.loader.project_state(old_target).apps
+        OldUserFeedback = old_apps.get_model("feedback", "UserFeedback")
+        resolved_at = timezone.now() - timedelta(days=10)
+
+        legacy_feedback = OldUserFeedback.objects.create(
+            user_id=user.pk,
+            category="other",
+            body="Legacy body",
+            status="resolved",
+            internal_notes="Legacy developer note",
+            resolved_at=resolved_at,
+            resolved_by_id=staff_user.pk,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(new_target)
+        new_apps = executor.loader.project_state(new_target).apps
+        NewUserFeedback = new_apps.get_model("feedback", "UserFeedback")
+        NewFeedbackRemark = new_apps.get_model("feedback", "FeedbackRemark")
+        NewFeedbackAuditEvent = new_apps.get_model("feedback", "FeedbackAuditEvent")
+
+        migrated = NewUserFeedback.objects.get(pk=legacy_feedback.pk)
+        remark = NewFeedbackRemark.objects.get(feedback_id=migrated.pk)
+
+        assert migrated.status == "resolved"
+        assert migrated.resolved_at == resolved_at
+        assert remark.body == "Legacy developer note"
+        assert remark.author_id == staff_user.pk
+        assert NewFeedbackAuditEvent.objects.filter(
+            feedback_id=migrated.pk,
+            event_type="legacy_internal_note_migrated",
+            metadata_json__remark_migrated=True,
+        ).exists()
 
 
 @pytest.mark.django_db
@@ -241,6 +331,36 @@ class TestFeedbackStaffWeb:
         assert reviewed in items
         assert archived not in items
         assert response.context["unreviewed_feedback_count"] == 1
+        assert b'id="staff-feedback-banner"' in response.content
+
+    def test_staff_banner_hidden_without_unreviewed_count(self, user, staff_user):
+        UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Reviewed",
+            is_reviewed=True,
+        )
+        client = Client()
+        client.force_login(staff_user)
+
+        response = client.get("/staff/feedback/")
+
+        assert response.status_code == 200
+        assert b'id="staff-feedback-banner"' not in response.content
+
+    def test_non_staff_never_sees_staff_banner(self, user):
+        UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Unreviewed",
+            is_reviewed=False,
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get("/")
+
+        assert b'id="staff-feedback-banner"' not in response.content
 
     def test_detail_actions_and_sections(self, user, staff_user):
         feedback = UserFeedback.objects.create(user=user, category="bug_report", body="Broken")
@@ -300,3 +420,46 @@ class TestFeedbackStaffWeb:
         feedback.refresh_from_db()
         assert feedback.status == UserFeedback.Status.ACTION_REQUIRED
         assert feedback.is_reviewed is True
+
+    def test_default_bulk_action_does_not_mutate_archived_feedback(self, user, staff_user):
+        archived = UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Archived bulk",
+            is_archived=True,
+            status=UserFeedback.Status.NEW,
+        )
+        client = Client()
+        client.force_login(staff_user)
+
+        response = client.post(
+            "/staff/feedback/",
+            {"action": "mark_resolved", "feedback_ids": [str(archived.pk)]},
+        )
+
+        assert response.status_code == 302
+        archived.refresh_from_db()
+        assert archived.status == UserFeedback.Status.NEW
+        assert archived.is_reviewed is False
+
+    def test_archived_filter_bulk_action_can_mutate_archived_feedback(self, user, staff_user):
+        archived = UserFeedback.objects.create(
+            user=user,
+            category="other",
+            body="Archived bulk",
+            is_archived=True,
+            status=UserFeedback.Status.NEW,
+        )
+        client = Client()
+        client.force_login(staff_user)
+
+        response = client.post(
+            "/staff/feedback/?archived=archived",
+            {"action": "mark_resolved", "feedback_ids": [str(archived.pk)]},
+        )
+
+        assert response.status_code == 302
+        archived.refresh_from_db()
+        assert archived.status == UserFeedback.Status.RESOLVED
+        assert archived.is_reviewed is True
+        assert archived.resolved_at is not None
