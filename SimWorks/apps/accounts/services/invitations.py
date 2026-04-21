@@ -26,6 +26,27 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+class InvitationClaimError(Exception):
+    def __init__(
+        self,
+        message: str,
+        *,
+        invitation: Invitation | None = None,
+        reason: str = "",
+    ):
+        super().__init__(message)
+        self.invitation = invitation
+        self.reason = reason
+
+
+class InvitationEmailMismatchError(InvitationClaimError):
+    pass
+
+
+class InvitationNotClaimableError(InvitationClaimError):
+    pass
+
+
 def normalize_email(value: str | None) -> str:
     return Invitation.normalize_email(value)
 
@@ -83,11 +104,34 @@ def _assert_email_matches_invitation(*, invitation: Invitation, user) -> None:
     if not invited_email:
         return
     if _primary_email_for_user(user) != invited_email:
-        raise ValidationError("This invitation is for a different email address.")
+        raise InvitationEmailMismatchError(
+            "This invitation is for a different email address.",
+            invitation=invitation,
+            reason="email_mismatch",
+        )
 
 
 def _source_ref_for_invitation(invitation: Invitation, product_code: str) -> str:
     return f"invitation:{invitation.uuid}:{product_code}"
+
+
+def _not_claimable_reason(invitation: Invitation) -> str:
+    if invitation.revoked_at:
+        return "revoked"
+    if invitation.is_claimed:
+        return "claimed"
+    if invitation.is_expired:
+        return "expired"
+    return "not_claimable"
+
+
+def _raise_not_claimable(invitation: Invitation) -> None:
+    reason = _not_claimable_reason(invitation)
+    raise InvitationNotClaimableError(
+        "This invitation can no longer be claimed.",
+        invitation=invitation,
+        reason=reason,
+    )
 
 
 @transaction.atomic
@@ -175,7 +219,7 @@ def get_invitation_by_token_for_claim(token) -> Invitation:
         raise Invitation.DoesNotExist
     invitation = Invitation.objects.select_related("invited_by", "claimed_by").get(token=token)
     if not invitation.may_be_claimed():
-        raise ValidationError("This invitation can no longer be claimed.")
+        _raise_not_claimable(invitation)
     return invitation
 
 
@@ -187,50 +231,74 @@ def claim_invitation_for_user(
 ) -> tuple[Account, AccountMembership, Entitlement | None]:
     del request
     if not getattr(user, "is_authenticated", True):
-        raise ValidationError("A signed-in user is required to claim an invitation.")
+        raise InvitationClaimError("A signed-in user is required to claim an invitation.")
     if not getattr(user, "pk", None):
         raise ValidationError("User must be saved before claiming an invitation.")
 
     with transaction.atomic():
         invitation = Invitation.objects.select_for_update().get(pk=invitation.pk)
         if not invitation.may_be_claimed():
-            raise ValidationError("This invitation can no longer be claimed.")
+            _raise_not_claimable(invitation)
         _assert_email_matches_invitation(invitation=invitation, user=user)
 
-        account = maybe_create_personal_account_for_user(user)
-        membership, membership_created = AccountMembership.objects.select_for_update().get_or_create(
-            account=account,
-            user=user,
-            ended_at__isnull=True,
-            defaults={
-                "invite_email": normalize_email(getattr(user, "email", "")),
-                "role": invitation.membership_role,
-                "status": AccountMembership.Status.ACTIVE,
-                "invited_by": invitation.invited_by,
-                "approved_by": invitation.invited_by,
-                "joined_at": timezone.now(),
-            },
-        )
-        if not membership_created:
-            membership.invite_email = normalize_email(getattr(user, "email", ""))
-            membership.role = invitation.membership_role
-            membership.status = AccountMembership.Status.ACTIVE
-            membership.invited_by = invitation.invited_by
-            membership.approved_by = invitation.invited_by
-            membership.joined_at = membership.joined_at or timezone.now()
-            membership.ended_at = None
-            membership.save(
-                update_fields=[
-                    "invite_email",
-                    "role",
-                    "status",
-                    "invited_by",
-                    "approved_by",
-                    "joined_at",
-                    "ended_at",
-                    "updated_at",
-                ]
+        preexisting_open_membership_ids = set(
+            AccountMembership.objects.filter(user=user, ended_at__isnull=True).values_list(
+                "id",
+                flat=True,
             )
+        )
+        account = maybe_create_personal_account_for_user(user)
+        # Invitation claims are personal-account-only in this phase. A successful
+        # claim must leave the user with one active membership to their personal
+        # account, but invitation creation never creates a pending membership.
+        # If the personal membership already exists, repair only the fields
+        # needed to make it active and attributable to the invite claim; avoid
+        # broadly rewriting unrelated relationship data. If the personal account
+        # helper had to bootstrap the membership during this claim, treat that
+        # as invite-created and apply the invitation's membership role.
+        membership = (
+            AccountMembership.objects.select_for_update()
+            .filter(account=account, user=user, ended_at__isnull=True)
+            .order_by("-created_at")
+            .first()
+        )
+        membership_created = (
+            membership is None or membership.id not in preexisting_open_membership_ids
+        )
+        if membership is None:
+            membership = AccountMembership.objects.create(
+                account=account,
+                user=user,
+                invite_email=normalize_email(getattr(user, "email", "")),
+                role=invitation.membership_role,
+                status=AccountMembership.Status.ACTIVE,
+                invited_by=invitation.invited_by,
+                approved_by=invitation.invited_by,
+                joined_at=timezone.now(),
+            )
+        else:
+            update_fields = []
+            user_email = normalize_email(getattr(user, "email", ""))
+            if not membership.invite_email and user_email:
+                membership.invite_email = user_email
+                update_fields.append("invite_email")
+            if membership_created and membership.role != invitation.membership_role:
+                membership.role = invitation.membership_role
+                update_fields.append("role")
+            if membership.status != AccountMembership.Status.ACTIVE:
+                membership.status = AccountMembership.Status.ACTIVE
+                update_fields.append("status")
+            if membership.joined_at is None:
+                membership.joined_at = timezone.now()
+                update_fields.append("joined_at")
+            if membership.invited_by_id is None and invitation.invited_by_id is not None:
+                membership.invited_by = invitation.invited_by
+                update_fields.append("invited_by")
+            if membership.approved_by_id is None and invitation.invited_by_id is not None:
+                membership.approved_by = invitation.invited_by
+                update_fields.append("approved_by")
+            if update_fields:
+                membership.save(update_fields=[*dict.fromkeys(update_fields), "updated_at"])
 
         entitlement = None
         if invitation.product_code:

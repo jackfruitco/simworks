@@ -18,6 +18,8 @@ from django.views.decorators.http import require_http_methods
 from apps.accounts.decorators import is_inviter, staff_required
 from apps.accounts.services import get_personal_account_for_user
 from apps.accounts.services.invitations import (
+    InvitationEmailMismatchError,
+    InvitationNotClaimableError,
     claim_invitation_for_user,
     create_invitation,
     resend_invitation,
@@ -60,6 +62,17 @@ def _invitation_status(invitation: Invitation) -> str:
     if invitation.send_count:
         return "sent"
     return "pending"
+
+
+def _render_invitation_not_claimable(request, invitation: Invitation | None, *, reason: str = ""):
+    reason = reason or (_invitation_status(invitation) if invitation is not None else "invalid")
+    context = {"invitation": invitation} if invitation is not None else {}
+    if reason == "claimed":
+        return render(request, "accounts/invitations/claimed.html", context, status=410)
+    if reason == "expired":
+        return render(request, "accounts/invitations/expired.html", context, status=410)
+    context["error"] = "This invitation can no longer be claimed."
+    return render(request, "accounts/invitations/invalid.html", context, status=410)
 
 
 def _product_display_name(product_code: str) -> str:
@@ -160,23 +173,25 @@ def invitation_accept(request, token):
     except Invitation.DoesNotExist:
         return render(request, "accounts/invitations/invalid.html", status=404)
 
-    if invitation.revoked_at:
-        return render(request, "accounts/invitations/invalid.html", {"invitation": invitation}, status=410)
-    if invitation.is_claimed:
-        return render(request, "accounts/invitations/claimed.html", {"invitation": invitation}, status=410)
-    if invitation.is_expired:
-        return render(request, "accounts/invitations/expired.html", {"invitation": invitation}, status=410)
+    if not invitation.may_be_claimed():
+        return _render_invitation_not_claimable(request, invitation)
 
     request.session["invitation_token"] = invitation.token
     if request.user.is_authenticated:
         try:
             claim_invitation_for_user(invitation=invitation, user=request.user, request=request)
-        except ValidationError as exc:
+        except InvitationEmailMismatchError as exc:
             return render(
                 request,
                 "accounts/invitations/email_mismatch.html",
                 {"invitation": invitation, "error": exc},
                 status=403,
+            )
+        except InvitationNotClaimableError as exc:
+            return _render_invitation_not_claimable(
+                request,
+                exc.invitation or invitation,
+                reason=exc.reason,
             )
         messages.success(request, "Invitation accepted.")
         return redirect("home")

@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 from apps.accounts.services.invitations import (
+    InvitationClaimError,
     get_invitation_by_token_for_claim,
     normalize_email,
 )
@@ -133,7 +134,7 @@ class InvitationSignupForm(SignupForm):
             self.fields["invitation_token"].required = False
             try:
                 self.invitation = get_invitation_by_token_for_claim(token)
-            except (Invitation.DoesNotExist, ValidationError):
+            except (Invitation.DoesNotExist, InvitationClaimError):
                 self.invitation = None
 
         if self.invitation is not None:
@@ -157,8 +158,8 @@ class InvitationSignupForm(SignupForm):
             invitation = get_invitation_by_token_for_claim(token)
         except Invitation.DoesNotExist:
             raise ValidationError("Invalid invitation token.") from None
-        except ValidationError as exc:
-            raise ValidationError(exc.messages) from exc
+        except InvitationClaimError as exc:
+            raise ValidationError(str(exc)) from exc
 
         # Store for use in save()
         self.invitation = invitation

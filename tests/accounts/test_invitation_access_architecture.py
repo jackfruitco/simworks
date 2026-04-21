@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core import mail
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -17,6 +17,8 @@ from apps.accounts.models import (
 )
 from apps.accounts.services import get_personal_account_for_user
 from apps.accounts.services.invitations import (
+    InvitationEmailMismatchError,
+    InvitationNotClaimableError,
     claim_invitation_for_user,
     create_invitation,
     resend_invitation,
@@ -168,7 +170,7 @@ def test_invitation_email_task_marks_sent_on_success(staff_user):
     ).exists()
 
 
-def test_claim_invitation_creates_membership_and_stable_entitlement_source_ref(
+def test_claim_invitation_repairs_existing_membership_and_stable_entitlement_source_ref(
     superuser,
     role,
 ):
@@ -195,7 +197,9 @@ def test_claim_invitation_creates_membership_and_stable_entitlement_source_ref(
     assert account == get_personal_account_for_user(user)
     assert membership.account == account
     assert membership.user == user
-    assert membership.role == AccountMembership.Role.GENERAL_USER
+    assert membership.role == AccountMembership.Role.ORG_ADMIN
+    assert membership.status == AccountMembership.Status.ACTIVE
+    assert membership.ended_at is None
     assert entitlement is not None
     assert entitlement.source_ref == f"invitation:{invitation.uuid}:{ProductCode.TRAINERLAB_GO.value}"
     assert entitlement.scope_type == Entitlement.ScopeType.USER
@@ -218,11 +222,99 @@ def test_claim_invitation_without_product_code_grants_no_entitlement(staff_user,
     assert Entitlement.objects.count() == 0
 
 
+def test_claim_invitation_creates_open_membership_when_none_exists(staff_user, role):
+    invitation = Invitation.objects.create(
+        invited_by=staff_user,
+        email="newmembership@example.com",
+        membership_role=AccountMembership.Role.GENERAL_USER,
+    )
+    user = User.objects.create_user(
+        email="newmembership@example.com",
+        password="password",
+        role=role,
+    )
+    account = get_personal_account_for_user(user)
+    AccountMembership.objects.filter(account=account, user=user).delete()
+
+    _account, membership, _entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    assert membership.status == AccountMembership.Status.ACTIVE
+    assert membership.role == AccountMembership.Role.GENERAL_USER
+    assert membership.joined_at is not None
+
+
+def test_claim_invitation_does_not_reuse_ended_membership(staff_user, role):
+    invitation = Invitation.objects.create(
+        invited_by=staff_user,
+        email="ended@example.com",
+        membership_role=AccountMembership.Role.GENERAL_USER,
+    )
+    user = User.objects.create_user(email="ended@example.com", password="password", role=role)
+    account = get_personal_account_for_user(user)
+    existing = AccountMembership.objects.get(account=account, user=user)
+    existing.ended_at = timezone.now()
+    existing.status = AccountMembership.Status.REMOVED
+    existing.save(update_fields=["ended_at", "status", "updated_at"])
+
+    _account, membership, _entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    assert membership.id != existing.id
+    assert membership.status == AccountMembership.Status.ACTIVE
+    assert membership.ended_at is None
+
+
+def test_claim_invitation_preserves_existing_active_membership_role(staff_user, role):
+    invitation = Invitation.objects.create(
+        invited_by=staff_user,
+        email="preserve@example.com",
+        membership_role=AccountMembership.Role.GENERAL_USER,
+    )
+    user = User.objects.create_user(email="preserve@example.com", password="password", role=role)
+    account = get_personal_account_for_user(user)
+    membership = AccountMembership.objects.get(account=account, user=user)
+    membership.role = AccountMembership.Role.INSTRUCTOR
+    membership.status = AccountMembership.Status.SUSPENDED
+    membership.invite_email = ""
+    membership.invited_by = None
+    membership.approved_by = None
+    membership.joined_at = None
+    membership.save(
+        update_fields=[
+            "role",
+            "status",
+            "invite_email",
+            "invited_by",
+            "approved_by",
+            "joined_at",
+            "updated_at",
+        ]
+    )
+
+    _account, repaired, _entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    assert repaired.id == membership.id
+    assert repaired.role == AccountMembership.Role.INSTRUCTOR
+    assert repaired.status == AccountMembership.Status.ACTIVE
+    assert repaired.invite_email == user.email
+    assert repaired.invited_by == staff_user
+    assert repaired.approved_by == staff_user
+    assert repaired.joined_at is not None
+
+
 def test_claim_rejects_email_mismatch(staff_user, role):
     invitation = Invitation.objects.create(invited_by=staff_user, email="target@example.com")
     user = User.objects.create_user(email="other@example.com", password="password", role=role)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(InvitationEmailMismatchError):
         claim_invitation_for_user(invitation=invitation, user=user)
 
 
@@ -240,7 +332,7 @@ def test_claim_rejects_revoked_claimed_and_expired_tokens(staff_user, role):
     claimed.refresh_from_db()
 
     for invitation in (revoked, expired, claimed):
-        with pytest.raises(ValidationError):
+        with pytest.raises(InvitationNotClaimableError):
             claim_invitation_for_user(invitation=invitation, user=user)
 
 
@@ -255,6 +347,57 @@ def test_accept_view_claims_existing_authenticated_user(client, staff_user, role
     invitation.refresh_from_db()
     assert invitation.is_claimed is True
     assert invitation.claimed_by == user
+
+
+def test_accept_view_email_mismatch_renders_mismatch_page(client, staff_user, role):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="target-view@example.com")
+    user = User.objects.create_user(email="other-view@example.com", password="password", role=role)
+    client.force_login(user)
+
+    response = client.get(reverse("accounts:invitation-accept", kwargs={"token": invitation.token}))
+
+    assert response.status_code == 403
+    assert b"Use the invited email" in response.content
+
+
+def test_accept_view_not_claimable_states_do_not_render_mismatch_page(
+    client,
+    staff_user,
+    role,
+):
+    user = User.objects.create_user(email="state-view@example.com", password="password", role=role)
+    revoked = Invitation.objects.create(invited_by=staff_user, email=user.email)
+    revoke_invitation(invitation=revoked, revoked_by=staff_user)
+    expired = Invitation.objects.create(
+        invited_by=staff_user,
+        email=user.email,
+        expires_at=timezone.now() - timedelta(days=1),
+    )
+    claimed = Invitation.objects.create(invited_by=staff_user, email=user.email)
+    Invitation.objects.filter(pk=claimed.pk).update(is_claimed=True, claimed_at=timezone.now())
+    claimed.refresh_from_db()
+    client.force_login(user)
+
+    cases = (
+        (revoked, b"Invitation unavailable"),
+        (expired, b"Invitation expired"),
+        (claimed, b"Invitation already claimed"),
+    )
+    for invitation, expected_text in cases:
+        response = client.get(
+            reverse("accounts:invitation-accept", kwargs={"token": invitation.token})
+        )
+
+        assert response.status_code == 410
+        assert expected_text in response.content
+        assert b"Use the invited email" not in response.content
+
+
+def test_accept_view_invalid_token_renders_invalid_page(client):
+    response = client.get(reverse("accounts:invitation-accept", kwargs={"token": "missing"}))
+
+    assert response.status_code == 404
+    assert b"Invitation unavailable" in response.content
 
 
 def test_accept_view_routes_existing_email_to_login(client, staff_user, role):

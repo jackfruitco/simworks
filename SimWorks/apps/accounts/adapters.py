@@ -5,7 +5,6 @@ from __future__ import annotations
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core import context as allauth_context
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 
 from apps.common.emailing.environment import (
@@ -15,7 +14,11 @@ from apps.common.emailing.environment import (
 )
 
 from .models import Invitation
-from .services.invitations import claim_invitation_for_user, get_invitation_by_token_for_claim
+from .services.invitations import (
+    InvitationClaimError,
+    claim_invitation_for_user,
+    get_invitation_by_token_for_claim,
+)
 
 
 class InvitationAccountAdapter(DefaultAccountAdapter):
@@ -120,7 +123,7 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
         try:
             get_invitation_by_token_for_claim(invitation_token)
             return True
-        except (Invitation.DoesNotExist, ValidationError):
+        except (Invitation.DoesNotExist, InvitationClaimError):
             return False
 
     def save_user(self, request, user, form, commit=True):
@@ -143,7 +146,7 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
                 try:
                     invitation = get_invitation_by_token_for_claim(invitation_token)
                     claim_invitation_for_user(invitation=invitation, user=user, request=request)
-                except Invitation.DoesNotExist:
+                except (Invitation.DoesNotExist, InvitationClaimError):
                     pass
                 finally:
                     request.session.pop("invitation_token", None)
