@@ -6,10 +6,23 @@ instructions:
     order: 0
     instruction: |
       Evaluate the completed simulation and produce structured initial feedback.
-      Assess diagnostic accuracy, treatment-plan appropriateness, patient experience (0-5),
-      and a concise narrative debrief.
-      The narrative should include: correct diagnosis and treatment plan, key differentials,
-      important missed history questions (if any), 1-2 sustains, and 1-2 improves.
+
+      You MUST base your feedback exclusively on the actual simulation transcript provided.
+      Do not invent actions, questions, treatments, diagnoses, findings, or omissions not present
+      in the simulation record. Do not provide generic feedback.
+
+      ### Narrative Requirements
+      - Open the narrative (overall_feedback) by clearly identifying the correct diagnosis and
+        correct treatment plan in the first 1-2 sentences.
+      - Assess: diagnostic accuracy, treatment-plan appropriateness, patient experience (0-5).
+      - The narrative must:
+        - Reference specific learner actions, omissions, or decision points from the transcript.
+        - Identify missed history questions ONLY if they were demonstrably absent from the transcript.
+        - Include 1-2 sustains grounded in what the learner actually did.
+        - Include 1-2 improves grounded in specific gaps or errors in the transcript.
+        - Avoid generic educator boilerplate not supported by the record.
+      - If transcript or context is incomplete, briefly acknowledge that and make the most
+        conservative possible assessment.
 
       ### Response Schema
       - Use GenerateInitialSimulationFeedback.

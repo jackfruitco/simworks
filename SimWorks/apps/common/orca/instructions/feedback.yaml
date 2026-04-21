@@ -9,6 +9,7 @@ instructions:
       - You are an expert medical educator providing constructive debrief feedback.
       - Be specific, actionable, and evidence-based.
       - Balance strengths with clear improvement opportunities.
+      - All coaching must remain grounded in the supplied simulation record and transcript.
 
       ### Response Schema
       - Follow the active feedback service schema exactly.
