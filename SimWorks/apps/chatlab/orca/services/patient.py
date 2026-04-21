@@ -18,6 +18,7 @@ class GenerateInitialResponse(DjangoBaseService):
         "chatlab.patient.PatientNameInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientInformationDisclosureInstruction",
         "chatlab.patient.PatientSchemaContractInstruction",
         "chatlab.patient.PatientRecentScenarioHistoryInstruction",
         "chatlab.patient.PatientInitialDetailInstruction",
@@ -38,6 +39,7 @@ class GenerateReplyResponse(PreviousResponseMixin, DjangoBaseService):
         "chatlab.patient.PatientNameInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientInformationDisclosureInstruction",
         "chatlab.patient.PatientSchemaContractInstruction",
         "chatlab.patient.PatientReplyDetailInstruction",
     ]

@@ -10,6 +10,7 @@ import pytest
 
 from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
+    PatientInformationDisclosureInstruction,
     PatientInitialDetailInstruction,
     PatientNameInstruction,
     PatientRecentScenarioHistoryInstruction,
@@ -80,6 +81,7 @@ class TestGenerateInitialResponseService:
         assert PatientNameInstruction in service._instruction_classes
         assert PatientBaseInstruction in service._instruction_classes
         assert PatientSafetyBoundariesInstruction in service._instruction_classes
+        assert PatientInformationDisclosureInstruction in service._instruction_classes
         assert PatientSchemaContractInstruction in service._instruction_classes
         assert PatientRecentScenarioHistoryInstruction in service._instruction_classes
 
@@ -94,6 +96,9 @@ class TestGenerateInitialResponseService:
             "PatientConversationBehaviorInstruction"
         )
         assert names.index("PatientConversationBehaviorInstruction") < names.index(
+            "PatientInformationDisclosureInstruction"
+        )
+        assert names.index("PatientInformationDisclosureInstruction") < names.index(
             "PatientSchemaContractInstruction"
         )
         assert names.index("PatientSchemaContractInstruction") < names.index(
@@ -127,10 +132,21 @@ class TestGenerateInitialResponseService:
         assert "age" in text
         assert "gender" in text
         assert "1-2 `patient_history` items" in text
+        assert "Do not front-load the history of present illness" in text
+
+    def test_disclosure_instruction_prefers_gradual_under_disclosure(self):
+        text = PatientInformationDisclosureInstruction.instruction or ""
+        assert "Reveal information gradually" in text
+        assert "Prefer realistic under-disclosure" in text
 
     def test_reply_instruction_marks_metadata_optional(self):
         text = PatientReplyDetailInstruction.instruction or ""
         assert "optional after the initial turn" in text
+        assert "Add metadata only when genuinely new structured facts emerge" in text
+        assert text.endswith(
+            "Add metadata only when genuinely new structured facts emerge, using stable keys."
+        )
+        assert "Answer only the question that was asked" in text
 
 
 class TestGenerateReplyResponseService:
@@ -145,6 +161,24 @@ class TestGenerateReplyResponseService:
     def test_service_required_context_keys(self):
         assert hasattr(GenerateReplyResponse, "required_context_keys")
         assert "simulation_id" in GenerateReplyResponse.required_context_keys
+
+    def test_service_collects_disclosure_instruction(self):
+        service = GenerateReplyResponse(context={"simulation_id": 1})
+        assert PatientInformationDisclosureInstruction in service._instruction_classes
+
+    def test_instruction_ordering_layers(self):
+        service = GenerateReplyResponse(context={"simulation_id": 1})
+        names = [cls.__name__ for cls in service._instruction_classes]
+
+        assert names.index("PatientConversationBehaviorInstruction") < names.index(
+            "PatientInformationDisclosureInstruction"
+        )
+        assert names.index("PatientInformationDisclosureInstruction") < names.index(
+            "PatientSchemaContractInstruction"
+        )
+        assert names.index("PatientSchemaContractInstruction") < names.index(
+            "PatientReplyDetailInstruction"
+        )
 
 
 class TestGenerateImageResponseService:

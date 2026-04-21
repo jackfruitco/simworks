@@ -11,6 +11,7 @@ from .lab_orders import (
 )
 from .patient import (
     PatientConversationBehaviorInstruction,
+    PatientInformationDisclosureInstruction,
     PatientInitialDetailInstruction,
     PatientNameInstruction,
     PatientRecentScenarioHistoryInstruction,
@@ -39,6 +40,7 @@ __all__ = [
     "LabOrderTestListInstruction",
     "PatientBaseInstruction",
     "PatientConversationBehaviorInstruction",
+    "PatientInformationDisclosureInstruction",
     "PatientInitialDetailInstruction",
     "PatientNameInstruction",
     "PatientRecentScenarioHistoryInstruction",
