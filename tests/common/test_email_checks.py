@@ -40,6 +40,8 @@ def test_email_checks_error_for_missing_smtp_credentials():
 
     assert "config.E015" in _ids(results)
     assert "config.E020" in _ids(results)
+    assert any("SendGrid SMTP" in str(result.hint) for result in results)
+    assert any("SendGrid API key" in str(result.hint) for result in results)
 
 
 @override_settings(
@@ -60,3 +62,21 @@ def test_email_checks_validate_sender_identity_and_warn_on_non_approved_host():
     assert "config.E017" in _ids(results)
     assert "config.E018" in _ids(results)
     assert any(isinstance(result, Warning) and result.id == "config.W001" for result in results)
+
+
+@override_settings(
+    DEBUG=False,
+    EMAIL_ENVIRONMENT_NAME="production",
+    EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+    EMAIL_HOST="smtp.sendgrid.net",
+    EMAIL_HOST_USER="user@example.com",
+    EMAIL_HOST_PASSWORD="sendgrid-api-key",
+    DEFAULT_FROM_EMAIL="MedSim by Jackfruit <noreply@jackfruitco.com>",
+    EMAIL_REPLY_TO="support@jackfruitco.com",
+    SERVER_EMAIL="errors@jackfruitco.com",
+    EMAIL_BASE_URL="https://medsim.jackfruitco.com",
+)
+def test_email_checks_warn_for_sendgrid_smtp_username_override():
+    results = checks.check_email_configuration(None)
+
+    assert any(isinstance(result, Warning) and result.id == "config.W002" for result in results)

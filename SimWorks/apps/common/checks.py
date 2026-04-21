@@ -71,14 +71,14 @@ FEATURE_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
         "EMAIL_HOST_USER",
         "config.E006",
         "EMAIL_HOST_USER is missing while SMTP email backend is enabled.",
-        "Set EMAIL_HOST_USER to the full iCloud Mail address used for SMTP auth.",
+        "Set EMAIL_HOST_USER to `apikey` for SendGrid SMTP.",
     ),
     (
         _smtp_enabled,
         "EMAIL_HOST_PASSWORD",
         "config.E007",
         "EMAIL_HOST_PASSWORD is missing while SMTP email backend is enabled.",
-        "Set EMAIL_HOST_PASSWORD to an Apple app-specific password.",
+        "Set EMAIL_HOST_PASSWORD to the SendGrid API key.",
     ),
 ]
 
@@ -172,7 +172,7 @@ def check_email_configuration(app_configs, **kwargs):
             errors.append(
                 Error(
                     "EMAIL_HOST_USER is required when SMTP backend is active.",
-                    hint="Set EMAIL_HOST_USER to the full iCloud Mail address.",
+                    hint="Set EMAIL_HOST_USER to `apikey` for SendGrid SMTP.",
                     id="config.E015",
                 )
             )
@@ -180,8 +180,18 @@ def check_email_configuration(app_configs, **kwargs):
             errors.append(
                 Error(
                     "EMAIL_HOST_PASSWORD is required when SMTP backend is active.",
-                    hint="Set EMAIL_HOST_PASSWORD to an Apple app-specific password.",
+                    hint="Set EMAIL_HOST_PASSWORD to the SendGrid API key.",
                     id="config.E020",
+                )
+            )
+        email_host = str(getattr(settings, "EMAIL_HOST", "")).strip().lower()
+        email_host_user = str(getattr(settings, "EMAIL_HOST_USER", "")).strip()
+        if email_host == "smtp.sendgrid.net" and email_host_user and email_host_user != "apikey":
+            warnings.append(
+                Warning(
+                    "EMAIL_HOST_USER is not the expected SendGrid SMTP username.",
+                    hint="SendGrid SMTP generally requires EMAIL_HOST_USER=apikey.",
+                    id="config.W002",
                 )
             )
 

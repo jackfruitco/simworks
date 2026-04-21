@@ -11,6 +11,10 @@ def reload_email_settings(monkeypatch):
             "EMAIL_ENVIRONMENT_NAME",
             "EMAIL_USE_CONSOLE_BACKEND",
             "EMAIL_BACKEND",
+            "EMAIL_HOST",
+            "EMAIL_PORT",
+            "EMAIL_USE_TLS",
+            "EMAIL_USE_SSL",
             "EMAIL_HOST_USER",
             "EMAIL_HOST_PASSWORD",
             "EMAIL_BASE_URL",
@@ -41,20 +45,35 @@ def test_email_settings_defaults_to_console_in_local_debug(reload_email_settings
     assert settings_mod.EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend"
 
 
-def test_email_settings_defaults_to_smtp_in_staging_when_credentials_present(reload_email_settings):
+def test_email_settings_defaults_to_sendgrid_smtp_in_staging(reload_email_settings):
     settings_mod = reload_email_settings(
         {
             "DJANGO_DEBUG": "false",
             "EMAIL_ENVIRONMENT_NAME": "staging",
-            "EMAIL_HOST_USER": "noreply@icloud.example",
-            "EMAIL_HOST_PASSWORD": "app-specific-password",
+            "EMAIL_HOST_PASSWORD": "sendgrid-api-key",
         }
     )
 
     assert settings_mod.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
-    assert settings_mod.EMAIL_HOST == "smtp.mail.me.com"
+    assert settings_mod.EMAIL_HOST == "smtp.sendgrid.net"
     assert settings_mod.EMAIL_PORT == 587
     assert settings_mod.EMAIL_USE_TLS is True
+    assert settings_mod.EMAIL_USE_SSL is False
+    assert settings_mod.EMAIL_HOST_USER == "apikey"
+
+
+def test_email_settings_preserves_explicit_smtp_username_override(reload_email_settings):
+    settings_mod = reload_email_settings(
+        {
+            "DJANGO_DEBUG": "false",
+            "EMAIL_ENVIRONMENT_NAME": "staging",
+            "EMAIL_HOST_USER": "custom-user",
+            "EMAIL_HOST_PASSWORD": "sendgrid-api-key",
+        }
+    )
+
+    assert settings_mod.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
+    assert settings_mod.EMAIL_HOST_USER == "custom-user"
 
 
 def test_email_settings_flags_missing_smtp_credentials_outside_local(reload_email_settings):
