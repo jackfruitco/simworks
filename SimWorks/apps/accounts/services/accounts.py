@@ -56,9 +56,6 @@ def maybe_create_personal_account_for_user(user):
         if membership.status != AccountMembership.Status.ACTIVE:
             membership.status = AccountMembership.Status.ACTIVE
             update_fields.append("status")
-        if membership.role != AccountMembership.Role.ORG_ADMIN:
-            membership.role = AccountMembership.Role.ORG_ADMIN
-            update_fields.append("role")
         if membership.joined_at is None:
             membership.joined_at = timezone.now()
             update_fields.append("joined_at")

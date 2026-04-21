@@ -8,6 +8,7 @@ urlpatterns = [
     path("invitations/new/", views.new_invite, name="new-invite"),
     path("invitations/success/<slug:token>/", views.invite_success, name="invite-success"),
     path("invitations/list/", views.list_invites, name="list-invites"),
+    path("invitations/accept/<slug:token>/", views.invitation_accept, name="invitation-accept"),
     # Profile URLs
     path("profile/", views.profile_view, name="profile"),
     path("profile/<int:user_id>/", views.profile_view, name="profile-detail"),

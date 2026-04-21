@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Invitation Expired - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<section class="tw-root mx-auto max-w-xl px-4 py-12">
+  <div class="rounded-lg border border-border bg-surface-alt p-6 shadow-lg">
+    <h1 class="text-2xl font-bold text-content">Invitation expired</h1>
+    <p class="mt-3 text-content-secondary">
+      This MedSim invitation expired on {{ invitation.expires_at }}. Ask your inviter to resend it.
+    </p>
+    <a href="{% url 'home' %}" class="mt-6 inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light">
+      Go to MedSim
+    </a>
+  </div>
+</section>
+{% endblock %}

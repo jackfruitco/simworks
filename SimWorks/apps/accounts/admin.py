@@ -5,6 +5,7 @@ from .models import (
     AccountAuditEvent,
     AccountMembership,
     Invitation,
+    InvitationAuditEvent,
     Lab,
     LabMembership,
     RoleResource,
@@ -14,6 +15,7 @@ from .models import (
 
 admin.site.register(User)
 admin.site.register(Invitation)
+admin.site.register(InvitationAuditEvent)
 admin.site.register(UserRole)
 admin.site.register(RoleResource)
 admin.site.register(Lab)

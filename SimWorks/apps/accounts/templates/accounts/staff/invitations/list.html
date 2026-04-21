@@ -1,0 +1,71 @@
+{% extends "accounts/staff/base.html" %}
+
+{% block staff_title %}Invitations{% endblock %}
+
+{% block staff_content %}
+<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
+  <form method="get" class="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
+    <input name="q" value="{{ query }}" placeholder="Search email or token" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+    <select name="status" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">All statuses</option>
+      <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
+      <option value="sent" {% if status == "sent" %}selected{% endif %}>Sent</option>
+      <option value="claimed" {% if status == "claimed" %}selected{% endif %}>Claimed</option>
+      <option value="expired" {% if status == "expired" %}selected{% endif %}>Expired</option>
+      <option value="revoked" {% if status == "revoked" %}selected{% endif %}>Revoked</option>
+    </select>
+    <select name="has_email" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Email: any</option>
+      <option value="true" {% if has_email == "true" %}selected{% endif %}>Has email</option>
+      <option value="false" {% if has_email == "false" %}selected{% endif %}>No email</option>
+    </select>
+    <select name="has_bundle" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Bundle: any</option>
+      <option value="true" {% if has_bundle == "true" %}selected{% endif %}>Has Product Access Bundle</option>
+      <option value="false" {% if has_bundle == "false" %}selected{% endif %}>No Product Access Bundle</option>
+    </select>
+    <select name="inviter" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Any inviter</option>
+      {% for user_obj in inviter_choices %}
+        <option value="{{ user_obj.id }}" {% if inviter == user_obj.id|stringformat:"s" %}selected{% endif %}>{{ user_obj.email }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="created_from" value="{{ created_from }}" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+    <div class="flex gap-2">
+      <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
+      <a href="{% url 'staff:invitation-create' %}" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-content">New</a>
+    </div>
+  </form>
+</section>
+
+<section class="mt-6 overflow-x-auto rounded-lg border border-border bg-surface shadow">
+  <table class="min-w-full divide-y divide-border text-left text-sm">
+    <thead class="bg-surface-alt text-xs uppercase text-content-secondary">
+      <tr>
+        <th class="px-4 py-3">Invitee email</th>
+        <th class="px-4 py-3">Invited by</th>
+        <th class="px-4 py-3">Product Access Bundle</th>
+        <th class="px-4 py-3">Sent</th>
+        <th class="px-4 py-3">Claimed</th>
+        <th class="px-4 py-3">Created</th>
+        <th class="px-4 py-3">Expires</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for row in rows %}
+        <tr>
+          <td class="px-4 py-3"><a class="font-semibold text-jckfrt-olive" href="{% url 'staff:invitation-detail' row.invitation.id %}">{{ row.invitation.email|default:"No email" }}</a></td>
+          <td class="px-4 py-3">{{ row.invitation.invited_by.email|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.invitation.product_access_bundle_display_name|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.status }}{% if row.invitation.last_sent_at %}<br><span class="text-xs text-content-secondary">{{ row.invitation.last_sent_at }}</span>{% endif %}</td>
+          <td class="px-4 py-3">{{ row.invitation.claimed_by.email|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.invitation.created_at }}</td>
+          <td class="px-4 py-3">{{ row.invitation.expires_at }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="px-4 py-8 text-center text-content-secondary">No invitations found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

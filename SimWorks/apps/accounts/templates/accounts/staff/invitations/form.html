@@ -1,0 +1,16 @@
+{% extends "accounts/staff/base.html" %}
+
+{% block staff_title %}New Invitation{% endblock %}
+
+{% block staff_content %}
+<section class="max-w-2xl rounded-lg border border-border bg-surface-alt p-6 shadow-lg">
+  <form method="post" class="space-y-4 [&_label]:block [&_label]:text-sm [&_label]:font-semibold [&_label]:text-content [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:px-3 [&_select]:min-h-11 [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:px-3">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="flex gap-2">
+      <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Create and send</button>
+      <a href="{% url 'staff:invitation-list' %}" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-content">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

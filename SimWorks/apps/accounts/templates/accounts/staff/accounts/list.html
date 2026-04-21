@@ -1,0 +1,47 @@
+{% extends "accounts/staff/base.html" %}
+
+{% block staff_title %}Accounts{% endblock %}
+
+{% block staff_content %}
+<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
+  <form method="get" class="grid gap-3 md:grid-cols-4">
+    <input name="q" value="{{ query }}" placeholder="Search accounts" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+    <select name="type" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">All account types</option>
+      {% for value, label in account_types %}
+        <option value="{{ value }}" {% if account_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
+  </form>
+</section>
+
+<section class="mt-6 overflow-x-auto rounded-lg border border-border bg-surface shadow">
+  <table class="min-w-full divide-y divide-border text-left text-sm">
+    <thead class="bg-surface-alt text-xs uppercase text-content-secondary">
+      <tr>
+        <th class="px-4 py-3">Name</th>
+        <th class="px-4 py-3">Type</th>
+        <th class="px-4 py-3">Owner</th>
+        <th class="px-4 py-3">Active memberships</th>
+        <th class="px-4 py-3">Product Access Bundles</th>
+        <th class="px-4 py-3">Billing/subscriptions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for row in rows %}
+        <tr>
+          <td class="px-4 py-3"><a class="font-semibold text-jckfrt-olive" href="{% url 'staff:account-detail' row.account.id %}">{{ row.account.name }}</a></td>
+          <td class="px-4 py-3">{{ row.account.account_type }}</td>
+          <td class="px-4 py-3">{{ row.account.owner_user.email|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.account.active_memberships_count }}</td>
+          <td class="px-4 py-3">{{ row.product_names|join:", "|default:"-" }}</td>
+          <td class="px-4 py-3">{% for sub in row.subscriptions %}{{ sub.provider_type }}: {{ sub.status }}{% if not forloop.last %}<br>{% endif %}{% empty %}-{% endfor %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="px-4 py-8 text-center text-content-secondary">No accounts found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
