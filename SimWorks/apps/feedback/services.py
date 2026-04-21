@@ -104,7 +104,7 @@ def build_staff_unreviewed_feedback_url(request: HttpRequest | None = None) -> s
 
 
 class FeedbackNotificationService:
-    """Immediate staff notification path for new user-submitted feedback."""
+    """Synchronous staff notification sender for new user-submitted feedback."""
 
     template_prefix = "feedback/email/new_feedback"
 
@@ -153,9 +153,6 @@ class FeedbackNotificationService:
 
 class FeedbackSubmissionService:
     """Create user feedback through explicit application orchestration."""
-
-    def __init__(self, notification_service: FeedbackNotificationService | None = None):
-        self.notification_service = notification_service or FeedbackNotificationService()
 
     def submit_feedback(self, *, request: HttpRequest, body) -> UserFeedback:
         from apps.accounts.context import resolve_request_account
@@ -260,6 +257,12 @@ class FeedbackSubmissionService:
                     "request_id": feedback.request_id,
                 },
             )
+            transaction.on_commit(
+                lambda: self._enqueue_notification(
+                    feedback.pk,
+                    request_meta={"request_id": metadata["request_id"]},
+                )
+            )
 
         logger.info(
             "feedback.submitted",
@@ -268,37 +271,23 @@ class FeedbackSubmissionService:
             category=feedback.category,
             simulation_id=getattr(simulation, "pk", None),
         )
-        self._send_notification(feedback, request=request)
         return feedback
 
-    def _send_notification(self, feedback: UserFeedback, *, request: HttpRequest) -> None:
-        try:
-            sent_count = self.notification_service.send_new_feedback_notification(
-                feedback,
-                request=request,
-            )
-        except Exception as exc:
-            logger.exception(
-                "feedback.notification_email_failed",
-                feedback_id=feedback.pk,
-            )
-            FeedbackAuditEvent.objects.create(
-                feedback=feedback,
-                actor=None,
-                event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_FAILED,
-                metadata_json={"error": str(exc)},
-            )
-            return
+    def _enqueue_notification(
+        self,
+        feedback_id: int,
+        *,
+        request_meta: dict | None = None,
+    ) -> None:
+        from .tasks import send_new_feedback_notification_task
 
-        FeedbackAuditEvent.objects.create(
-            feedback=feedback,
-            actor=None,
-            event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_SENT,
-            metadata_json={
-                "to": FEEDBACK_NOTIFICATION_RECIPIENT,
-                "sent_count": sent_count,
-            },
-        )
+        try:
+            send_new_feedback_notification_task.delay(feedback_id, request_meta=request_meta)
+        except Exception:
+            logger.exception(
+                "feedback.notification_enqueue_failed",
+                feedback_id=feedback_id,
+            )
 
 
 class FeedbackWorkflowService:

@@ -16,6 +16,7 @@ from apps.feedback.services import (
     FeedbackSubmissionService,
     FeedbackWorkflowService,
 )
+from apps.feedback.tasks import send_new_feedback_notification_task
 
 
 @pytest.fixture
@@ -64,7 +65,18 @@ def _request_for(user):
 
 @pytest.mark.django_db
 class TestFeedbackSubmissionService:
-    def test_submit_feedback_creates_defaults_audit_and_email(self, user):
+    def test_submit_feedback_creates_defaults_audit_and_enqueues_email(
+        self, user, monkeypatch, django_capture_on_commit_callbacks
+    ):
+        enqueued = []
+
+        def fake_delay(feedback_id, request_meta=None):
+            enqueued.append((feedback_id, request_meta))
+
+        monkeypatch.setattr(
+            "apps.feedback.tasks.send_new_feedback_notification_task.delay",
+            fake_delay,
+        )
         body = FeedbackCreate(
             category="bug_report",
             title="Crash",
@@ -72,10 +84,11 @@ class TestFeedbackSubmissionService:
             context={"screen": "home"},
         )
 
-        feedback = FeedbackSubmissionService().submit_feedback(
-            request=_request_for(user),
-            body=body,
-        )
+        with django_capture_on_commit_callbacks(execute=True) as callbacks:
+            feedback = FeedbackSubmissionService().submit_feedback(
+                request=_request_for(user),
+                body=body,
+            )
 
         assert feedback.status == UserFeedback.Status.NEW
         assert feedback.is_reviewed is False
@@ -86,33 +99,134 @@ class TestFeedbackSubmissionService:
         assert feedback.audit_events.filter(
             event_type=FeedbackAuditEvent.EventType.CREATED
         ).exists()
-        assert feedback.audit_events.filter(
+        assert not feedback.audit_events.filter(
             event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_SENT
         ).exists()
+        assert len(callbacks) == 1
+        assert enqueued == [(feedback.pk, {"request_id": "corr-123"})]
+        assert len(mail.outbox) == 0
+
+    def test_notification_enqueue_failure_does_not_fail_submission(
+        self, user, monkeypatch, django_capture_on_commit_callbacks
+    ):
+        def failing_delay(feedback_id, request_meta=None):
+            raise RuntimeError("broker down")
+
+        monkeypatch.setattr(
+            "apps.feedback.tasks.send_new_feedback_notification_task.delay",
+            failing_delay,
+        )
+        body = FeedbackCreate(category="other", body="Still save this")
+        with django_capture_on_commit_callbacks(execute=True):
+            feedback = FeedbackSubmissionService().submit_feedback(
+                request=_request_for(user),
+                body=body,
+            )
+
+        assert feedback.pk
+        assert feedback.audit_events.filter(
+            event_type=FeedbackAuditEvent.EventType.CREATED
+        ).exists()
+        assert not feedback.audit_events.exclude(
+            event_type=FeedbackAuditEvent.EventType.CREATED
+        ).exists()
+
+
+@pytest.mark.django_db
+class TestFeedbackNotificationTask:
+    def test_success_sends_email_and_creates_audit(self, user):
+        body = "A" * 450
+        feedback = UserFeedback.objects.create(
+            user=user,
+            category=UserFeedback.Category.BUG_REPORT,
+            title="Crash",
+            body=body,
+            client_platform=UserFeedback.ClientPlatform.IOS,
+            client_version="2.4.1",
+        )
+
+        send_new_feedback_notification_task.run(
+            feedback.pk,
+            request_meta={"request_id": "corr-123"},
+        )
+
         assert len(mail.outbox) == 1
         message = mail.outbox[0]
         assert message.to == ["feedback@jackfruitco.com"]
         assert message.from_email == "noreply@jackfruitco.com"
         assert "[MedSim Feedback] Bug Report" in message.subject
         assert f"/staff/feedback/{feedback.pk}/" in message.body
+        assert "A" * 400 in message.body
+        assert "A" * 401 not in message.body
+        audit = feedback.audit_events.get(
+            event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_SENT
+        )
+        assert audit.metadata_json["to"] == "feedback@jackfruitco.com"
+        assert audit.metadata_json["sent_count"] == 1
+        assert audit.metadata_json["request_meta"]["request_id"] == "corr-123"
 
-    def test_notification_failure_does_not_fail_submission(self, user):
-        class FailingNotificationService:
-            def send_new_feedback_notification(self, feedback, *, request=None):
-                raise RuntimeError("smtp down")
-
-        body = FeedbackCreate(category="other", body="Still save this")
-        feedback = FeedbackSubmissionService(
-            notification_service=FailingNotificationService()
-        ).submit_feedback(
-            request=_request_for(user),
-            body=body,
+    def test_failure_records_audit_event(self, user, monkeypatch):
+        feedback = UserFeedback.objects.create(
+            user=user,
+            category=UserFeedback.Category.OTHER,
+            body="Send failure",
         )
 
-        assert feedback.pk
-        assert feedback.audit_events.filter(
+        def fail_send(self, feedback):
+            raise RuntimeError("smtp down")
+
+        monkeypatch.setattr(
+            "apps.feedback.tasks.FeedbackNotificationService.send_new_feedback_notification",
+            fail_send,
+        )
+
+        send_new_feedback_notification_task.run(feedback.pk)
+
+        assert len(mail.outbox) == 0
+        audit = feedback.audit_events.get(
             event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_FAILED
-        ).exists()
+        )
+        assert "smtp down" in audit.metadata_json["error"]
+
+    def test_missing_feedback_exits_safely(self):
+        send_new_feedback_notification_task.run(999999)
+
+        assert len(mail.outbox) == 0
+
+    def test_existing_success_audit_skips_duplicate_send(self, user, monkeypatch):
+        feedback = UserFeedback.objects.create(
+            user=user,
+            category=UserFeedback.Category.OTHER,
+            body="Already sent",
+        )
+        FeedbackAuditEvent.objects.create(
+            feedback=feedback,
+            actor=None,
+            event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_SENT,
+            metadata_json={},
+        )
+        called = False
+
+        def fail_if_called(self, feedback):
+            nonlocal called
+            called = True
+            raise AssertionError("notification should not be sent twice")
+
+        monkeypatch.setattr(
+            "apps.feedback.tasks.FeedbackNotificationService.send_new_feedback_notification",
+            fail_if_called,
+        )
+
+        send_new_feedback_notification_task.run(feedback.pk)
+
+        assert called is False
+        assert len(mail.outbox) == 0
+        assert (
+            feedback.audit_events.filter(
+                event_type=FeedbackAuditEvent.EventType.NOTIFICATION_EMAIL_SENT
+            ).count()
+            == 1
+        )
 
 
 @pytest.mark.django_db
