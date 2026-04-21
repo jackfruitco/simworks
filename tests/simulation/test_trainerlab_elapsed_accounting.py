@@ -49,10 +49,12 @@ class TestCheckpointActiveElapsed:
     def test_running_session_folds_and_advances_anchor(self, running_session):
         now = timezone.now()
         anchor = now - timedelta(seconds=100)
-        state = build_runtime_state_defaults(state={
-            "active_elapsed_seconds": 0,
-            "active_elapsed_anchor_started_at": anchor.astimezone(UTC).isoformat(),
-        })
+        state = build_runtime_state_defaults(
+            state={
+                "active_elapsed_seconds": 0,
+                "active_elapsed_anchor_started_at": anchor.astimezone(UTC).isoformat(),
+            }
+        )
 
         result = _checkpoint_active_elapsed(running_session, state=state, now=now)
 
@@ -65,10 +67,12 @@ class TestCheckpointActiveElapsed:
     def test_repeated_checkpoints_are_monotonic(self, running_session):
         t0 = timezone.now()
         anchor = t0 - timedelta(seconds=50)
-        state = build_runtime_state_defaults(state={
-            "active_elapsed_seconds": 0,
-            "active_elapsed_anchor_started_at": anchor.astimezone(UTC).isoformat(),
-        })
+        state = build_runtime_state_defaults(
+            state={
+                "active_elapsed_seconds": 0,
+                "active_elapsed_anchor_started_at": anchor.astimezone(UTC).isoformat(),
+            }
+        )
 
         # First checkpoint at t0: folds 50 s, anchor → t0
         state = _checkpoint_active_elapsed(running_session, state=state, now=t0)
@@ -85,10 +89,12 @@ class TestCheckpointActiveElapsed:
 
         now = timezone.now()
         anchor = (now - timedelta(seconds=60)).astimezone(UTC).isoformat()
-        state = build_runtime_state_defaults(state={
-            "active_elapsed_seconds": 200,
-            "active_elapsed_anchor_started_at": anchor,
-        })
+        state = build_runtime_state_defaults(
+            state={
+                "active_elapsed_seconds": 200,
+                "active_elapsed_anchor_started_at": anchor,
+            }
+        )
 
         result = _checkpoint_active_elapsed(running_session, state=state, now=now)
 
@@ -96,10 +102,12 @@ class TestCheckpointActiveElapsed:
         assert result["active_elapsed_seconds"] == 200
 
     def test_no_anchor_does_not_crash(self, running_session):
-        state = build_runtime_state_defaults(state={
-            "active_elapsed_seconds": 300,
-            "active_elapsed_anchor_started_at": None,
-        })
+        state = build_runtime_state_defaults(
+            state={
+                "active_elapsed_seconds": 300,
+                "active_elapsed_anchor_started_at": None,
+            }
+        )
 
         result = _checkpoint_active_elapsed(running_session, state=state)
 

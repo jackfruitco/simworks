@@ -193,10 +193,12 @@ class TestEvaluateRuntimeCap:
 
         now = timezone.now()
         anchor = (now - timedelta(seconds=30)).astimezone(UTC).isoformat()
-        state = build_runtime_state_defaults(state={
-            "active_elapsed_seconds": 0,
-            "active_elapsed_anchor_started_at": anchor,
-        })
+        state = build_runtime_state_defaults(
+            state={
+                "active_elapsed_seconds": 0,
+                "active_elapsed_anchor_started_at": anchor,
+            }
+        )
         session.status = SessionStatus.RUNNING
         session.runtime_state_json = state
         session.save(update_fields=["status", "runtime_state_json", "modified_at"])
