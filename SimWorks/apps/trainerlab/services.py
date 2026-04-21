@@ -408,7 +408,7 @@ def _finalize_runtime_views(
         if tick_count:
             state["tick_count"] = int(state.get("tick_count", 0) or 0) + tick_count
 
-    state["active_elapsed_seconds"] = get_active_elapsed_seconds(session, state=state, now=now)
+    state = _checkpoint_active_elapsed(session, state=state, now=now)
     state["state_revision"] = int(state.get("state_revision", 0) or 0) + 1
     state["last_runtime_completed_at"] = now.astimezone(UTC).isoformat()
 
@@ -470,6 +470,32 @@ def _freeze_active_elapsed(
     state = build_runtime_state_defaults(directives=session.initial_directives or "", state=state)
     state["active_elapsed_seconds"] = get_active_elapsed_seconds(session, state=state, now=now)
     state["active_elapsed_anchor_started_at"] = None
+    return state
+
+
+def _checkpoint_active_elapsed(
+    session: TrainerSession,
+    *,
+    state: dict[str, Any],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Fold anchor time into stored elapsed AND reset the anchor to now.
+
+    Used by _finalize_runtime_views() while the session is still RUNNING.
+    Unlike _freeze_active_elapsed (which clears the anchor), this advances
+    the anchor to now so the next finalize call only accumulates the new
+    incremental delta — preventing double-counting.
+    """
+    now = now or timezone.now()
+    state = build_runtime_state_defaults(directives=session.initial_directives or "", state=state)
+    elapsed = int(state.get("active_elapsed_seconds", 0) or 0)
+    anchor = _parse_iso_datetime(state.get("active_elapsed_anchor_started_at"))
+    if session.status == SessionStatus.RUNNING and anchor is not None:
+        elapsed += max(0, int((now - anchor).total_seconds()))
+        state["active_elapsed_seconds"] = elapsed
+        state["active_elapsed_anchor_started_at"] = now.astimezone(UTC).isoformat()
+    else:
+        state["active_elapsed_seconds"] = elapsed
     return state
 
 

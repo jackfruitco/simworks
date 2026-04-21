@@ -103,7 +103,8 @@ def test_send_templated_email_task_passes_simple_serializable_payload(monkeypatc
         captured.update(kwargs)
 
     monkeypatch.setattr(
-        "apps.common.emailing.tasks.send_templated_email", fake_send_templated_email
+        "apps.common.emailing.tasks.send_templated_email",
+        fake_send_templated_email,
     )
 
     send_templated_email_task.run(
