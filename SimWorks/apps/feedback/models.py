@@ -29,11 +29,12 @@ class UserFeedback(PersistModel):
 
     class Status(models.TextChoices):
         NEW = "new", "New"
-        TRIAGED = "triaged", "Triaged"
+        ACTION_REQUIRED = "action_required", "Action Required"
+        NO_ACTION_REQUIRED = "no_action_required", "No Action Required"
         PLANNED = "planned", "Planned"
         RESOLVED = "resolved", "Resolved"
-        WONT_FIX = "wont_fix", "Won't Fix"
         DUPLICATE = "duplicate", "Duplicate"
+        WONT_FIX = "wont_fix", "Won't Fix"
 
     class Severity(models.TextChoices):
         LOW = "low", "Low"
@@ -110,6 +111,7 @@ class UserFeedback(PersistModel):
         max_length=32,
         choices=ClientPlatform.choices,
         default=ClientPlatform.UNKNOWN,
+        db_index=True,
     )
     client_version = models.CharField(max_length=100, blank=True, default="")
     os_version = models.CharField(max_length=100, blank=True, default="")
@@ -120,22 +122,112 @@ class UserFeedback(PersistModel):
     attachments_json = models.JSONField(default=list, blank=True)
 
     # ── Staff-only fields ─────────────────────────────────────────────
-    internal_notes = models.TextField(blank=True, default="")
-    resolved_at = models.DateTimeField(null=True, blank=True)
-    resolved_by = models.ForeignKey(
+    is_reviewed = models.BooleanField(default=False, db_index=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="resolved_feedback",
+        related_name="reviewed_feedback",
+    )
+    is_archived = models.BooleanField(default=False, db_index=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="archived_feedback",
     )
 
     class Meta:
         verbose_name = "User Feedback"
         verbose_name_plural = "User Feedback"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["is_archived", "is_reviewed", "-created_at"],
+                name="feedback_inbox_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         user_label = self.user.email if self.user_id else "anonymous"
         snippet = self.title or self.body[:40]
         return f"[{self.category}] {snippet!r} by {user_label}"
+
+
+class FeedbackRemark(PersistModel):
+    """Append-only staff remark for user-submitted feedback."""
+
+    feedback = models.ForeignKey(
+        UserFeedback,
+        on_delete=models.CASCADE,
+        related_name="remarks",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="feedback_remarks",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Developer Team Remark"
+        verbose_name_plural = "Developer Team Remarks"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["feedback", "created_at"], name="feedback_remark_time_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Remark on feedback {self.feedback_id} by {self.author_id}"
+
+
+class FeedbackAuditEvent(PersistModel):
+    """Append-only audit event for user feedback workflow changes."""
+
+    class EventType(models.TextChoices):
+        CREATED = "created", "Created"
+        MARKED_REVIEWED = "marked_reviewed", "Marked Reviewed"
+        STATUS_CHANGED = "status_changed", "Status Changed"
+        ARCHIVED = "archived", "Archived"
+        UNARCHIVED = "unarchived", "Unarchived"
+        REMARK_ADDED = "remark_added", "Remark Added"
+        BULK_UPDATED = "bulk_updated", "Bulk Updated"
+        NOTIFICATION_EMAIL_FAILED = "notification_email_failed", "Notification Email Failed"
+        NOTIFICATION_EMAIL_SENT = "notification_email_sent", "Notification Email Sent"
+        LEGACY_INTERNAL_NOTE_MIGRATED = (
+            "legacy_internal_note_migrated",
+            "Legacy Internal Note Migrated",
+        )
+
+    feedback = models.ForeignKey(
+        UserFeedback,
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedback_audit_events",
+    )
+    event_type = models.CharField(max_length=64, choices=EventType.choices, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Feedback Audit Event"
+        verbose_name_plural = "Feedback Audit Events"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["feedback", "-created_at"], name="feedback_audit_time_idx"),
+            models.Index(fields=["event_type", "-created_at"], name="feedback_audit_type_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_type} on feedback {self.feedback_id}"

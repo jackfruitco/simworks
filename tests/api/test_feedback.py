@@ -553,7 +553,7 @@ class TestStaffFeedback:
             user=test_user,
             category=UserFeedback.Category.OTHER,
             body="Triaged item",
-            status=UserFeedback.Status.TRIAGED,
+            status=UserFeedback.Status.ACTION_REQUIRED,
         )
 
         response = staff_auth_client.get("/api/v1/feedback/staff/?status=new")
@@ -615,18 +615,119 @@ class TestStaffFeedback:
         assert data["total"] == 1
         assert data["items"][0]["body"] == "Recent entry"
 
-    def test_staff_response_includes_internal_notes(self, staff_auth_client, test_user):
-        """Staff list response exposes internal_notes field."""
+    def test_staff_response_includes_workflow_fields(self, staff_auth_client, test_user):
+        """Staff list response exposes workflow fields without legacy notes."""
         from apps.feedback.models import UserFeedback
 
         UserFeedback.objects.create(
             user=test_user,
             category=UserFeedback.Category.BUG_REPORT,
             body="A bug report",
-            internal_notes="Investigated, looks like a race condition",
+            status=UserFeedback.Status.ACTION_REQUIRED,
+            is_reviewed=True,
+            is_archived=False,
         )
 
         response = staff_auth_client.get("/api/v1/feedback/staff/")
         assert response.status_code == 200
         data = response.json()
-        assert data["items"][0]["internal_notes"] == "Investigated, looks like a race condition"
+        item = data["items"][0]
+        assert item["status"] == "action_required"
+        assert item["is_reviewed"] is True
+        assert item["is_archived"] is False
+        assert "internal_notes" not in item
+
+    def test_filter_by_unreviewed(self, staff_auth_client, test_user):
+        """reviewed=unreviewed returns only unreviewed records."""
+        from apps.feedback.models import UserFeedback
+
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Unreviewed",
+            is_reviewed=False,
+        )
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Reviewed",
+            is_reviewed=True,
+        )
+
+        response = staff_auth_client.get("/api/v1/feedback/staff/?reviewed=unreviewed")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["body"] == "Unreviewed"
+
+    def test_filter_by_archived(self, staff_auth_client, test_user):
+        """archived=archived returns only archived records."""
+        from apps.feedback.models import UserFeedback
+
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Archived",
+            is_archived=True,
+        )
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Active",
+            is_archived=False,
+        )
+
+        response = staff_auth_client.get("/api/v1/feedback/staff/?archived=archived")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["body"] == "Archived"
+
+    def test_unreviewed_count_excludes_archived(self, staff_auth_client, test_user):
+        """The count endpoint excludes archived feedback."""
+        from apps.feedback.models import UserFeedback
+
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Visible unreviewed",
+            is_reviewed=False,
+            is_archived=False,
+        )
+        UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="Archived unreviewed",
+            is_reviewed=False,
+            is_archived=True,
+        )
+
+        response = staff_auth_client.get("/api/v1/feedback/staff/unreviewed-count/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        assert data["label"] == "1 unreviewed feedback submission"
+
+    def test_my_feedback_does_not_expose_staff_only_data(self, auth_client, test_user, staff_user):
+        """User-facing feedback history excludes remarks and audit history."""
+        from apps.feedback.models import FeedbackAuditEvent, FeedbackRemark, UserFeedback
+
+        feedback = UserFeedback.objects.create(
+            user=test_user,
+            category=UserFeedback.Category.OTHER,
+            body="My feedback",
+        )
+        FeedbackRemark.objects.create(feedback=feedback, author=staff_user, body="Staff only")
+        FeedbackAuditEvent.objects.create(
+            feedback=feedback,
+            actor=staff_user,
+            event_type=FeedbackAuditEvent.EventType.REMARK_ADDED,
+            metadata_json={},
+        )
+
+        response = auth_client.get("/api/v1/feedback/me/")
+        assert response.status_code == 200
+        item = response.json()["items"][0]
+        assert "remarks" not in item
+        assert "audit_events" not in item
+        assert "is_archived" not in item

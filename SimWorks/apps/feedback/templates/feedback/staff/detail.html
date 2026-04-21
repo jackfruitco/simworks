@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback #{{ feedback.pk }} - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div class="mb-4">
+        <a href="{% url 'feedback:staff-list' %}" class="inline-flex items-center gap-2 text-sm font-semibold text-content-secondary hover:text-content">
+            <span class="iconify" data-icon="mdi:arrow-left"></span>
+            Feedback Inbox
+        </a>
+    </div>
+
+    <section class="rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-content sm:text-3xl">{{ feedback.title|default:"Untitled feedback" }}</h1>
+                <p class="mt-2 text-sm text-content-secondary">
+                    #{{ feedback.pk }} submitted {{ feedback.created_at|date:"Y-m-d H:i" }} by {{ feedback.user.email|default:"unknown user" }}
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="inline-flex rounded-full bg-surface px-3 py-1 text-sm font-semibold">{{ feedback.get_category_display }}</span>
+                <span class="inline-flex rounded-full bg-surface px-3 py-1 text-sm font-semibold">{{ feedback.get_status_display }}</span>
+                {% if feedback.is_reviewed %}
+                    <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-800">Reviewed</span>
+                {% else %}
+                    <span class="inline-flex rounded-full bg-yellow-100 px-3 py-1 text-sm font-semibold text-yellow-800">Unreviewed</span>
+                {% endif %}
+                {% if feedback.is_archived %}
+                    <span class="inline-flex rounded-full bg-gray-200 px-3 py-1 text-sm font-semibold text-gray-800">Archived</span>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="mt-4 grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <section class="rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+            <h2 class="text-lg font-semibold text-content">Feedback Content</h2>
+            <div class="mt-4 whitespace-pre-wrap rounded-lg border border-border bg-surface p-4 text-sm">{{ feedback.body }}</div>
+            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt class="font-semibold">Rating</dt><dd>{{ feedback.rating|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Follow-up allowed</dt><dd>{{ feedback.allow_follow_up|yesno:"Yes,No" }}</dd></div>
+                <div><dt class="font-semibold">Email</dt><dd>{{ feedback.email|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Source</dt><dd>{{ feedback.get_source_display }}</dd></div>
+            </dl>
+        </section>
+
+        <section class="rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+            <h2 class="text-lg font-semibold text-content">Workflow State</h2>
+            <dl class="mt-4 space-y-3 text-sm">
+                <div><dt class="font-semibold">Status</dt><dd>{{ feedback.get_status_display }}</dd></div>
+                <div><dt class="font-semibold">Reviewed by</dt><dd>{{ feedback.reviewed_by.email|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Reviewed at</dt><dd>{{ feedback.reviewed_at|date:"Y-m-d H:i"|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Archived by</dt><dd>{{ feedback.archived_by.email|default:"-" }}</dd></div>
+                <div><dt class="font-semibold">Archived at</dt><dd>{{ feedback.archived_at|date:"Y-m-d H:i"|default:"-" }}</dd></div>
+            </dl>
+
+            <div class="mt-5 space-y-3">
+                {% if not feedback.is_reviewed %}
+                    <form method="post" action="{% url 'feedback:mark-reviewed' feedback.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light hover:bg-jckfrt-olive-hover">
+                            <span class="iconify" data-icon="mdi:check-circle-outline"></span>
+                            Mark Reviewed
+                        </button>
+                    </form>
+                {% endif %}
+
+                <form method="post" action="{% url 'feedback:set-status' feedback.pk %}" class="space-y-2">
+                    {% csrf_token %}
+                    <label class="text-sm font-semibold">Set status</label>
+                    {{ status_form.status }}
+                    <button type="submit" class="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-surface-alt">
+                        <span class="iconify" data-icon="mdi:tag-check-outline"></span>
+                        Update Status
+                    </button>
+                </form>
+
+                {% if feedback.is_archived %}
+                    <form method="post" action="{% url 'feedback:unarchive' feedback.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-surface-alt">
+                            <span class="iconify" data-icon="mdi:archive-arrow-up-outline"></span>
+                            Unarchive
+                        </button>
+                    </form>
+                {% else %}
+                    <form method="post" action="{% url 'feedback:archive' feedback.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-surface-alt">
+                            <span class="iconify" data-icon="mdi:archive-outline"></span>
+                            Archive
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <h2 class="text-lg font-semibold text-content">Metadata / Context</h2>
+        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div><dt class="font-semibold">Simulation ID</dt><dd>{{ feedback.simulation_id|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Conversation ID</dt><dd>{{ feedback.conversation_id|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Lab Type</dt><dd>{{ feedback.lab_type|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Platform</dt><dd>{{ feedback.client_platform|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Version</dt><dd>{{ feedback.client_version|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">OS</dt><dd>{{ feedback.os_version|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Device</dt><dd>{{ feedback.device_model|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Request ID</dt><dd>{{ feedback.request_id|default:"-" }}</dd></div>
+            <div><dt class="font-semibold">Session</dt><dd>{{ feedback.session_identifier|default:"-" }}</dd></div>
+        </dl>
+
+        {% if feedback.context_json %}
+            <div class="mt-4 rounded-lg border border-border bg-surface p-4">
+                <h3 class="text-sm font-semibold">Context JSON</h3>
+                <dl class="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                    {% for key,value in feedback.context_json.items %}
+                        <div><dt class="font-semibold">{{ key }}</dt><dd class="break-all">{{ value }}</dd></div>
+                    {% endfor %}
+                </dl>
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <h2 class="text-lg font-semibold text-content">Developer Team Remarks</h2>
+        <div class="mt-4 space-y-3">
+            {% for remark in remarks %}
+                <article class="rounded-lg border border-border bg-surface p-4">
+                    <div class="text-xs font-semibold text-content-secondary">{{ remark.author.email }} · {{ remark.created_at|date:"Y-m-d H:i" }}</div>
+                    <p class="mt-2 whitespace-pre-wrap text-sm">{{ remark.body }}</p>
+                </article>
+            {% empty %}
+                <p class="text-sm text-content-secondary">No developer team remarks yet.</p>
+            {% endfor %}
+        </div>
+
+        <form method="post" action="{% url 'feedback:add-remark' feedback.pk %}" class="mt-5 space-y-3">
+            {% csrf_token %}
+            {{ remark_form.body }}
+            <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light hover:bg-jckfrt-olive-hover">
+                <span class="iconify" data-icon="mdi:comment-plus-outline"></span>
+                Add Remark
+            </button>
+        </form>
+    </section>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <h2 class="text-lg font-semibold text-content">Audit History</h2>
+        <div class="mt-4 space-y-3">
+            {% for event in audit_events %}
+                <article class="rounded-lg border border-border bg-surface p-4">
+                    <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="font-semibold">{{ event.get_event_type_display }}</div>
+                        <div class="text-xs text-content-secondary">{{ event.created_at|date:"Y-m-d H:i" }}</div>
+                    </div>
+                    <div class="mt-1 text-sm text-content-secondary">Actor: {{ event.actor.email|default:"System" }}</div>
+                    {% if event.metadata_json %}
+                        <pre class="mt-2 overflow-x-auto rounded-lg bg-surface-alt p-3 text-xs">{{ event.metadata_json }}</pre>
+                    {% endif %}
+                </article>
+            {% empty %}
+                <p class="text-sm text-content-secondary">No audit events yet.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock content %}

@@ -21,6 +21,19 @@
 
             <div class="ml-auto hidden items-center gap-2 md:flex">
                 {% if user.is_authenticated %}
+                    {% if user.is_staff %}
+                        <a href="{{ unreviewed_feedback_url|default:'/staff/feedback/?reviewed=unreviewed' }}"
+                           class="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt"
+                           title="{{ unreviewed_feedback_label|default:'0 unreviewed feedback submissions' }}">
+                            <span class="iconify" data-icon="mdi:message-alert-outline" data-inline="true"></span>
+                            Feedback
+                            {% if unreviewed_feedback_count %}
+                                <span class="inline-flex min-w-6 items-center justify-center rounded-full bg-jckfrt-red px-2 py-0.5 text-xs font-bold text-white">
+                                    {{ unreviewed_feedback_count }}
+                                </span>
+                            {% endif %}
+                        </a>
+                    {% endif %}
                     <span class="hidden text-sm text-content-secondary lg:inline">Welcome, {{ user.first_name|default:user.email }}.</span>
                     <div class="relative" @click.outside="userOpen = false">
                         <button type="button"
@@ -86,6 +99,15 @@
                 </a>
 
                 {% if user.is_authenticated %}
+                    {% if user.is_staff %}
+                    <a href="{{ unreviewed_feedback_url|default:'/staff/feedback/?reviewed=unreviewed' }}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
+                        <span class="iconify" data-icon="mdi:message-alert-outline"></span>
+                        Feedback
+                        {% if unreviewed_feedback_count %}
+                            <span class="ml-auto inline-flex min-w-6 items-center justify-center rounded-full bg-jckfrt-red px-2 py-0.5 text-xs font-bold text-white">{{ unreviewed_feedback_count }}</span>
+                        {% endif %}
+                    </a>
+                    {% endif %}
                     <a href="{% url 'accounts:profile' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
                         <span class="iconify" data-icon="mdi:account"></span>
                         My Profile
