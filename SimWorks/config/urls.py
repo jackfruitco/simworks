@@ -22,6 +22,7 @@ urlpatterns = [
     path("accounts/", include("apps.accounts.urls")),
     # Django-allauth URLs (login, signup, password reset, etc.)
     path("accounts/", include("allauth.urls")),
+    path("staff/", include("apps.accounts.staff_urls", namespace="staff")),
     path("chatlab/", include("apps.chatlab.urls")),
     path("trainerlab/", include("apps.trainerlab.urls")),
     path("privacy/", include("apps.privacy.urls")),

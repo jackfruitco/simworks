@@ -1,0 +1,16 @@
+Hello,
+
+{% if inviter_name or inviter_email %}{% firstof inviter_name inviter_email %} invited you to join MedSim by Jackfruit.{% else %}You have been invited to join MedSim by Jackfruit.{% endif %}
+
+Accept your invitation:
+{{ accept_url }}
+
+{% if product_access_bundle %}Product Access Bundle: {{ product_access_bundle }}
+
+{% endif %}This invitation expires on {{ invitation.expires_at }}.
+
+{% if is_staging %}---
+STAGING NOTICE: This email was sent from the staging environment.
+---
+{% endif %}
+Need help? Contact {{ support_email|default:"support@jackfruitco.com" }}.

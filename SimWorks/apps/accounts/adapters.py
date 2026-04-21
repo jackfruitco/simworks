@@ -5,6 +5,7 @@ from __future__ import annotations
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core import context as allauth_context
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 
 from apps.common.emailing.environment import (
@@ -14,6 +15,7 @@ from apps.common.emailing.environment import (
 )
 
 from .models import Invitation
+from .services.invitations import claim_invitation_for_user, get_invitation_by_token_for_claim
 
 
 class InvitationAccountAdapter(DefaultAccountAdapter):
@@ -116,9 +118,9 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             return False
 
         try:
-            invitation = Invitation.objects.get(token=invitation_token, is_claimed=False)
-            return not invitation.is_expired
-        except Invitation.DoesNotExist:
+            get_invitation_by_token_for_claim(invitation_token)
+            return True
+        except (Invitation.DoesNotExist, ValidationError):
             return False
 
     def save_user(self, request, user, form, commit=True):
@@ -139,11 +141,8 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
             invitation_token = request.session.get("invitation_token")
             if invitation_token:
                 try:
-                    invitation = Invitation.objects.get(
-                        token=invitation_token,
-                        is_claimed=False,
-                    )
-                    invitation.mark_as_claimed(user=user)
+                    invitation = get_invitation_by_token_for_claim(invitation_token)
+                    claim_invitation_for_user(invitation=invitation, user=user, request=request)
                 except Invitation.DoesNotExist:
                     pass
                 finally:

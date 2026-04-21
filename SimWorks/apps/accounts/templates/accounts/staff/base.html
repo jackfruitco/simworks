@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Staff - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mb-6 flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-sm font-semibold uppercase text-content-secondary">MedSim Staff</p>
+      <h1 class="text-3xl font-bold text-content">{% block staff_title %}Operations{% endblock %}</h1>
+    </div>
+    <nav class="flex flex-wrap gap-2 text-sm font-semibold">
+      <a href="{% url 'staff:invitation-list' %}" class="rounded-lg border border-border bg-surface px-3 py-2 text-content hover:bg-surface-alt">Invitations</a>
+      <a href="{% url 'staff:user-list' %}" class="rounded-lg border border-border bg-surface px-3 py-2 text-content hover:bg-surface-alt">Users</a>
+      <a href="{% url 'staff:account-list' %}" class="rounded-lg border border-border bg-surface px-3 py-2 text-content hover:bg-surface-alt">Accounts</a>
+    </nav>
+  </div>
+  {% block staff_content %}{% endblock %}
+</div>
+{% endblock %}

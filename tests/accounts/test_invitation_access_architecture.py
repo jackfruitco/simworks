@@ -1,0 +1,311 @@
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.core import mail
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.test import override_settings
+from django.urls import reverse
+from django.utils import timezone
+import pytest
+
+from apps.accounts.models import (
+    AccountAuditEvent,
+    AccountMembership,
+    Invitation,
+    InvitationAuditEvent,
+    UserRole,
+)
+from apps.accounts.services import get_personal_account_for_user
+from apps.accounts.services.invitations import (
+    claim_invitation_for_user,
+    create_invitation,
+    resend_invitation,
+    revoke_invitation,
+)
+from apps.accounts.tasks import send_invitation_email_task
+from apps.billing.catalog import ProductCode
+from apps.billing.models import Entitlement
+
+pytestmark = pytest.mark.django_db
+
+User = get_user_model()
+
+
+@pytest.fixture
+def role():
+    return UserRole.objects.create(title="Invitation Test Role")
+
+
+@pytest.fixture
+def staff_user(role):
+    return User.objects.create_user(
+        email="staff@example.com",
+        password="password",
+        role=role,
+        is_staff=True,
+    )
+
+
+@pytest.fixture
+def superuser(role):
+    return User.objects.create_user(
+        email="super@example.com",
+        password="password",
+        role=role,
+        is_staff=True,
+        is_superuser=True,
+    )
+
+
+@pytest.fixture
+def regular_user(role):
+    return User.objects.create_user(
+        email="regular@example.com",
+        password="password",
+        role=role,
+    )
+
+
+@pytest.fixture
+def capture_invitation_email(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "apps.accounts.tasks.send_invitation_email_task.delay",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    return calls
+
+
+def test_staff_create_invitation_queues_email_without_membership_or_entitlement(
+    staff_user,
+    capture_invitation_email,
+    django_capture_on_commit_callbacks,
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        invitation = create_invitation(
+            invited_by=staff_user,
+            email=" Invitee@Example.com ",
+        )
+
+    assert invitation.email == "invitee@example.com"
+    assert invitation.product_code == ""
+    assert invitation.membership_role == AccountMembership.Role.GENERAL_USER
+    assert AccountMembership.objects.filter(invite_email="invitee@example.com").count() == 0
+    assert Entitlement.objects.count() == 0
+    assert capture_invitation_email[0][0] == (invitation.id, None)
+    assert InvitationAuditEvent.objects.filter(
+        invitation=invitation,
+        event_type="invitation.created",
+    ).exists()
+
+
+def test_non_staff_cannot_create_invitation(regular_user):
+    with pytest.raises(PermissionDenied):
+        create_invitation(invited_by=regular_user, email="invitee@example.com")
+
+
+def test_only_superusers_can_attach_product_access_bundle(staff_user, superuser, capture_invitation_email):
+    with pytest.raises(PermissionDenied):
+        create_invitation(
+            invited_by=staff_user,
+            email="plain@example.com",
+            product_code=ProductCode.CHATLAB_GO.value,
+        )
+
+    invitation = create_invitation(
+        invited_by=superuser,
+        email="bundle@example.com",
+        product_code=ProductCode.CHATLAB_GO.value,
+    )
+
+    assert invitation.product_access_bundle_display_name == "ChatLab Go"
+
+
+def test_resend_rotates_token_extends_expiry_and_queues_email(
+    staff_user,
+    capture_invitation_email,
+    django_capture_on_commit_callbacks,
+):
+    invitation = create_invitation(invited_by=staff_user, email="resend@example.com")
+    old_token = invitation.token
+    Invitation.objects.filter(pk=invitation.pk).update(
+        expires_at=timezone.now() + timedelta(hours=1)
+    )
+    invitation.refresh_from_db()
+    old_expiry = invitation.expires_at
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resent = resend_invitation(invitation=invitation, resent_by=staff_user)
+
+    assert resent.token != old_token
+    assert resent.expires_at > old_expiry
+    assert capture_invitation_email[-1][0] == (resent.id, None)
+    assert InvitationAuditEvent.objects.filter(
+        invitation=resent,
+        event_type="invitation.resent",
+    ).exists()
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_invitation_email_task_marks_sent_on_success(staff_user):
+    invitation = Invitation.objects.create(
+        invited_by=staff_user,
+        email="mail@example.com",
+        product_code=ProductCode.CHATLAB_GO.value,
+    )
+
+    send_invitation_email_task.run(invitation.id, "production")
+
+    invitation.refresh_from_db()
+    assert invitation.sent_at is not None
+    assert invitation.last_sent_at is not None
+    assert invitation.send_count == 1
+    assert len(mail.outbox) == 1
+    assert "Product Access Bundle: ChatLab Go" in mail.outbox[0].body
+    assert InvitationAuditEvent.objects.filter(
+        invitation=invitation,
+        event_type="invitation.sent",
+    ).exists()
+
+
+def test_claim_invitation_creates_membership_and_stable_entitlement_source_ref(
+    superuser,
+    role,
+):
+    invitation = Invitation.objects.create(
+        invited_by=superuser,
+        email="claim@example.com",
+        product_code=ProductCode.TRAINERLAB_GO.value,
+    )
+    user = User.objects.create_user(
+        email="claim@example.com",
+        password="password",
+        role=role,
+    )
+
+    account, membership, entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    invitation.refresh_from_db()
+    assert invitation.is_claimed is True
+    assert invitation.claimed_by == user
+    assert invitation.claimed_account == account
+    assert account == get_personal_account_for_user(user)
+    assert membership.account == account
+    assert membership.user == user
+    assert membership.role == AccountMembership.Role.GENERAL_USER
+    assert entitlement is not None
+    assert entitlement.source_ref == f"invitation:{invitation.uuid}:{ProductCode.TRAINERLAB_GO.value}"
+    assert entitlement.scope_type == Entitlement.ScopeType.USER
+    assert AccountAuditEvent.objects.filter(
+        account=account,
+        event_type="entitlement.granted_from_invitation",
+    ).exists()
+
+
+def test_claim_invitation_without_product_code_grants_no_entitlement(staff_user, role):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="nobundle@example.com")
+    user = User.objects.create_user(email="nobundle@example.com", password="password", role=role)
+
+    _account, _membership, entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    assert entitlement is None
+    assert Entitlement.objects.count() == 0
+
+
+def test_claim_rejects_email_mismatch(staff_user, role):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="target@example.com")
+    user = User.objects.create_user(email="other@example.com", password="password", role=role)
+
+    with pytest.raises(ValidationError):
+        claim_invitation_for_user(invitation=invitation, user=user)
+
+
+def test_claim_rejects_revoked_claimed_and_expired_tokens(staff_user, role):
+    user = User.objects.create_user(email="reject@example.com", password="password", role=role)
+    revoked = Invitation.objects.create(invited_by=staff_user, email="reject@example.com")
+    revoke_invitation(invitation=revoked, revoked_by=staff_user)
+    expired = Invitation.objects.create(
+        invited_by=staff_user,
+        email="reject@example.com",
+        expires_at=timezone.now() - timedelta(days=1),
+    )
+    claimed = Invitation.objects.create(invited_by=staff_user, email="reject@example.com")
+    Invitation.objects.filter(pk=claimed.pk).update(is_claimed=True, claimed_at=timezone.now())
+    claimed.refresh_from_db()
+
+    for invitation in (revoked, expired, claimed):
+        with pytest.raises(ValidationError):
+            claim_invitation_for_user(invitation=invitation, user=user)
+
+
+def test_accept_view_claims_existing_authenticated_user(client, staff_user, role):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="existing@example.com")
+    user = User.objects.create_user(email="existing@example.com", password="password", role=role)
+    client.force_login(user)
+
+    response = client.get(reverse("accounts:invitation-accept", kwargs={"token": invitation.token}))
+
+    assert response.status_code == 302
+    invitation.refresh_from_db()
+    assert invitation.is_claimed is True
+    assert invitation.claimed_by == user
+
+
+def test_accept_view_routes_existing_email_to_login(client, staff_user, role):
+    user = User.objects.create_user(email="loginclaim@example.com", password="password", role=role)
+    invitation = Invitation.objects.create(invited_by=staff_user, email=user.email)
+
+    response = client.get(reverse("accounts:invitation-accept", kwargs={"token": invitation.token}))
+
+    assert response.status_code == 302
+    assert response.url.startswith(reverse("account_login"))
+
+
+def test_legacy_invite_list_filters_is_claimed(client, staff_user):
+    Invitation.objects.create(invited_by=staff_user, email="claimed@example.com")
+    client.force_login(staff_user)
+
+    response = client.get(reverse("accounts:list-invites"), {"claimed": "true"})
+
+    assert response.status_code == 200
+
+
+def test_staff_dashboard_permissions_and_invitation_filter(client, staff_user, regular_user):
+    Invitation.objects.create(invited_by=staff_user, email="bundle-list@example.com", product_code=ProductCode.CHATLAB_GO.value)
+
+    client.force_login(regular_user)
+    assert client.get(reverse("staff:invitation-list")).status_code == 403
+
+    client.force_login(staff_user)
+    response = client.get(reverse("staff:invitation-list"), {"has_bundle": "true"})
+
+    assert response.status_code == 200
+    assert b"bundle-list@example.com" in response.content
+    assert b"Product Access Bundle" in response.content
+
+
+def test_superuser_manual_product_access_grant_from_user_dashboard(
+    client,
+    superuser,
+    regular_user,
+):
+    account = get_personal_account_for_user(regular_user)
+    client.force_login(superuser)
+
+    response = client.post(
+        reverse("staff:user-detail", kwargs={"user_id": regular_user.id}),
+        {"account_id": str(account.id), "product_code": ProductCode.CHATLAB_GO.value},
+    )
+
+    assert response.status_code == 302
+    assert Entitlement.objects.filter(
+        account=account,
+        subject_user=regular_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+    ).exists()
