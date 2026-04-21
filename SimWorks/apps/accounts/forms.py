@@ -68,11 +68,17 @@ class ManualProductAccessGrantForm(forms.Form):
     def __init__(self, *args, user_obj=None, **kwargs):
         self.user_obj = user_obj
         super().__init__(*args, **kwargs)
-        accounts = Account.objects.filter(
-            Q(memberships__user=user_obj, memberships__ended_at__isnull=True)
-            | Q(owner_user=user_obj, account_type=Account.AccountType.PERSONAL)
-        ).distinct().order_by("name", "id")
-        self.fields["account_id"].choices = [(str(account.id), account.name) for account in accounts]
+        accounts = (
+            Account.objects.filter(
+                Q(memberships__user=user_obj, memberships__ended_at__isnull=True)
+                | Q(owner_user=user_obj, account_type=Account.AccountType.PERSONAL)
+            )
+            .distinct()
+            .order_by("name", "id")
+        )
+        self.fields["account_id"].choices = [
+            (str(account.id), account.name) for account in accounts
+        ]
 
     def clean_account_id(self):
         account_id = self.cleaned_data["account_id"]
@@ -175,7 +181,11 @@ class InvitationSignupForm(SignupForm):
         cleaned_data = super().clean()
         invitation = self.invitation or cleaned_data.get("invitation_obj")
         email = normalize_email(cleaned_data.get("email"))
-        if invitation is not None and invitation.email and email != normalize_email(invitation.email):
+        if (
+            invitation is not None
+            and invitation.email
+            and email != normalize_email(invitation.email)
+        ):
             self.add_error("email", "Use the email address this invitation was sent to.")
         if email and User.objects.filter(email__iexact=email).exists():
             self.add_error(

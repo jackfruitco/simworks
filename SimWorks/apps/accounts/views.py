@@ -95,7 +95,9 @@ def _entitlement_rows(queryset):
 
 def _active_entitlements():
     now = timezone.now()
-    return Entitlement.objects.filter(status__in=[Entitlement.Status.ACTIVE, Entitlement.Status.SCHEDULED]).filter(
+    return Entitlement.objects.filter(
+        status__in=[Entitlement.Status.ACTIVE, Entitlement.Status.SCHEDULED]
+    ).filter(
         Q(starts_at__isnull=True) | Q(starts_at__lte=now),
         Q(ends_at__isnull=True) | Q(ends_at__gte=now),
     )
@@ -107,7 +109,9 @@ def new_invite(request):
     if request.method == "POST":
         form = InvitationForm(request.POST)
         if form.is_valid():
-            invitation = create_invitation(invited_by=request.user, email=form.cleaned_data["email"])
+            invitation = create_invitation(
+                invited_by=request.user, email=form.cleaned_data["email"]
+            )
             if request.headers.get("HX-Request"):
                 return render(request, "accounts/invite_success.html", {"invite": invitation})
             return redirect(reverse("accounts:invite-success", kwargs={"token": invitation.token}))
@@ -262,7 +266,10 @@ def invitation_dashboard_list(request):
     if created_to:
         invitations = invitations.filter(created_at__date__lte=created_to)
 
-    rows = [{"invitation": invitation, "status": _invitation_status(invitation)} for invitation in invitations]
+    rows = [
+        {"invitation": invitation, "status": _invitation_status(invitation)}
+        for invitation in invitations
+    ]
     page = Paginator(rows, 25).get_page(request.GET.get("page", 1))
     context = {
         "page": page,
@@ -393,7 +400,9 @@ def user_dashboard_list(request):
             | Q(owned_accounts__entitlements__status=Entitlement.Status.ACTIVE)
         ).distinct()
     if invited == "true":
-        users = users.filter(Q(invitation__isnull=False) | Q(sent_invitations__isnull=False)).distinct()
+        users = users.filter(
+            Q(invitation__isnull=False) | Q(sent_invitations__isnull=False)
+        ).distinct()
     elif invited == "false":
         users = users.filter(invitation__isnull=True, sent_invitations__isnull=True).distinct()
 
@@ -456,15 +465,23 @@ def user_dashboard_detail(request, user_id):
     else:
         grant_form = ManualProductAccessGrantForm(user_obj=user_obj)
 
-    memberships = AccountMembership.objects.filter(user=user_obj).select_related("account").order_by("account__name")
+    memberships = (
+        AccountMembership.objects.filter(user=user_obj)
+        .select_related("account")
+        .order_by("account__name")
+    )
     accounts = Account.objects.filter(
         Q(owner_user=user_obj, account_type=Account.AccountType.PERSONAL)
         | Q(memberships__user=user_obj)
     ).distinct()
-    entitlements = Entitlement.objects.filter(Q(account__in=accounts) | Q(subject_user=user_obj)).select_related(
-        "account",
-        "subject_user",
-    ).order_by("-created_at")
+    entitlements = (
+        Entitlement.objects.filter(Q(account__in=accounts) | Q(subject_user=user_obj))
+        .select_related(
+            "account",
+            "subject_user",
+        )
+        .order_by("-created_at")
+    )
     context = {
         "user_obj": user_obj,
         "email_addresses": EmailAddress.objects.filter(user=user_obj).order_by("-primary", "email"),
@@ -475,9 +492,15 @@ def user_dashboard_detail(request, user_id):
         "memberships": memberships,
         "entitlement_rows": _entitlement_rows(entitlements),
         "seat_assignments": SeatAssignment.objects.filter(user=user_obj).select_related("account"),
-        "sent_invitations": Invitation.objects.filter(invited_by=user_obj).order_by("-created_at")[:20],
-        "claimed_invitations": Invitation.objects.filter(claimed_by=user_obj).order_by("-created_at")[:20],
-        "subscriptions": Subscription.objects.filter(account__in=accounts).select_related("account"),
+        "sent_invitations": Invitation.objects.filter(invited_by=user_obj).order_by("-created_at")[
+            :20
+        ],
+        "claimed_invitations": Invitation.objects.filter(claimed_by=user_obj).order_by(
+            "-created_at"
+        )[:20],
+        "subscriptions": Subscription.objects.filter(account__in=accounts).select_related(
+            "account"
+        ),
         "audit_events": AccountAuditEvent.objects.filter(account__in=accounts)[:20],
         "grant_form": grant_form,
     }
@@ -486,12 +509,19 @@ def user_dashboard_detail(request, user_id):
 
 @staff_required
 def account_dashboard_list(request):
-    accounts = Account.objects.select_related("owner_user").annotate(
-        active_memberships_count=Count(
-            "memberships",
-            filter=Q(memberships__status=AccountMembership.Status.ACTIVE, memberships__ended_at__isnull=True),
+    accounts = (
+        Account.objects.select_related("owner_user")
+        .annotate(
+            active_memberships_count=Count(
+                "memberships",
+                filter=Q(
+                    memberships__status=AccountMembership.Status.ACTIVE,
+                    memberships__ended_at__isnull=True,
+                ),
+            )
         )
-    ).order_by("name", "id")
+        .order_by("name", "id")
+    )
     query = (request.GET.get("q") or "").strip()
     account_type = request.GET.get("type") or ""
     if query:
@@ -513,7 +543,9 @@ def account_dashboard_list(request):
             }
         )
         subscriptions = Subscription.objects.filter(account=account).order_by("-updated_at")[:3]
-        rows.append({"account": account, "product_names": product_names, "subscriptions": subscriptions})
+        rows.append(
+            {"account": account, "product_names": product_names, "subscriptions": subscriptions}
+        )
     context = {
         "page": page,
         "rows": rows,
@@ -526,16 +558,28 @@ def account_dashboard_list(request):
 
 @staff_required
 def account_dashboard_detail(request, account_id):
-    account = get_object_or_404(Account.objects.select_related("owner_user", "parent_account"), pk=account_id)
+    account = get_object_or_404(
+        Account.objects.select_related("owner_user", "parent_account"), pk=account_id
+    )
     context = {
         "account": account,
-        "memberships": AccountMembership.objects.filter(account=account).select_related("user").order_by("user__email", "invite_email"),
+        "memberships": AccountMembership.objects.filter(account=account)
+        .select_related("user")
+        .order_by("user__email", "invite_email"),
         "entitlement_rows": _entitlement_rows(
-            Entitlement.objects.filter(account=account).select_related("subject_user").order_by("-created_at")
+            Entitlement.objects.filter(account=account)
+            .select_related("subject_user")
+            .order_by("-created_at")
         ),
-        "seat_allocations": SeatAllocation.objects.filter(account=account).order_by("-effective_from"),
-        "seat_assignments": SeatAssignment.objects.filter(account=account).select_related("user").order_by("-assigned_at"),
-        "billing_accounts": BillingAccount.objects.filter(account=account).order_by("provider_type"),
+        "seat_allocations": SeatAllocation.objects.filter(account=account).order_by(
+            "-effective_from"
+        ),
+        "seat_assignments": SeatAssignment.objects.filter(account=account)
+        .select_related("user")
+        .order_by("-assigned_at"),
+        "billing_accounts": BillingAccount.objects.filter(account=account).order_by(
+            "provider_type"
+        ),
         "subscriptions": Subscription.objects.filter(account=account).order_by("-updated_at"),
         "audit_events": AccountAuditEvent.objects.filter(account=account)[:25],
     }

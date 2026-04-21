@@ -106,7 +106,9 @@ def test_non_staff_cannot_create_invitation(regular_user):
         create_invitation(invited_by=regular_user, email="invitee@example.com")
 
 
-def test_only_superusers_can_attach_product_access_bundle(staff_user, superuser, capture_invitation_email):
+def test_only_superusers_can_attach_product_access_bundle(
+    staff_user, superuser, capture_invitation_email
+):
     with pytest.raises(PermissionDenied):
         create_invitation(
             invited_by=staff_user,
@@ -201,7 +203,9 @@ def test_claim_invitation_repairs_existing_membership_and_stable_entitlement_sou
     assert membership.status == AccountMembership.Status.ACTIVE
     assert membership.ended_at is None
     assert entitlement is not None
-    assert entitlement.source_ref == f"invitation:{invitation.uuid}:{ProductCode.TRAINERLAB_GO.value}"
+    assert (
+        entitlement.source_ref == f"invitation:{invitation.uuid}:{ProductCode.TRAINERLAB_GO.value}"
+    )
     assert entitlement.scope_type == Entitlement.ScopeType.USER
     assert AccountAuditEvent.objects.filter(
         account=account,
@@ -420,7 +424,11 @@ def test_legacy_invite_list_filters_is_claimed(client, staff_user):
 
 
 def test_staff_dashboard_permissions_and_invitation_filter(client, staff_user, regular_user):
-    Invitation.objects.create(invited_by=staff_user, email="bundle-list@example.com", product_code=ProductCode.CHATLAB_GO.value)
+    Invitation.objects.create(
+        invited_by=staff_user,
+        email="bundle-list@example.com",
+        product_code=ProductCode.CHATLAB_GO.value,
+    )
 
     client.force_login(regular_user)
     assert client.get(reverse("staff:invitation-list")).status_code == 403

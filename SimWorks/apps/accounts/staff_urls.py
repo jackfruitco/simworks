@@ -7,7 +7,11 @@ app_name = "staff"
 urlpatterns = [
     path("invitations/", views.invitation_dashboard_list, name="invitation-list"),
     path("invitations/new/", views.invitation_dashboard_create, name="invitation-create"),
-    path("invitations/<int:invitation_id>/", views.invitation_dashboard_detail, name="invitation-detail"),
+    path(
+        "invitations/<int:invitation_id>/",
+        views.invitation_dashboard_detail,
+        name="invitation-detail",
+    ),
     path(
         "invitations/<int:invitation_id>/resend/",
         views.invitation_dashboard_resend,
