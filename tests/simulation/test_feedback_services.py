@@ -14,10 +14,10 @@ import pytest
 
 from apps.simcore.orca.services.feedback import GenerateInitialFeedback
 
-
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_history(*pairs):
     """Build list of history dicts matching the chatlab history provider format."""
@@ -36,6 +36,7 @@ def _make_mock_sim(history_data):
 
 def _patch_simulation(monkeypatch, sim_obj):
     """Monkeypatch Simulation.objects.aget to return sim_obj."""
+
     class _Manager:
         async def aget(self, **_kwargs):
             return sim_obj
@@ -44,10 +45,12 @@ def _patch_simulation(monkeypatch, sim_obj):
         objects = _Manager()
 
     import apps.simcore.orca.services.feedback as feedback_module
+
     monkeypatch.setattr(feedback_module, "Simulation", _FakeSim, raising=False)
 
     # Also patch the import inside _aprepare_context (late import path)
     import sys
+
     fake_simcore = types.ModuleType("apps.simcore.models")
     fake_simcore.Simulation = _FakeSim
     monkeypatch.setitem(sys.modules, "apps.simcore.models", fake_simcore)
@@ -56,6 +59,7 @@ def _patch_simulation(monkeypatch, sim_obj):
 # ---------------------------------------------------------------------------
 # Test A — Service prepares transcript context from messages
 # ---------------------------------------------------------------------------
+
 
 class TestPrepareTranscriptContext:
     @pytest.mark.asyncio
@@ -123,6 +127,7 @@ class TestPrepareTranscriptContext:
 # Test B — Empty transcript handled gracefully
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyTranscriptFallback:
     @pytest.mark.asyncio
     async def test_empty_history_sets_fallback_user_message(self, monkeypatch):
@@ -165,6 +170,7 @@ class TestEmptyTranscriptFallback:
 # Test C — Grounding regression: actual transcript content reaches user_message
 # ---------------------------------------------------------------------------
 
+
 class TestGroundingRegression:
     @pytest.mark.asyncio
     async def test_specific_clinical_content_appears_in_user_message(self, monkeypatch):
@@ -189,9 +195,7 @@ class TestGroundingRegression:
         _patch_simulation(monkeypatch, sim)
 
         caller_msg = "Custom caller-provided evaluation prompt."
-        service = GenerateInitialFeedback(
-            context={"simulation_id": 7, "user_message": caller_msg}
-        )
+        service = GenerateInitialFeedback(context={"simulation_id": 7, "user_message": caller_msg})
         await service._aprepare_context()
 
         assert service.context["user_message"] == caller_msg
@@ -200,6 +204,7 @@ class TestGroundingRegression:
 # ---------------------------------------------------------------------------
 # Test D — Instruction regression: grounding language present in YAML
 # ---------------------------------------------------------------------------
+
 
 class TestInstructionGroundingLanguage:
     def _load_instruction_text(self):

@@ -5,10 +5,11 @@ import logging
 from typing import ClassVar
 
 from asgiref.sync import sync_to_async
+
+from apps.common.utils import Formatter
 from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import orca
 
-from apps.common.utils import Formatter
 from ..mixins import FeedbackMixin  # Identity mixin for component discovery
 
 logger = logging.getLogger(__name__)
