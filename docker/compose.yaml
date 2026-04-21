@@ -72,7 +72,7 @@ services:
     restart: always
     user: postgres
     volumes:
-      - medsim-staging_db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB
       - POSTGRES_USER
@@ -191,8 +191,7 @@ services:
         max-file: "3"
 
 volumes:
-  medsim-staging_db-data:
-    external: true
+  db-data:
   static-vol:
   media-vol:
 networks:
