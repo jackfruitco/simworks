@@ -136,6 +136,7 @@ INSTALLED_APPS = [
     "apps.chatlab",
     "apps.privacy",
     "apps.trainerlab",
+    "apps.feedback",
     "orchestrai_django",
     "imagekit",
 ]

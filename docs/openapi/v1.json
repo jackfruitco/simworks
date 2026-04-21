@@ -3662,6 +3662,355 @@
           }
         ]
       }
+    },
+    "/api/v1/feedback/": {
+      "post": {
+        "operationId": "api_v1_endpoints_feedback_create_feedback",
+        "summary": "Submit feedback",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a user feedback entry. Server populates status, source, and all request metadata automatically. If simulation_id is provided, the user must have access to that simulation. If conversation_id is provided, access is validated via the conversation's simulation.",
+        "tags": [
+          "feedback"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/categories/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_list_categories",
+        "summary": "List feedback categories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeedbackCategoryOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the allowed feedback category choices.",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
+    "/api/v1/feedback/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_my_feedback",
+        "summary": "My feedback submissions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the authenticated user's recent feedback submissions, newest first.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/staff/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_staff_list_feedback",
+        "summary": "[Staff] List all feedback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status",
+              "title": "Status"
+            },
+            "required": false,
+            "description": "Filter by status"
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category",
+              "title": "Category"
+            },
+            "required": false,
+            "description": "Filter by category"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by source",
+              "title": "Source"
+            },
+            "required": false,
+            "description": "Filter by source"
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by severity",
+              "title": "Severity"
+            },
+            "required": false,
+            "description": "Filter by severity"
+          },
+          {
+            "in": "query",
+            "name": "client_platform",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by client platform",
+              "title": "Client Platform"
+            },
+            "required": false,
+            "description": "Filter by client platform"
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by user ID",
+              "title": "User Id"
+            },
+            "required": false,
+            "description": "Filter by user ID"
+          },
+          {
+            "in": "query",
+            "name": "simulation_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by simulation ID",
+              "title": "Simulation Id"
+            },
+            "required": false,
+            "description": "Filter by simulation ID"
+          },
+          {
+            "in": "query",
+            "name": "lab_type",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by lab type",
+              "title": "Lab Type"
+            },
+            "required": false,
+            "description": "Filter by lab type"
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601 start datetime (inclusive)",
+              "title": "Date From"
+            },
+            "required": false,
+            "description": "ISO 8601 start datetime (inclusive)"
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601 end datetime (inclusive)",
+              "title": "Date To"
+            },
+            "required": false,
+            "description": "ISO 8601 end datetime (inclusive)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackStaffListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Staff-only endpoint. Returns all feedback with full metadata. Supports filtering by status, category, source, severity, user_id, simulation_id, lab_type, and ISO 8601 date range.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -10091,6 +10440,494 @@
           }
         },
         "title": "ScenarioBriefUpdateIn",
+        "type": "object"
+      },
+      "FeedbackOut": {
+        "description": "Output schema for a user feedback submission (user-facing).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "lab_type": {
+            "default": "",
+            "title": "Lab Type",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "client_platform": {
+            "default": "unknown",
+            "title": "Client Platform",
+            "type": "string"
+          },
+          "client_version": {
+            "default": "",
+            "title": "Client Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "category",
+          "source",
+          "status",
+          "body"
+        ],
+        "title": "FeedbackOut",
+        "type": "object"
+      },
+      "FeedbackCreate": {
+        "description": "Input schema for creating a feedback submission.",
+        "properties": {
+          "category": {
+            "description": "Feedback category",
+            "enum": [
+              "bug_report",
+              "ux_issue",
+              "simulation_content",
+              "feature_request",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "body": {
+            "description": "Full feedback text",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short summary (optional)",
+            "title": "Title"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Simulation this feedback is scoped to (optional)",
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation within the simulation (optional)",
+            "title": "Conversation Id"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional 1-5 rating",
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "description": "Whether the user consents to follow-up contact",
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional client-provided metadata dict (max ~10 KB serialised)",
+            "title": "Context"
+          }
+        },
+        "required": [
+          "category",
+          "body"
+        ],
+        "title": "FeedbackCreate",
+        "type": "object"
+      },
+      "FeedbackCategoryOut": {
+        "description": "A single feedback category choice.",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "FeedbackCategoryOut",
+        "type": "object"
+      },
+      "FeedbackListResponse": {
+        "description": "Paginated list of feedback submissions.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total"
+        ],
+        "title": "FeedbackListResponse",
+        "type": "object"
+      },
+      "FeedbackStaffListResponse": {
+        "description": "Paginated staff list of feedback submissions.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackStaffOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total"
+        ],
+        "title": "FeedbackStaffListResponse",
+        "type": "object"
+      },
+      "FeedbackStaffOut": {
+        "description": "Output schema for staff \u2014 extends FeedbackOut with internal fields.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "lab_type": {
+            "default": "",
+            "title": "Lab Type",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "client_platform": {
+            "default": "unknown",
+            "title": "Client Platform",
+            "type": "string"
+          },
+          "client_version": {
+            "default": "",
+            "title": "Client Version",
+            "type": "string"
+          },
+          "internal_notes": {
+            "default": "",
+            "title": "Internal Notes",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Id"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "session_identifier": {
+            "default": "",
+            "title": "Session Identifier",
+            "type": "string"
+          },
+          "os_version": {
+            "default": "",
+            "title": "Os Version",
+            "type": "string"
+          },
+          "device_model": {
+            "default": "",
+            "title": "Device Model",
+            "type": "string"
+          },
+          "context_json": {
+            "additionalProperties": true,
+            "title": "Context Json",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "category",
+          "source",
+          "status",
+          "body"
+        ],
+        "title": "FeedbackStaffOut",
         "type": "object"
       }
     },
