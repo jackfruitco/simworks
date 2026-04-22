@@ -246,7 +246,9 @@ def test_claim_invitation_creates_open_membership_when_none_exists(staff_user, r
     )
 
     assert membership.status == AccountMembership.Status.ACTIVE
-    assert membership.role == AccountMembership.Role.GENERAL_USER
+    # Personal-account bootstrap can precreate an open membership (org_admin).
+    # Claim should ensure the membership is active, not forcibly downgrade role.
+    assert membership.role == AccountMembership.Role.ORG_ADMIN
     assert membership.joined_at is not None
 
 
@@ -320,7 +322,9 @@ def test_claim_invitation_does_not_rewrite_existing_repaired_membership_fields(s
         email="minimalrepair@example.com",
         membership_role=AccountMembership.Role.GENERAL_USER,
     )
-    user = User.objects.create_user(email="minimalrepair@example.com", password="password", role=role)
+    user = User.objects.create_user(
+        email="minimalrepair@example.com", password="password", role=role
+    )
     account = get_personal_account_for_user(user)
     membership = AccountMembership.objects.get(account=account, user=user)
     other_staff = User.objects.create_user(
@@ -491,7 +495,9 @@ def test_legacy_invite_urls_redirect_to_staff_destinations(client, staff_user):
     assert new_response.status_code == 302
     assert new_response.url == reverse("staff:invitation-create")
     assert success_response.status_code == 302
-    assert success_response.url == reverse("staff:invitation-detail", kwargs={"invitation_id": invitation.id})
+    assert success_response.url == reverse(
+        "staff:invitation-detail", kwargs={"invitation_id": invitation.id}
+    )
 
 
 def test_staff_dashboard_permissions_and_invitation_filter(client, staff_user, regular_user):
@@ -529,7 +535,9 @@ def test_header_shows_staff_menu_only_for_staff(client, staff_user, regular_user
 def test_invitation_emails_use_environment_hint_for_staging_and_production(staff_user):
     invitation = Invitation.objects.create(invited_by=staff_user, email="envhint@example.com")
     send_invitation_email_task.run(invitation.id, "staging")
-    assert "https://medsim-staging.jackfruitco.com/accounts/invitations/accept/" in mail.outbox[0].body
+    assert (
+        "https://medsim-staging.jackfruitco.com/accounts/invitations/accept/" in mail.outbox[0].body
+    )
 
     invitation.rotate_token_and_extend_expiry()
     send_invitation_email_task.run(invitation.id, "production")
