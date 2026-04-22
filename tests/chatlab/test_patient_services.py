@@ -105,8 +105,7 @@ def _instruction_by_name(service, name: str):
 
 def _yaml_instruction_text(name: str) -> str:
     yaml_path = (
-        Path(__file__).resolve().parents[2]
-        / "SimWorks/apps/chatlab/orca/instructions/patient.yaml"
+        Path(__file__).resolve().parents[2] / "SimWorks/apps/chatlab/orca/instructions/patient.yaml"
     )
     with yaml_path.open(encoding="utf-8") as fh:
         yaml_data = yaml.safe_load(fh)
