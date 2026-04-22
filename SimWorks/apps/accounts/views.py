@@ -34,12 +34,12 @@ from apps.billing.models import (
     Subscription,
 )
 from apps.billing.services.entitlements import grant_manual_product_entitlement
+from apps.common.emailing.environment import get_email_environment_label
 from apps.simcore.access import get_simulation_queryset_for_request
 from apps.simcore.models import Simulation
 
 from .forms import (
     AvatarUploadForm,
-    InvitationForm,
     ManualProductAccessGrantForm,
     StaffInvitationCreateForm,
 )
@@ -106,69 +106,22 @@ def _active_entitlements():
 @login_required
 @user_passes_test(is_inviter)
 def new_invite(request):
-    if request.method == "POST":
-        form = InvitationForm(request.POST)
-        if form.is_valid():
-            invitation = create_invitation(
-                invited_by=request.user, email=form.cleaned_data["email"]
-            )
-            if request.headers.get("HX-Request"):
-                return render(request, "accounts/invite_success.html", {"invite": invitation})
-            return redirect(reverse("accounts:invite-success", kwargs={"token": invitation.token}))
-    else:
-        form = InvitationForm()
-    return render(request, "accounts/invite_new.html", {"form": form})
+    return redirect("staff:invitation-create")
 
 
 @login_required
 @user_passes_test(is_inviter)
 def invite_success(request, token):
-    invite = Invitation.objects.get(token=token)
-    return render(request, "accounts/invite_success_page.html", {"invite": invite})
+    invitation = Invitation.objects.filter(token=token).first()
+    if invitation is None:
+        return redirect("staff:invitation-list")
+    return redirect("staff:invitation-detail", invitation_id=invitation.id)
 
 
 @login_required
 @user_passes_test(is_inviter)
 def list_invites(request):
-    page_number = request.GET.get("page", 1)
-    invitations = Invitation.objects.order_by("-created_at")
-
-    claimed = request.GET.get("claimed")
-    expired = request.GET.get("expired")
-    invited_by_list = request.GET.getlist("invited_by")
-
-    if claimed in ("true", "false"):
-        invitations = invitations.filter(is_claimed=(claimed == "true"))
-
-    if expired in ("true", "false"):
-        now = timezone.now()
-        if expired == "true":
-            invitations = invitations.filter(expires_at__lt=now)
-        else:
-            invitations = invitations.filter(expires_at__gte=now)
-
-    if invited_by_list:
-        invitations = invitations.filter(invited_by__email__in=invited_by_list)
-
-    paginator = Paginator(invitations, 10)
-    page = paginator.get_page(page_number)
-    view_mode = request.GET.get("view_mode", "list")
-
-    context = {
-        "invitations": page.object_list,
-        "page": page,
-        "view_mode": view_mode,
-        "next_page": int(page_number) + 1 if page.has_next() else None,
-        "inviter_choices": Invitation.objects.exclude(invited_by__isnull=True)
-        .values_list("invited_by__email", flat=True)
-        .distinct()
-        .order_by("invited_by__email"),
-    }
-
-    if request.headers.get("HX-Request"):
-        html = render_to_string("accounts/partials/invite_single.html", context, request=request)
-        return HttpResponse(html)
-    return render(request, "accounts/invite_list.html", context)
+    return redirect("staff:invitation-list")
 
 
 def invitation_accept(request, token):
@@ -180,11 +133,15 @@ def invitation_accept(request, token):
     if not invitation.may_be_claimed():
         return _render_invitation_not_claimable(request, invitation)
 
+    # Keep invite token in session for anonymous login/signup continuation, but
+    # clear it after authenticated terminal outcomes (success/failure) so stale
+    # invite state does not linger for an already-signed-in user.
     request.session["invitation_token"] = invitation.token
     if request.user.is_authenticated:
         try:
             claim_invitation_for_user(invitation=invitation, user=request.user, request=request)
         except InvitationEmailMismatchError as exc:
+            request.session.pop("invitation_token", None)
             return render(
                 request,
                 "accounts/invitations/email_mismatch.html",
@@ -192,11 +149,13 @@ def invitation_accept(request, token):
                 status=403,
             )
         except InvitationNotClaimableError as exc:
+            request.session.pop("invitation_token", None)
             return _render_invitation_not_claimable(
                 request,
                 exc.invitation or invitation,
                 reason=exc.reason,
             )
+        request.session.pop("invitation_token", None)
         messages.success(request, "Invitation accepted.")
         return redirect("home")
 
@@ -266,6 +225,25 @@ def invitation_dashboard_list(request):
     if created_to:
         invitations = invitations.filter(created_at__date__lte=created_to)
 
+    summary = {
+        "total": invitations.count(),
+        "pending": invitations.filter(
+            is_claimed=False,
+            revoked_at__isnull=True,
+            send_count=0,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now))
+        .count(),
+        "sent": invitations.filter(
+            is_claimed=False,
+            revoked_at__isnull=True,
+            send_count__gt=0,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now))
+        .count(),
+        "claimed": invitations.filter(is_claimed=True).count(),
+    }
+
     rows = [
         {"invitation": invitation, "status": _invitation_status(invitation)}
         for invitation in invitations
@@ -281,6 +259,7 @@ def invitation_dashboard_list(request):
         "inviter": inviter,
         "created_from": created_from,
         "created_to": created_to,
+        "summary": summary,
         "inviter_choices": User.objects.filter(sent_invitations__isnull=False)
         .distinct()
         .order_by("email"),
@@ -324,6 +303,7 @@ def invitation_dashboard_detail(request, invitation_id):
 
 @staff_required
 def invitation_dashboard_create(request):
+    environment_hint = get_email_environment_label(request=request)
     if request.method == "POST":
         form = StaffInvitationCreateForm(request.POST, user=request.user)
         if form.is_valid():
@@ -333,6 +313,7 @@ def invitation_dashboard_create(request):
                 first_name=form.cleaned_data.get("first_name") or "",
                 product_code=form.cleaned_data.get("product_code") or "",
                 membership_role=form.cleaned_data["membership_role"],
+                environment_hint=environment_hint,
             )
             messages.success(request, "Invitation created and queued for delivery.")
             return redirect("staff:invitation-detail", invitation_id=invitation.id)
@@ -345,8 +326,13 @@ def invitation_dashboard_create(request):
 @require_http_methods(["POST"])
 def invitation_dashboard_resend(request, invitation_id):
     invitation = get_object_or_404(Invitation, pk=invitation_id)
+    environment_hint = get_email_environment_label(request=request)
     try:
-        invitation = resend_invitation(invitation=invitation, resent_by=request.user)
+        invitation = resend_invitation(
+            invitation=invitation,
+            resent_by=request.user,
+            environment_hint=environment_hint,
+        )
         messages.success(request, "Invitation resent.")
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
@@ -406,6 +392,15 @@ def user_dashboard_list(request):
     elif invited == "false":
         users = users.filter(invitation__isnull=True, sent_invitations__isnull=True).distinct()
 
+    summary = {
+        "total": users.count(),
+        "staff": users.filter(is_staff=True).count(),
+        "active": users.filter(is_active=True).count(),
+        "with_membership": users.filter(account_memberships__ended_at__isnull=True)
+        .distinct()
+        .count(),
+    }
+
     page = Paginator(users, 25).get_page(request.GET.get("page", 1))
     rows = []
     active_entitlements = _active_entitlements()
@@ -432,6 +427,7 @@ def user_dashboard_list(request):
         "has_entitlement": has_entitlement,
         "has_membership": has_membership,
         "invited": invited,
+        "summary": summary,
     }
     return render(request, "accounts/staff/users/list.html", context)
 
@@ -532,6 +528,12 @@ def account_dashboard_list(request):
         )
     if account_type:
         accounts = accounts.filter(account_type=account_type)
+    summary = {
+        "total": accounts.count(),
+        "personal": accounts.filter(account_type=Account.AccountType.PERSONAL).count(),
+        "organization": accounts.filter(account_type=Account.AccountType.ORGANIZATION).count(),
+        "with_members": accounts.filter(active_memberships_count__gt=0).count(),
+    }
     page = Paginator(accounts, 25).get_page(request.GET.get("page", 1))
     rows = []
     active_entitlements = _active_entitlements()
@@ -552,6 +554,7 @@ def account_dashboard_list(request):
         "query": query,
         "account_type": account_type,
         "account_types": Account.AccountType.choices,
+        "summary": summary,
     }
     return render(request, "accounts/staff/accounts/list.html", context)
 

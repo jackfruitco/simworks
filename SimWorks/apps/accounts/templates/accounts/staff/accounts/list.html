@@ -3,16 +3,24 @@
 {% block staff_title %}Accounts{% endblock %}
 
 {% block staff_content %}
-<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
-  <form method="get" class="grid gap-3 md:grid-cols-4">
-    <input name="q" value="{{ query }}" placeholder="Search accounts" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-    <select name="type" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+<section class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Total</p><p class="text-2xl font-semibold text-content">{{ summary.total }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Personal</p><p class="text-2xl font-semibold text-content">{{ summary.personal }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Organization</p><p class="text-2xl font-semibold text-content">{{ summary.organization }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">With members</p><p class="text-2xl font-semibold text-content">{{ summary.with_members }}</p></article>
+</section>
+
+<section class="rounded-lg border border-border bg-surface-alt p-3 shadow-sm">
+  <form method="get" class="flex flex-wrap items-center gap-2">
+    <input name="q" value="{{ query }}" placeholder="Search accounts" class="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+    <select name="type" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
       <option value="">All account types</option>
       {% for value, label in account_types %}
         <option value="{{ value }}" {% if account_type == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
-    <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
+    <button class="min-h-10 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Apply</button>
+    <a href="{% url 'staff:account-list' %}" class="inline-flex min-h-10 items-center rounded-lg border border-border bg-surface px-3 text-sm font-medium text-content">Reset</a>
   </form>
 </section>
 

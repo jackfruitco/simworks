@@ -1,7 +1,7 @@
 {% load static %}
 
 <header id="header" class="tw-root sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" x-data="{ mobileOpen: false, userOpen: false }">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" x-data="{ mobileOpen: false, userOpen: false, staffOpen: false }">
         <div class="flex h-16 items-center gap-3">
             <a href="{% url 'home' %}" class="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-semibold text-content transition-colors hover:bg-surface-alt sm:text-base">
                 <span class="iconify text-lg text-jckfrt-olive" data-icon="line-md:home-twotone" data-inline="true"></span>
@@ -17,6 +17,27 @@
                     <span class="iconify mr-1" data-icon="mdi:chat-processing-outline" data-inline="true"></span>
                     ChatLab
                 </a>
+                {% if user.is_authenticated and user.is_staff %}
+                <div class="relative" @click.outside="staffOpen = false">
+                    <button type="button"
+                            @click="staffOpen = !staffOpen"
+                            :aria-expanded="staffOpen"
+                            class="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-medium text-content-secondary transition-colors hover:bg-surface-alt hover:text-content">
+                        <span class="iconify mr-1" data-icon="mdi:shield-account-outline" data-inline="true"></span>
+                        Staff
+                        <span class="iconify ml-1 text-base" :data-icon="staffOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'"></span>
+                    </button>
+                    <div x-show="staffOpen"
+                         x-transition.origin.top.left
+                         x-cloak
+                         class="absolute left-0 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
+                        <a href="{% url 'staff:invitation-list' %}" class="flex min-h-11 items-center gap-2 px-3 py-2 text-sm text-content transition-colors hover:bg-surface-alt">Invitations</a>
+                        <a href="{% url 'staff:user-list' %}" class="flex min-h-11 items-center gap-2 px-3 py-2 text-sm text-content transition-colors hover:bg-surface-alt">Users</a>
+                        <a href="{% url 'staff:account-list' %}" class="flex min-h-11 items-center gap-2 px-3 py-2 text-sm text-content transition-colors hover:bg-surface-alt">Accounts</a>
+                        <a href="{% url 'feedback:staff-list' %}" class="flex min-h-11 items-center gap-2 border-t border-border px-3 py-2 text-sm text-content transition-colors hover:bg-surface-alt">Feedback</a>
+                    </div>
+                </div>
+                {% endif %}
             </nav>
 
             <div class="ml-auto hidden items-center gap-2 md:flex">
@@ -100,13 +121,18 @@
 
                 {% if user.is_authenticated %}
                     {% if user.is_staff %}
-                    <a href="{{ unreviewed_feedback_url|default:'/staff/feedback/?reviewed=unreviewed' }}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
-                        <span class="iconify" data-icon="mdi:message-alert-outline"></span>
-                        Feedback
-                        {% if unreviewed_feedback_count %}
-                            <span class="ml-auto inline-flex min-w-6 items-center justify-center rounded-full bg-jckfrt-red px-2 py-0.5 text-xs font-bold text-white">{{ unreviewed_feedback_count }}</span>
-                        {% endif %}
-                    </a>
+                    <div class="mt-1 rounded-lg border border-border bg-surface p-2">
+                        <p class="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-content-secondary">Staff</p>
+                        <a href="{% url 'staff:invitation-list' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">Invitations</a>
+                        <a href="{% url 'staff:user-list' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">Users</a>
+                        <a href="{% url 'staff:account-list' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">Accounts</a>
+                        <a href="{{ unreviewed_feedback_url|default:'/staff/feedback/?reviewed=unreviewed' }}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
+                            Feedback
+                            {% if unreviewed_feedback_count %}
+                                <span class="ml-auto inline-flex min-w-6 items-center justify-center rounded-full bg-jckfrt-red px-2 py-0.5 text-xs font-bold text-white">{{ unreviewed_feedback_count }}</span>
+                            {% endif %}
+                        </a>
+                    </div>
                     {% endif %}
                     <a href="{% url 'accounts:profile' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
                         <span class="iconify" data-icon="mdi:account"></span>
