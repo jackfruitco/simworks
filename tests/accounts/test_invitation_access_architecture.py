@@ -314,6 +314,54 @@ def test_claim_invitation_preserves_existing_active_membership_role(staff_user, 
     assert repaired.joined_at is not None
 
 
+def test_claim_invitation_does_not_rewrite_existing_repaired_membership_fields(staff_user, role):
+    invitation = Invitation.objects.create(
+        invited_by=staff_user,
+        email="minimalrepair@example.com",
+        membership_role=AccountMembership.Role.GENERAL_USER,
+    )
+    user = User.objects.create_user(email="minimalrepair@example.com", password="password", role=role)
+    account = get_personal_account_for_user(user)
+    membership = AccountMembership.objects.get(account=account, user=user)
+    other_staff = User.objects.create_user(
+        email="other-staff@example.com",
+        password="password",
+        role=role,
+        is_staff=True,
+    )
+    joined_at = timezone.now() - timedelta(days=5)
+    membership.role = AccountMembership.Role.INSTRUCTOR
+    membership.status = AccountMembership.Status.ACTIVE
+    membership.invite_email = "existing@example.com"
+    membership.invited_by = other_staff
+    membership.approved_by = other_staff
+    membership.joined_at = joined_at
+    membership.save(
+        update_fields=[
+            "role",
+            "status",
+            "invite_email",
+            "invited_by",
+            "approved_by",
+            "joined_at",
+            "updated_at",
+        ]
+    )
+
+    _account, repaired, _entitlement = claim_invitation_for_user(
+        invitation=invitation,
+        user=user,
+    )
+
+    assert repaired.id == membership.id
+    assert repaired.role == AccountMembership.Role.INSTRUCTOR
+    assert repaired.status == AccountMembership.Status.ACTIVE
+    assert repaired.invite_email == "existing@example.com"
+    assert repaired.invited_by == other_staff
+    assert repaired.approved_by == other_staff
+    assert repaired.joined_at == joined_at
+
+
 def test_claim_rejects_email_mismatch(staff_user, role):
     invitation = Invitation.objects.create(invited_by=staff_user, email="target@example.com")
     user = User.objects.create_user(email="other@example.com", password="password", role=role)
@@ -351,6 +399,7 @@ def test_accept_view_claims_existing_authenticated_user(client, staff_user, role
     invitation.refresh_from_db()
     assert invitation.is_claimed is True
     assert invitation.claimed_by == user
+    assert "invitation_token" not in client.session
 
 
 def test_accept_view_email_mismatch_renders_mismatch_page(client, staff_user, role):
@@ -362,6 +411,7 @@ def test_accept_view_email_mismatch_renders_mismatch_page(client, staff_user, ro
 
     assert response.status_code == 403
     assert b"Use the invited email" in response.content
+    assert "invitation_token" not in client.session
 
 
 def test_accept_view_not_claimable_states_do_not_render_mismatch_page(
@@ -395,6 +445,7 @@ def test_accept_view_not_claimable_states_do_not_render_mismatch_page(
         assert response.status_code == 410
         assert expected_text in response.content
         assert b"Use the invited email" not in response.content
+        assert "invitation_token" not in client.session
 
 
 def test_accept_view_invalid_token_renders_invalid_page(client):
@@ -412,6 +463,17 @@ def test_accept_view_routes_existing_email_to_login(client, staff_user, role):
 
     assert response.status_code == 302
     assert response.url.startswith(reverse("account_login"))
+    assert client.session["invitation_token"] == invitation.token
+
+
+def test_accept_view_routes_new_email_to_signup_and_keeps_session_token(client, staff_user):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="newsignup@example.com")
+
+    response = client.get(reverse("accounts:invitation-accept", kwargs={"token": invitation.token}))
+
+    assert response.status_code == 302
+    assert response.url == reverse("account_signup")
+    assert client.session["invitation_token"] == invitation.token
 
 
 def test_legacy_invite_urls_redirect_to_staff_destinations(client, staff_user):

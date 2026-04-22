@@ -133,11 +133,15 @@ def invitation_accept(request, token):
     if not invitation.may_be_claimed():
         return _render_invitation_not_claimable(request, invitation)
 
+    # Keep invite token in session for anonymous login/signup continuation, but
+    # clear it after authenticated terminal outcomes (success/failure) so stale
+    # invite state does not linger for an already-signed-in user.
     request.session["invitation_token"] = invitation.token
     if request.user.is_authenticated:
         try:
             claim_invitation_for_user(invitation=invitation, user=request.user, request=request)
         except InvitationEmailMismatchError as exc:
+            request.session.pop("invitation_token", None)
             return render(
                 request,
                 "accounts/invitations/email_mismatch.html",
@@ -145,11 +149,13 @@ def invitation_accept(request, token):
                 status=403,
             )
         except InvitationNotClaimableError as exc:
+            request.session.pop("invitation_token", None)
             return _render_invitation_not_claimable(
                 request,
                 exc.invitation or invitation,
                 reason=exc.reason,
             )
+        request.session.pop("invitation_token", None)
         messages.success(request, "Invitation accepted.")
         return redirect("home")
 
