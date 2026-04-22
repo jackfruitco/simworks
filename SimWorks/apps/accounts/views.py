@@ -231,12 +231,16 @@ def invitation_dashboard_list(request):
             is_claimed=False,
             revoked_at__isnull=True,
             send_count=0,
-        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now)).count(),
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now))
+        .count(),
         "sent": invitations.filter(
             is_claimed=False,
             revoked_at__isnull=True,
             send_count__gt=0,
-        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now)).count(),
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gte=now))
+        .count(),
         "claimed": invitations.filter(is_claimed=True).count(),
     }
 
@@ -392,7 +396,9 @@ def user_dashboard_list(request):
         "total": users.count(),
         "staff": users.filter(is_staff=True).count(),
         "active": users.filter(is_active=True).count(),
-        "with_membership": users.filter(account_memberships__ended_at__isnull=True).distinct().count(),
+        "with_membership": users.filter(account_memberships__ended_at__isnull=True)
+        .distinct()
+        .count(),
     }
 
     page = Paginator(users, 25).get_page(request.GET.get("page", 1))

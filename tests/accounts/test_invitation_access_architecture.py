@@ -553,6 +553,7 @@ def test_staff_create_and_resend_pass_request_environment_hint(
     client,
     staff_user,
     monkeypatch,
+    django_capture_on_commit_callbacks,
 ):
     captured = []
 
@@ -561,24 +562,26 @@ def test_staff_create_and_resend_pass_request_environment_hint(
 
     monkeypatch.setattr("apps.accounts.tasks.send_invitation_email_task.delay", _capture_delay)
     client.force_login(staff_user)
-    create_response = client.post(
-        reverse("staff:invitation-create"),
-        {
-            "email": "staging-create@example.com",
-            "first_name": "",
-            "product_code": "",
-            "membership_role": AccountMembership.Role.GENERAL_USER,
-        },
-        HTTP_HOST="medsim-staging.jackfruitco.com",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        create_response = client.post(
+            reverse("staff:invitation-create"),
+            {
+                "email": "staging-create@example.com",
+                "first_name": "",
+                "product_code": "",
+                "membership_role": AccountMembership.Role.GENERAL_USER,
+            },
+            HTTP_HOST="medsim-staging.jackfruitco.com",
+        )
     assert create_response.status_code == 302
     created = Invitation.objects.get(email="staging-create@example.com")
     assert captured[-1] == (created.id, "staging")
 
-    resend_response = client.post(
-        reverse("staff:invitation-resend", kwargs={"invitation_id": created.id}),
-        HTTP_HOST="medsim-staging.jackfruitco.com",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        resend_response = client.post(
+            reverse("staff:invitation-resend", kwargs={"invitation_id": created.id}),
+            HTTP_HOST="medsim-staging.jackfruitco.com",
+        )
     assert resend_response.status_code == 302
     assert captured[-1][1] == "staging"
 
