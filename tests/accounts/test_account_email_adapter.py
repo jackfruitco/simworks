@@ -136,9 +136,13 @@ def test_email_confirmation_templates_render_with_activation_url_and_staging_not
     )
 
     assert context["activate_url"] in html
+    assert "Verify email" in html
+    assert "MedSim email verification" in text
     assert "STAGING" in html
     assert "support@jackfruitco.com" in text
     assert context["activate_url"] in signup_html
+    assert "Confirm email" in signup_html
+    assert "Welcome to MedSim" in signup_text
     assert "STAGING" in signup_html
     assert "STAGING NOTICE" in signup_text
 

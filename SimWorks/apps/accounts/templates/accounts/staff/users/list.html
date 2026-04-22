@@ -3,35 +3,27 @@
 {% block staff_title %}Users{% endblock %}
 
 {% block staff_content %}
-<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
-  <form method="get" class="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
-    <input name="q" value="{{ query }}" placeholder="Search users" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-    <select name="active" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Active: any</option>
-      <option value="true" {% if active == "true" %}selected{% endif %}>Active</option>
-      <option value="false" {% if active == "false" %}selected{% endif %}>Inactive</option>
-    </select>
-    <select name="staff" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Staff: any</option>
-      <option value="true" {% if staff == "true" %}selected{% endif %}>Staff</option>
-      <option value="false" {% if staff == "false" %}selected{% endif %}>Non-staff</option>
-    </select>
-    <select name="has_entitlement" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Entitlement: any</option>
-      <option value="true" {% if has_entitlement == "true" %}selected{% endif %}>Has Product Access Bundle</option>
-      <option value="false" {% if has_entitlement == "false" %}selected{% endif %}>No Product Access Bundle</option>
-    </select>
-    <select name="has_membership" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Membership: any</option>
-      <option value="true" {% if has_membership == "true" %}selected{% endif %}>Has membership</option>
-      <option value="false" {% if has_membership == "false" %}selected{% endif %}>No membership</option>
-    </select>
-    <select name="invited" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Invited: any</option>
-      <option value="true" {% if invited == "true" %}selected{% endif %}>Invited</option>
-      <option value="false" {% if invited == "false" %}selected{% endif %}>Not invited</option>
-    </select>
-    <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
+<section class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Total</p><p class="text-2xl font-semibold text-content">{{ summary.total }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Active</p><p class="text-2xl font-semibold text-content">{{ summary.active }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">Staff</p><p class="text-2xl font-semibold text-content">{{ summary.staff }}</p></article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3"><p class="text-xs uppercase text-content-secondary">With membership</p><p class="text-2xl font-semibold text-content">{{ summary.with_membership }}</p></article>
+</section>
+
+<section class="rounded-lg border border-border bg-surface-alt p-3 shadow-sm">
+  <form method="get" class="space-y-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <input name="q" value="{{ query }}" placeholder="Search users" class="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+      <button class="min-h-10 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Apply</button>
+    </div>
+    <div class="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <select name="active" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content"><option value="">Active: any</option><option value="true" {% if active == "true" %}selected{% endif %}>Active</option><option value="false" {% if active == "false" %}selected{% endif %}>Inactive</option></select>
+      <select name="staff" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content"><option value="">Staff: any</option><option value="true" {% if staff == "true" %}selected{% endif %}>Staff</option><option value="false" {% if staff == "false" %}selected{% endif %}>Non-staff</option></select>
+      <select name="has_entitlement" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content"><option value="">Entitlement: any</option><option value="true" {% if has_entitlement == "true" %}selected{% endif %}>Has Product Access Bundle</option><option value="false" {% if has_entitlement == "false" %}selected{% endif %}>No Product Access Bundle</option></select>
+      <select name="has_membership" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content"><option value="">Membership: any</option><option value="true" {% if has_membership == "true" %}selected{% endif %}>Has membership</option><option value="false" {% if has_membership == "false" %}selected{% endif %}>No membership</option></select>
+      <select name="invited" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content"><option value="">Invited: any</option><option value="true" {% if invited == "true" %}selected{% endif %}>Invited</option><option value="false" {% if invited == "false" %}selected{% endif %}>Not invited</option></select>
+      <a href="{% url 'staff:user-list' %}" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-border bg-surface px-3 text-sm font-medium text-content">Reset</a>
+    </div>
   </form>
 </section>
 

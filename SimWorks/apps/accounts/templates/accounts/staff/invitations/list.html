@@ -3,38 +3,65 @@
 {% block staff_title %}Invitations{% endblock %}
 
 {% block staff_content %}
-<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
-  <form method="get" class="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-    <input name="q" value="{{ query }}" placeholder="Search email or token" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-    <select name="status" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">All statuses</option>
-      <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
-      <option value="sent" {% if status == "sent" %}selected{% endif %}>Sent</option>
-      <option value="claimed" {% if status == "claimed" %}selected{% endif %}>Claimed</option>
-      <option value="expired" {% if status == "expired" %}selected{% endif %}>Expired</option>
-      <option value="revoked" {% if status == "revoked" %}selected{% endif %}>Revoked</option>
-    </select>
-    <select name="has_email" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Email: any</option>
-      <option value="true" {% if has_email == "true" %}selected{% endif %}>Has email</option>
-      <option value="false" {% if has_email == "false" %}selected{% endif %}>No email</option>
-    </select>
-    <select name="has_bundle" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Bundle: any</option>
-      <option value="true" {% if has_bundle == "true" %}selected{% endif %}>Has Product Access Bundle</option>
-      <option value="false" {% if has_bundle == "false" %}selected{% endif %}>No Product Access Bundle</option>
-    </select>
-    <select name="inviter" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-      <option value="">Any inviter</option>
-      {% for user_obj in inviter_choices %}
-        <option value="{{ user_obj.id }}" {% if inviter == user_obj.id|stringformat:"s" %}selected{% endif %}>{{ user_obj.email }}</option>
-      {% endfor %}
-    </select>
-    <input type="date" name="created_from" value="{{ created_from }}" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
-    <div class="flex gap-2">
-      <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
-      <a href="{% url 'staff:invitation-create' %}" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-content">New</a>
+<section class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="rounded-lg border border-border bg-surface px-4 py-3">
+    <p class="text-xs uppercase text-content-secondary">Total</p>
+    <p class="text-2xl font-semibold text-content">{{ summary.total }}</p>
+  </article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3">
+    <p class="text-xs uppercase text-content-secondary">Pending</p>
+    <p class="text-2xl font-semibold text-content">{{ summary.pending }}</p>
+  </article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3">
+    <p class="text-xs uppercase text-content-secondary">Sent</p>
+    <p class="text-2xl font-semibold text-content">{{ summary.sent }}</p>
+  </article>
+  <article class="rounded-lg border border-border bg-surface px-4 py-3">
+    <p class="text-xs uppercase text-content-secondary">Claimed</p>
+    <p class="text-2xl font-semibold text-content">{{ summary.claimed }}</p>
+  </article>
+</section>
+
+<section class="rounded-lg border border-border bg-surface-alt p-3 shadow-sm">
+  <form method="get" class="space-y-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <input name="q" value="{{ query }}" placeholder="Search email or token" class="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+      <a href="{% url 'staff:invitation-create' %}" class="inline-flex min-h-10 items-center rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-content">New</a>
+      <button class="min-h-10 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Apply</button>
     </div>
+    <div class="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-surface p-1">
+      <button type="submit" name="status" value="" class="rounded-full px-3 py-1 text-xs font-medium {% if not status %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">All</button>
+      <button type="submit" name="status" value="pending" class="rounded-full px-3 py-1 text-xs font-medium {% if status == 'pending' %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">Pending</button>
+      <button type="submit" name="status" value="sent" class="rounded-full px-3 py-1 text-xs font-medium {% if status == 'sent' %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">Sent</button>
+      <button type="submit" name="status" value="claimed" class="rounded-full px-3 py-1 text-xs font-medium {% if status == 'claimed' %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">Claimed</button>
+      <button type="submit" name="status" value="expired" class="rounded-full px-3 py-1 text-xs font-medium {% if status == 'expired' %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">Expired</button>
+      <button type="submit" name="status" value="revoked" class="rounded-full px-3 py-1 text-xs font-medium {% if status == 'revoked' %}bg-jckfrt-olive text-content-light{% else %}text-content-secondary hover:bg-surface-alt{% endif %}">Revoked</button>
+    </div>
+    <details class="rounded-lg border border-border bg-surface p-2">
+      <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wide text-content-secondary">More filters</summary>
+      <div class="mt-2 grid gap-2 md:grid-cols-4">
+        <select name="has_email" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+          <option value="">Email: any</option>
+          <option value="true" {% if has_email == "true" %}selected{% endif %}>Has email</option>
+          <option value="false" {% if has_email == "false" %}selected{% endif %}>No email</option>
+        </select>
+        <select name="has_bundle" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+          <option value="">Bundle: any</option>
+          <option value="true" {% if has_bundle == "true" %}selected{% endif %}>Has Product Access Bundle</option>
+          <option value="false" {% if has_bundle == "false" %}selected{% endif %}>No Product Access Bundle</option>
+        </select>
+        <select name="inviter" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+          <option value="">Any inviter</option>
+          {% for user_obj in inviter_choices %}
+            <option value="{{ user_obj.id }}" {% if inviter == user_obj.id|stringformat:"s" %}selected{% endif %}>{{ user_obj.email }}</option>
+          {% endfor %}
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" name="created_from" value="{{ created_from }}" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+          <input type="date" name="created_to" value="{{ created_to }}" class="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-content">
+        </div>
+      </div>
+    </details>
   </form>
 </section>
 
