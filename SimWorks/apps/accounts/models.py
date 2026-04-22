@@ -420,6 +420,7 @@ class LabMembership(models.Model):
 
 
 class Invitation(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     token = models.CharField(max_length=64, unique=True, editable=False)
     email = models.EmailField(
         blank=True, null=True, help_text="Optional: email address of the invitee"
@@ -439,6 +440,17 @@ class Invitation(models.Model):
         blank=True,
         related_name="sent_invitations",
     )
+    membership_role = models.CharField(
+        max_length=32,
+        choices=AccountMembership.Role.choices,
+        default=AccountMembership.Role.GENERAL_USER,
+    )
+    product_code = models.CharField(max_length=100, blank=True, default="")
+    sent_at = models.DateTimeField(blank=True, null=True)
+    last_sent_at = models.DateTimeField(blank=True, null=True)
+    send_count = models.PositiveIntegerField(default=0)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
 
     is_claimed = models.BooleanField(default=False)
     claimed_at = models.DateTimeField(blank=True, null=True)
@@ -449,15 +461,34 @@ class Invitation(models.Model):
         blank=True,
         related_name="invitation",
     )
+    claimed_account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="claimed_invitations",
+    )
+
+    @staticmethod
+    def normalize_email(value: str | None) -> str:
+        return (value or "").strip().lower()
+
+    @staticmethod
+    def _generate_token() -> str:
+        import secrets
+
+        return secrets.token_urlsafe(32)
+
+    @staticmethod
+    def default_expiry():
+        return timezone.now() + timedelta(days=3)
 
     def save(self, *args, **kwargs):
+        self.email = self.normalize_email(self.email) or None
         if not self.token:
-            # Generate a secure token; using uuid or secrets.token_urlsafe() are good choices.
-            import secrets
-
-            self.token = secrets.token_urlsafe(32)
+            self.token = self._generate_token()
         if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(days=3)
+            self.expires_at = self.default_expiry()
         super().save(*args, **kwargs)
 
     def url(self, request):
@@ -465,24 +496,88 @@ class Invitation(models.Model):
 
     @property
     def get_absolute_url(self):
-        """Return allauth signup URL with invitation token as query parameter."""
+        """Return the canonical public invitation accept URL."""
         from django.urls import reverse as url_reverse
 
-        return f"{url_reverse('account_signup')}?invitation={self.token}"
+        return url_reverse("accounts:invitation-accept", kwargs={"token": self.token})
 
     @property
     def is_expired(self):
         return self.expires_at and timezone.now() > self.expires_at
 
+    @property
+    def product_access_bundle_display_name(self) -> str:
+        if not self.product_code:
+            return ""
+        from apps.billing.catalog import get_product
+
+        return get_product(self.product_code).display_name
+
     def clean(self):
+        from apps.billing.catalog import is_valid_product_code
+
+        self.email = self.normalize_email(self.email) or None
+        if self.product_code and not is_valid_product_code(self.product_code):
+            raise ValidationError({"product_code": "Enter a valid internal product code."})
         if self.is_claimed and not self.claimed_at:
             raise ValidationError("Used invitation must have a claimed_at timestamp.")
 
-    def mark_as_claimed(self, user: "User" = None):
+    def may_be_claimed(self) -> bool:
+        return not self.is_claimed and not self.revoked_at and not self.is_expired
+
+    def rotate_token_and_extend_expiry(self):
+        self.token = self._generate_token()
+        self.expires_at = self.default_expiry()
+        self.save(update_fields=["token", "expires_at"])
+
+    def mark_sent(self):
+        timestamp = timezone.now()
+        if self.sent_at is None:
+            self.sent_at = timestamp
+        self.last_sent_at = timestamp
+        self.send_count += 1
+        self.save(update_fields=["sent_at", "last_sent_at", "send_count"])
+
+    def mark_revoked(self):
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at"])
+
+    def mark_as_claimed(self, user: "User" = None, account: Account | None = None):
         self.is_claimed = True
         self.claimed_at = timezone.now()
         self.claimed_by = user
-        self.save()
+        if account is not None:
+            self.claimed_account = account
+        self.save(update_fields=["is_claimed", "claimed_at", "claimed_by", "claimed_account"])
 
     def __str__(self):
         return f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"
+
+
+class InvitationAuditEvent(models.Model):
+    invitation = models.ForeignKey(
+        "accounts.Invitation",
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+    )
+    actor_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invitation_audit_events",
+    )
+    event_type = models.CharField(max_length=100)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=["invitation", "created_at"], name="idx_invite_audit_invite"),
+            models.Index(fields=["event_type", "created_at"], name="idx_invite_audit_type"),
+        ]
+
+    def __str__(self):
+        return f"{self.invitation_id}:{self.event_type}"

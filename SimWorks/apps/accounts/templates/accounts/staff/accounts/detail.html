@@ -1,0 +1,102 @@
+{% extends "accounts/staff/base.html" %}
+
+{% block staff_title %}Account Detail{% endblock %}
+
+{% block staff_content %}
+<section class="rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+  <h2 class="text-xl font-bold text-content">{{ account.name }}</h2>
+  <dl class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div><dt class="text-xs uppercase text-content-secondary">Type</dt><dd>{{ account.account_type }}</dd></div>
+    <div><dt class="text-xs uppercase text-content-secondary">Slug</dt><dd>{{ account.slug }}</dd></div>
+    <div><dt class="text-xs uppercase text-content-secondary">Owner</dt><dd>{{ account.owner_user.email|default:"-" }}</dd></div>
+    <div><dt class="text-xs uppercase text-content-secondary">Active</dt><dd>{{ account.is_active }}</dd></div>
+  </dl>
+</section>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-2">
+  <section class="rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+    <h2 class="font-bold text-content">Memberships</h2>
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for membership in memberships %}
+        <li>{{ membership.user.email|default:membership.invite_email }} · {{ membership.role }} · {{ membership.status }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No memberships.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+    <h2 class="font-bold text-content">Billing accounts / subscriptions</h2>
+    <p class="mt-3 text-sm font-semibold text-content">Billing accounts</p>
+    <ul class="mt-2 space-y-2 text-sm">
+      {% for billing in billing_accounts %}
+        <li>{{ billing.provider_type }} · {{ billing.billing_email|default:"no billing email" }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No billing accounts.</li>
+      {% endfor %}
+    </ul>
+    <p class="mt-4 text-sm font-semibold text-content">Subscriptions</p>
+    <ul class="mt-2 space-y-2 text-sm">
+      {% for subscription in subscriptions %}
+        <li>{{ subscription.provider_type }} · {{ subscription.plan_code }} · {{ subscription.status }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No subscriptions.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<section class="mt-6 rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+  <h2 class="font-bold text-content">Entitlements / Product Access Bundles</h2>
+  <div class="mt-3 overflow-x-auto">
+    <table class="min-w-full text-left text-sm">
+      <tbody>
+        {% for row in entitlement_rows %}
+          <tr class="border-t border-border">
+            <td class="py-2">{{ row.product_name }}</td>
+            <td class="py-2">{{ row.entitlement.scope_type }}</td>
+            <td class="py-2">{{ row.entitlement.subject_user.email|default:"account" }}</td>
+            <td class="py-2">{{ row.entitlement.status }}</td>
+            <td class="py-2">{{ row.entitlement.source_ref }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="py-3 text-content-secondary">No entitlements.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-2">
+  <section class="rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+    <h2 class="font-bold text-content">Seats</h2>
+    <p class="mt-3 text-sm font-semibold text-content">Allocations</p>
+    <ul class="mt-2 space-y-2 text-sm">
+      {% for allocation in seat_allocations %}
+        <li>{{ allocation.product_code }} · {{ allocation.seat_used }}/{{ allocation.seat_limit }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No seat allocations.</li>
+      {% endfor %}
+    </ul>
+    <p class="mt-4 text-sm font-semibold text-content">Assignments</p>
+    <ul class="mt-2 space-y-2 text-sm">
+      {% for assignment in seat_assignments %}
+        <li>{{ assignment.user.email|default:"-" }} · {{ assignment.product_code }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No seat assignments.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="rounded-lg border border-border bg-surface-alt p-5 shadow-lg">
+    <h2 class="font-bold text-content">Audit events</h2>
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for event in audit_events %}
+        <li>{{ event.event_type }} · {{ event.created_at }}</li>
+      {% empty %}
+        <li class="text-content-secondary">No audit events.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

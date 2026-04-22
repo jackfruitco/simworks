@@ -1,0 +1,68 @@
+{% extends "accounts/staff/base.html" %}
+
+{% block staff_title %}Users{% endblock %}
+
+{% block staff_content %}
+<section class="rounded-lg border border-border bg-surface-alt p-4 shadow-lg">
+  <form method="get" class="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+    <input name="q" value="{{ query }}" placeholder="Search users" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+    <select name="active" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Active: any</option>
+      <option value="true" {% if active == "true" %}selected{% endif %}>Active</option>
+      <option value="false" {% if active == "false" %}selected{% endif %}>Inactive</option>
+    </select>
+    <select name="staff" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Staff: any</option>
+      <option value="true" {% if staff == "true" %}selected{% endif %}>Staff</option>
+      <option value="false" {% if staff == "false" %}selected{% endif %}>Non-staff</option>
+    </select>
+    <select name="has_entitlement" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Entitlement: any</option>
+      <option value="true" {% if has_entitlement == "true" %}selected{% endif %}>Has Product Access Bundle</option>
+      <option value="false" {% if has_entitlement == "false" %}selected{% endif %}>No Product Access Bundle</option>
+    </select>
+    <select name="has_membership" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Membership: any</option>
+      <option value="true" {% if has_membership == "true" %}selected{% endif %}>Has membership</option>
+      <option value="false" {% if has_membership == "false" %}selected{% endif %}>No membership</option>
+    </select>
+    <select name="invited" class="min-h-11 rounded-lg border border-border bg-surface px-3 text-content">
+      <option value="">Invited: any</option>
+      <option value="true" {% if invited == "true" %}selected{% endif %}>Invited</option>
+      <option value="false" {% if invited == "false" %}selected{% endif %}>Not invited</option>
+    </select>
+    <button class="min-h-11 rounded-lg bg-jckfrt-olive px-4 text-sm font-semibold text-content-light">Filter</button>
+  </form>
+</section>
+
+<section class="mt-6 overflow-x-auto rounded-lg border border-border bg-surface shadow">
+  <table class="min-w-full divide-y divide-border text-left text-sm">
+    <thead class="bg-surface-alt text-xs uppercase text-content-secondary">
+      <tr>
+        <th class="px-4 py-3">Name</th>
+        <th class="px-4 py-3">Email</th>
+        <th class="px-4 py-3">Active</th>
+        <th class="px-4 py-3">Staff</th>
+        <th class="px-4 py-3">Primary account</th>
+        <th class="px-4 py-3">Active Product Access Bundles</th>
+        <th class="px-4 py-3">Date joined</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for row in rows %}
+        <tr>
+          <td class="px-4 py-3"><a class="font-semibold text-jckfrt-olive" href="{% url 'staff:user-detail' row.user_obj.id %}">{{ row.user_obj.get_full_name|default:"-" }}</a></td>
+          <td class="px-4 py-3">{{ row.user_obj.email }}</td>
+          <td class="px-4 py-3">{{ row.user_obj.is_active }}</td>
+          <td class="px-4 py-3">{{ row.user_obj.is_staff }}{% if row.user_obj.is_superuser %} / superuser{% endif %}</td>
+          <td class="px-4 py-3">{{ row.user_obj.active_account.name|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.product_names|join:", "|default:"-" }}</td>
+          <td class="px-4 py-3">{{ row.user_obj.date_joined }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="px-4 py-8 text-center text-content-secondary">No users found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

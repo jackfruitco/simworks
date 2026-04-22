@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+  <h1 style="font-size: 20px; margin: 0 0 16px;">New MedSim feedback needs review</h1>
+
+  <table style="border-collapse: collapse; width: 100%; max-width: 720px;">
+    <tbody>
+      <tr><th align="left">Category</th><td>{{ category_label }}</td></tr>
+      <tr><th align="left">Title</th><td>{{ feedback.title|default:"(No title)" }}</td></tr>
+      <tr><th align="left">Submitted by</th><td>{{ submitted_by }}</td></tr>
+      <tr><th align="left">Submitted at</th><td>{{ feedback.created_at }}</td></tr>
+      <tr><th align="left">Simulation ID</th><td>{{ feedback.simulation_id|default:"-" }}</td></tr>
+      <tr><th align="left">Conversation ID</th><td>{{ feedback.conversation_id|default:"-" }}</td></tr>
+      <tr><th align="left">Platform</th><td>{{ platform_summary }}</td></tr>
+      <tr><th align="left">Request ID</th><td>{{ feedback.request_id|default:"-" }}</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 16px; margin: 20px 0 8px;">Preview</h2>
+  <p style="white-space: pre-wrap; padding: 12px; background: #f5f5f5; border: 1px solid #ddd;">{{ body_preview }}</p>
+
+  <p>
+    <a href="{{ detail_url }}">Open feedback</a>
+    &nbsp;|&nbsp;
+    <a href="{{ unreviewed_url }}">Open unreviewed inbox</a>
+  </p>
+</body>
+</html>

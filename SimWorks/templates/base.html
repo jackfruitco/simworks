@@ -33,6 +33,29 @@
     {% block header %}{% include 'partials/header.html' %}{% endblock %}
     {% block toasts %}<div id="toast-container"></div>{% endblock %}
     {% block notifications %}{% include 'partials/notifications.html' %}{% endblock %}
+    {% if user.is_authenticated and user.is_staff and unreviewed_feedback_count %}
+        <div
+            id="staff-feedback-banner"
+            class="tw-root border-b border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-950"
+            x-data="{ visible: sessionStorage.getItem('staffFeedbackBannerDismissed') !== '1' }"
+            x-show="visible"
+            x-cloak
+        >
+            <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <a href="{{ unreviewed_feedback_url }}" class="inline-flex items-center gap-2 font-semibold hover:underline">
+                    <span class="iconify" data-icon="mdi:message-alert-outline"></span>
+                    {{ unreviewed_feedback_label }}
+                </a>
+                <button
+                    type="button"
+                    class="inline-flex min-h-9 items-center justify-center rounded-lg border border-yellow-300 bg-white px-3 py-1 text-sm font-semibold text-yellow-950 hover:bg-yellow-100"
+                    @click="sessionStorage.setItem('staffFeedbackBannerDismissed', '1'); visible = false"
+                >
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    {% endif %}
 
     <main id="main">
         {% block parallax %}{% endblock %}
