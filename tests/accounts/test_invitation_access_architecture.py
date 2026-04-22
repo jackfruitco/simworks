@@ -316,7 +316,9 @@ def test_claim_invitation_preserves_existing_active_membership_role(staff_user, 
     assert repaired.joined_at is not None
 
 
-def test_claim_invitation_does_not_rewrite_existing_repaired_membership_fields(staff_user, role):
+def test_claim_invitation_only_repairs_missing_claim_fields_after_personal_account_sync(
+    staff_user, role
+):
     invitation = Invitation.objects.create(
         invited_by=staff_user,
         email="minimalrepair@example.com",
@@ -336,6 +338,8 @@ def test_claim_invitation_does_not_rewrite_existing_repaired_membership_fields(s
     joined_at = timezone.now() - timedelta(days=5)
     membership.role = AccountMembership.Role.INSTRUCTOR
     membership.status = AccountMembership.Status.ACTIVE
+    # Personal-account sync enforces invite_email == user.email; this assertion
+    # focuses on fields claim repair itself should not overwrite when already set.
     membership.invite_email = "existing@example.com"
     membership.invited_by = other_staff
     membership.approved_by = other_staff
@@ -360,7 +364,7 @@ def test_claim_invitation_does_not_rewrite_existing_repaired_membership_fields(s
     assert repaired.id == membership.id
     assert repaired.role == AccountMembership.Role.INSTRUCTOR
     assert repaired.status == AccountMembership.Status.ACTIVE
-    assert repaired.invite_email == "existing@example.com"
+    assert repaired.invite_email == user.email
     assert repaired.invited_by == other_staff
     assert repaired.approved_by == other_staff
     assert repaired.joined_at == joined_at
