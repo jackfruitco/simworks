@@ -414,13 +414,22 @@ def test_accept_view_routes_existing_email_to_login(client, staff_user, role):
     assert response.url.startswith(reverse("account_login"))
 
 
-def test_legacy_invite_list_filters_is_claimed(client, staff_user):
-    Invitation.objects.create(invited_by=staff_user, email="claimed@example.com")
+def test_legacy_invite_urls_redirect_to_staff_destinations(client, staff_user):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="claimed@example.com")
     client.force_login(staff_user)
 
-    response = client.get(reverse("accounts:list-invites"), {"claimed": "true"})
+    list_response = client.get(reverse("accounts:list-invites"))
+    new_response = client.get(reverse("accounts:new-invite"))
+    success_response = client.get(
+        reverse("accounts:invite-success", kwargs={"token": invitation.token})
+    )
 
-    assert response.status_code == 200
+    assert list_response.status_code == 302
+    assert list_response.url == reverse("staff:invitation-list")
+    assert new_response.status_code == 302
+    assert new_response.url == reverse("staff:invitation-create")
+    assert success_response.status_code == 302
+    assert success_response.url == reverse("staff:invitation-detail", kwargs={"invitation_id": invitation.id})
 
 
 def test_staff_dashboard_permissions_and_invitation_filter(client, staff_user, regular_user):
@@ -439,6 +448,64 @@ def test_staff_dashboard_permissions_and_invitation_filter(client, staff_user, r
     assert response.status_code == 200
     assert b"bundle-list@example.com" in response.content
     assert b"Product Access Bundle" in response.content
+
+
+def test_header_shows_staff_menu_only_for_staff(client, staff_user, regular_user):
+    client.force_login(staff_user)
+    staff_response = client.get(reverse("home"))
+    assert b"Staff" in staff_response.content
+    assert reverse("staff:invitation-list").encode() in staff_response.content
+    assert reverse("feedback:staff-list").encode() in staff_response.content
+
+    client.force_login(regular_user)
+    user_response = client.get(reverse("home"))
+    assert reverse("staff:invitation-list").encode() not in user_response.content
+    assert reverse("feedback:staff-list").encode() not in user_response.content
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_invitation_emails_use_environment_hint_for_staging_and_production(staff_user):
+    invitation = Invitation.objects.create(invited_by=staff_user, email="envhint@example.com")
+    send_invitation_email_task.run(invitation.id, "staging")
+    assert "https://medsim-staging.jackfruitco.com/accounts/invitations/accept/" in mail.outbox[0].body
+
+    invitation.rotate_token_and_extend_expiry()
+    send_invitation_email_task.run(invitation.id, "production")
+    assert "https://medsim.jackfruitco.com/accounts/invitations/accept/" in mail.outbox[1].body
+
+
+def test_staff_create_and_resend_pass_request_environment_hint(
+    client,
+    staff_user,
+    monkeypatch,
+):
+    captured = []
+
+    def _capture_delay(invitation_id, environment_hint):
+        captured.append((invitation_id, environment_hint))
+
+    monkeypatch.setattr("apps.accounts.tasks.send_invitation_email_task.delay", _capture_delay)
+    client.force_login(staff_user)
+    create_response = client.post(
+        reverse("staff:invitation-create"),
+        {
+            "email": "staging-create@example.com",
+            "first_name": "",
+            "product_code": "",
+            "membership_role": AccountMembership.Role.GENERAL_USER,
+        },
+        HTTP_HOST="medsim-staging.jackfruitco.com",
+    )
+    assert create_response.status_code == 302
+    created = Invitation.objects.get(email="staging-create@example.com")
+    assert captured[-1] == (created.id, "staging")
+
+    resend_response = client.post(
+        reverse("staff:invitation-resend", kwargs={"invitation_id": created.id}),
+        HTTP_HOST="medsim-staging.jackfruitco.com",
+    )
+    assert resend_response.status_code == 302
+    assert captured[-1][1] == "staging"
 
 
 def test_superuser_manual_product_access_grant_from_user_dashboard(
