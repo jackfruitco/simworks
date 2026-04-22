@@ -241,12 +241,6 @@ def claim_invitation_for_user(
             _raise_not_claimable(invitation)
         _assert_email_matches_invitation(invitation=invitation, user=user)
 
-        preexisting_open_membership_ids = set(
-            AccountMembership.objects.filter(user=user, ended_at__isnull=True).values_list(
-                "id",
-                flat=True,
-            )
-        )
         account = maybe_create_personal_account_for_user(user)
         # Invitation claims are personal-account-only in this phase. A successful
         # claim must leave the user with one active membership to their personal
@@ -262,9 +256,7 @@ def claim_invitation_for_user(
             .order_by("-created_at")
             .first()
         )
-        membership_created = (
-            membership is None or membership.id not in preexisting_open_membership_ids
-        )
+        membership_created = membership is None
         if membership is None:
             membership = AccountMembership.objects.create(
                 account=account,
@@ -282,7 +274,7 @@ def claim_invitation_for_user(
             if not membership.invite_email and user_email:
                 membership.invite_email = user_email
                 update_fields.append("invite_email")
-            if membership_created and membership.role != invitation.membership_role:
+            if not membership.role:
                 membership.role = invitation.membership_role
                 update_fields.append("role")
             if membership.status != AccountMembership.Status.ACTIVE:

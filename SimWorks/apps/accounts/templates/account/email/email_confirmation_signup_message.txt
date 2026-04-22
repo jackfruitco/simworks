@@ -1,6 +1,10 @@
+Welcome to MedSim
+
 Hello,
 
-Please confirm your email address to finish setting up your {{ product_name|default:"MedSim" }} account:
+Please confirm your email to finish setting up your {{ product_name|default:"MedSim" }} account.
+
+Confirm email:
 {{ activate_url }}
 
 {% if is_staging %}---
@@ -9,4 +13,4 @@ STAGING NOTICE: This email was sent from the staging environment.
 {% endif %}
 If you did not request this, you can safely ignore this message.
 
-Need help? Contact {{ support_email|default:"support@jackfruitco.com" }}.
+Need help? Reply to {{ support_email|default:"support@jackfruitco.com" }}.
