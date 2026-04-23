@@ -80,10 +80,13 @@
                                 <span class="iconify" data-icon="mdi:email-outline"></span>
                                 Email Settings
                             </a>
-                            <a href="{% url 'account_logout' %}" class="flex min-h-11 items-center gap-2 border-t border-border px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50">
-                                <span class="iconify" data-icon="mdi:logout"></span>
-                                Logout
-                            </a>
+                            <form method="post" action="{% url 'account_logout' %}" class="border-t border-border">
+                                {% csrf_token %}
+                                <button type="submit" class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-red-700 transition-colors hover:bg-red-50">
+                                    <span class="iconify" data-icon="mdi:logout"></span>
+                                    Logout
+                                </button>
+                            </form>
                         </div>
                     </div>
                 {% else %}
@@ -142,10 +145,13 @@
                         <span class="iconify" data-icon="mdi:email-outline"></span>
                         Email Settings
                     </a>
-                    <a href="{% url 'account_logout' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50" @click="mobileOpen = false">
-                        <span class="iconify" data-icon="mdi:logout"></span>
-                        Logout
-                    </a>
+                    <form method="post" action="{% url 'account_logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 transition-colors hover:bg-red-50" @click="mobileOpen = false">
+                            <span class="iconify" data-icon="mdi:logout"></span>
+                            Logout
+                        </button>
+                    </form>
                 {% else %}
                     <a href="{% url 'account_login' %}" class="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-content transition-colors hover:bg-surface-alt" @click="mobileOpen = false">
                         <span class="iconify" data-icon="mdi:login-variant"></span>
