@@ -242,8 +242,8 @@ class Simulation(models.Model):
         CANCELED = "canceled", "Canceled"
 
     class ArchiveReason(models.TextChoices):
-        SYSTEM_FAILED  = "system_failed",  "System: Failed"
-        USER_ARCHIVED  = "user_archived",  "User Archived"
+        SYSTEM_FAILED = "system_failed", "System: Failed"
+        USER_ARCHIVED = "user_archived", "User Archived"
         STAFF_ARCHIVED = "staff_archived", "Staff Archived"
 
     start_timestamp = models.DateTimeField(auto_now_add=True)
