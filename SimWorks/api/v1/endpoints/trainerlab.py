@@ -791,7 +791,10 @@ def list_trainer_sessions(
 
     queryset = (
         TrainerSession.objects.select_related("simulation", "simulation__account")
-        .filter(simulation__in=simulation_queryset)
+        .filter(
+            simulation__in=simulation_queryset,
+            simulation__archived_at__isnull=True,
+        )
         .order_by("-id")
     )
 

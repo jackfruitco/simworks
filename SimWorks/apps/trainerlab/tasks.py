@@ -11,6 +11,9 @@ from .services import append_pending_runtime_reason, process_runtime_turn_queue
 
 logger = get_logger(__name__)
 
+# Grace period before a failed TrainerLab simulation is auto-archived.
+FAILED_SIMULATION_ARCHIVE_AFTER_SECONDS = 300
+
 
 @task
 def trainerlab_process_runtime_turn(*, session_id: int) -> str | None:
@@ -86,4 +89,54 @@ def trainerlab_runtime_tick(self, session_id: int, tick_nonce: int) -> None:
             "trainerlab.tick.reschedule_failed",
             session_id=session.id,
             tick_nonce=tick_nonce,
+        )
+
+
+@shared_task(ignore_result=True)
+def archive_failed_trainerlab_simulations() -> None:
+    """Archive failed TrainerLab simulations that have passed the grace period.
+
+    Runs periodically via Celery beat.  Only targets simulations that:
+      - have status=FAILED
+      - reached terminal_at more than FAILED_SIMULATION_ARCHIVE_AFTER_SECONDS ago
+      - are not yet archived
+      - have an associated TrainerSession (TrainerLab-owned only)
+    """
+    from datetime import timedelta
+
+    from apps.common.utils import get_system_user
+    from apps.simcore.models import Simulation
+
+    cutoff = timezone.now() - timedelta(seconds=FAILED_SIMULATION_ARCHIVE_AFTER_SECONDS)
+    qs = Simulation.objects.filter(
+        status=Simulation.SimulationStatus.FAILED,
+        terminal_at__lte=cutoff,
+        archived_at__isnull=True,
+        trainerlab_session__isnull=False,
+    )
+
+    system_user = None
+    try:
+        system_user = get_system_user()
+    except Exception:
+        logger.exception("archive_failed_trainerlab_simulations.system_user_error")
+
+    archived_count = 0
+    for simulation in qs.iterator():
+        try:
+            simulation.archive(
+                reason=Simulation.ArchiveReason.SYSTEM_FAILED,
+                archived_by=system_user,
+            )
+            archived_count += 1
+        except Exception:
+            logger.exception(
+                "archive_failed_trainerlab_simulations.archive_error",
+                simulation_id=simulation.pk,
+            )
+
+    if archived_count:
+        logger.info(
+            "archive_failed_trainerlab_simulations.done",
+            archived_count=archived_count,
         )

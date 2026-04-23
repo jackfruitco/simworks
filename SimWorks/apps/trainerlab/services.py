@@ -871,6 +871,24 @@ def fail_initial_scenario_generation(
             "reason_text": reason_text,
         },
     )
+
+    try:
+        from .failure_service import handle_simulation_failure
+
+        handle_simulation_failure(
+            simulation=session.simulation,
+            trainer_session=session,
+            reason_code=normalized_reason,
+            reason_text=reason_text,
+            retryable=retryable,
+            correlation_id=correlation_id or "",
+        )
+    except Exception:
+        logger.exception(
+            "trainerlab.fail_initial.failure_service_error",
+            simulation_id=simulation_id,
+        )
+
     return session
 
 

@@ -36,6 +36,11 @@ app.conf.beat_schedule = {
         "task": "apps.guards.tasks.check_stale_sessions",
         "schedule": 15.0,  # seconds
     },
+    # Archive failed TrainerLab simulations after the 5-minute grace period.
+    "archive-failed-trainerlab-sims-every-60-seconds": {
+        "task": "apps.trainerlab.tasks.archive_failed_trainerlab_simulations",
+        "schedule": 60.0,  # seconds
+    },
 }
 
 # @signals.worker_process_init.connect

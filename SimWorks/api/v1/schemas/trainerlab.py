@@ -55,6 +55,9 @@ class TrainerRunOut(BaseModel):
     terminal_reason_code: str | None = None
     terminal_reason_text: str | None = None
     retryable: bool | None = None
+    archived_at: datetime | None = None
+    archived_reason: str | None = None
+    archived_by_id: int | None = None
 
 
 class TrainerCommandAck(BaseModel):
@@ -934,6 +937,9 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         terminal_reason_code=terminal_reason_code,
         terminal_reason_text=terminal_reason_text,
         retryable=retryable,
+        archived_at=simulation.archived_at,
+        archived_reason=simulation.archived_reason or None,
+        archived_by_id=simulation.archived_by_id,
     )
 
 
