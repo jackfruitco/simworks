@@ -35,8 +35,9 @@ from apps.common.outbox.outbox import (
 from config.logging import get_logger
 
 if TYPE_CHECKING:
-    from apps.common.models import OutboxEvent
     from django.db.models import QuerySet
+
+    from apps.common.models import OutboxEvent
 
     OutboxQuerysetFactory = Callable[[], QuerySet[OutboxEvent]]
 
@@ -221,7 +222,7 @@ def build_outbox_events_stream_response(
     *,
     simulation_id: int | None = None,
     last_event: OutboxEvent | None,
-    queryset_factory: "OutboxQuerysetFactory | None" = None,
+    queryset_factory: OutboxQuerysetFactory | None = None,
     cursor: str | None = None,
     event_type_prefix: str | None = None,
     sse_event_name: str = "simulation",

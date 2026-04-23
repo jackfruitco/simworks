@@ -19,7 +19,8 @@ class EventEnvelope(BaseModel):
     The same ``EventEnvelope`` is used by:
 
     * **ChatLab REST replay** (``GET /simulations/{id}/events/``)
-    * **TrainerLab SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)
+    * **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)
+    * **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)
     * **WebSocket delivery** (outbox drain → channel layer)
 
     Delivery semantics
@@ -41,7 +42,10 @@ class EventEnvelope(BaseModel):
 
     ChatLab clients use ``last_event_id`` during the WebSocket
     ``session.hello`` / ``session.resume`` handshake for durable replay.
-    TrainerLab clients pass ``latest_event_cursor`` to the SSE stream.
+    TrainerLab runtime clients pass ``latest_event_cursor`` to the
+    simulation-scoped SSE stream. TrainerLab hub clients use
+    ``GET /trainerlab/events/stream/`` with the same durable cursor semantics
+    and ``GET /trainerlab/simulations/`` as the polling/resync fallback.
 
     Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.

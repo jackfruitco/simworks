@@ -1,13 +1,19 @@
 # TrainerLab SSE Contract
 
-TrainerLab runtime SSE uses `GET /api/v1/trainerlab/simulations/{id}/events/stream/`.
+TrainerLab exposes two durable SSE streams:
+
+- Runtime screen: `GET /api/v1/trainerlab/simulations/{id}/events/stream/`
+- Session hub: `GET /api/v1/trainerlab/events/stream/`
 
 ## Wire Contract
 
 - Event payloads use the canonical outbox transport envelope (`EventEnvelope`).
 - The `cursor` query parameter resumes from the referenced outbox event (delivers only events strictly after that cursor).
+- Omitting `cursor` starts in tail-only mode.
+- Passing `replay=true` without `cursor` streams from the beginning of the visible event space.
 - **Stale cursor:** If the referenced cursor has been pruned or is otherwise unavailable, the stream request fails with **HTTP 410 Gone** and the client must re-bootstrap before opening a new stream. No successful `200 OK` stream is opened for stale or pruned cursors.
-- **Bootstrap:** After loading state via `GET /trainerlab/simulations/{id}/state/`, pass the `latest_event_cursor` from that response as the `cursor` parameter when connecting to the SSE stream so only events created after that point are delivered.
+- **Runtime bootstrap:** After loading state via `GET /trainerlab/simulations/{id}/state/`, pass the `latest_event_cursor` from that response as the `cursor` parameter when connecting to the runtime SSE stream so only events created after that point are delivered.
+- **Hub bootstrap:** After loading the hub list via `GET /trainerlab/simulations/`, connect to `GET /trainerlab/events/stream/`. Use `cursor` to resume from a known hub event checkpoint, or `replay=true` for explicit visible-event replay.
 - While the stream is idle, the server emits an SSE comment heartbeat every 10 seconds or less:
 
   ```text
@@ -21,7 +27,7 @@ TrainerLab runtime SSE uses `GET /api/v1/trainerlab/simulations/{id}/events/stre
 
 - Django sends the stream with `Content-Type: text/event-stream`.
 - SSE responses include `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`.
-- The checked-in nginx configs route the TrainerLab SSE path through a dedicated non-buffered proxy location with HTTP/1.1 and long read/send timeouts.
+- The checked-in nginx configs route both TrainerLab SSE paths through a dedicated non-buffered proxy location with HTTP/1.1 and long read/send timeouts.
 
 ## External Infra Requirements
 
