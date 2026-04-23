@@ -47,9 +47,7 @@ def optional_int_from_env(name: str, *, minimum: int | None = None) -> int | Non
     try:
         result = int(value)
     except ValueError as exc:
-        raise ValueError(
-            f"Environment variable {name} must be an integer, got: {value!r}"
-        ) from exc
+        raise ValueError(f"Environment variable {name} must be an integer, got: {value!r}") from exc
     if minimum is not None and result < minimum:
         raise ValueError(f"Environment variable {name} must be >= {minimum}, got: {result}")
     return result
