@@ -225,11 +225,16 @@ TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS = int_from_env(
     default=7000,
     minimum=1000,
 )
-TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = int_from_env(
-    "TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS",
-    default=1200,
-    minimum=128,
-)
+_trainerlab_runtime_max_output_tokens = os.getenv("TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS")
+if _trainerlab_runtime_max_output_tokens is None:
+    TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = None
+else:
+    TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = int(_trainerlab_runtime_max_output_tokens)
+    if TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS < 128:
+        raise ValueError(
+            "Environment variable TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS must be >= 128, "
+            f"got: {TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS}"
+        )
 TRAINERLAB_RUNTIME_MAX_BATCH_REASONS = int_from_env(
     "TRAINERLAB_RUNTIME_MAX_BATCH_REASONS",
     default=8,
