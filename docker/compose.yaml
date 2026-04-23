@@ -22,6 +22,7 @@ x-app-env: &app_env
   ORCA_DEFAULT_MODEL: ${ORCA_DEFAULT_MODEL}
   ORCA_IDENTITY_STRIP_TOKENS: ${ORCA_IDENTITY_STRIP_TOKENS}
   ORCA_MAX_ATTEMPTS: ${ORCA_MAX_ATTEMPTS}
+  TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS: ${TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS}
 
   LOGFIRE_API_KEY: ${LOGFIRE_API_KEY}
 
@@ -72,7 +73,7 @@ services:
     restart: always
     user: postgres
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     environment:
       - POSTGRES_DB
       - POSTGRES_USER
