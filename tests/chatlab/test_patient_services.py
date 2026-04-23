@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 from apps.chatlab.orca.instructions import (
-    PatientNameInstruction,
     PatientRecentScenarioHistoryInstruction,
     patient as patient_instruction_module,
 )
@@ -146,7 +145,7 @@ class TestGenerateInitialResponseService:
             context={"simulation_id": 1},
         )
 
-        assert PatientNameInstruction in service._instruction_classes
+        assert "PatientNameInstruction" in _instruction_names(service)
 
     def test_safety_instruction_blocks_out_of_character_admission(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
