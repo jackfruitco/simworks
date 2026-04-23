@@ -5,7 +5,7 @@ from django.http import HttpRequest
 from ninja.errors import HttpError
 
 from api.v1.schemas.lab_orders import LabOrdersOut
-from api.v1.utils import get_simulation_for_user
+from api.v1.utils import get_chatlab_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from config.logging import get_logger
 
@@ -23,7 +23,7 @@ def submit_lab_orders_request(
 
     require_chatlab_access(request.auth, request=request)
 
-    simulation = get_simulation_for_user(simulation_id, request.auth, request=request)
+    simulation = get_chatlab_simulation_for_user(simulation_id, request.auth, request=request)
     if simulation.status != Simulation.SimulationStatus.IN_PROGRESS:
         raise HttpError(400, "Lab orders can only be submitted for in-progress simulations")
 

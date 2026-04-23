@@ -22,8 +22,8 @@ from api.v1.schemas.simulations import (
 )
 from api.v1.utils import (
     get_account_for_request,
-    get_simulation_for_user,
-    get_simulation_queryset_for_request,
+    get_chatlab_simulation_for_user,
+    get_chatlab_simulation_queryset_for_request,
 )
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
@@ -124,7 +124,7 @@ def list_simulations(
 
     user = request.auth
     queryset = (
-        get_simulation_queryset_for_request(request, user)
+        get_chatlab_simulation_queryset_for_request(request, user)
         .select_related("chatlab_session")
         .order_by("-start_timestamp", "-pk")
     )
@@ -197,6 +197,7 @@ def list_simulations(
 def create_simulation(request: HttpRequest, body: SimulationCreate) -> SimulationOut:
     """Create a new simulation."""
     _require_chatlab_access(request)
+    from apps.chatlab.models import ChatSession
     from apps.simcore.models import Simulation
 
     user = request.auth
@@ -214,6 +215,7 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
         sim_patient_full_name=body.patient_full_name,
         time_limit=time_limit,
     )
+    ChatSession.objects.create(simulation=sim)
 
     logger.info(
         "simulation.created",
@@ -262,7 +264,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     """Get a specific simulation by ID."""
     _require_chatlab_access(request)
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     return simulation_to_out(sim)
 
@@ -278,7 +280,7 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
     """End a simulation."""
     _require_chatlab_access(request)
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     if sim.is_complete:
         raise HttpError(400, "Simulation is already ended")
@@ -307,7 +309,7 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
     from apps.simcore.models import Conversation, ConversationType, Simulation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     if not _sim_has_chatlab_session(sim):
         raise HttpError(400, "Initial generation retry is only available for ChatLab simulations")
@@ -363,7 +365,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
     from apps.simcore.models import Simulation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     if sim.status not in {
         Simulation.SimulationStatus.COMPLETED,

@@ -31,6 +31,12 @@ def get_simulation_queryset_for_request(request, user):
     return get_simulation_queryset_for_account(user, account)
 
 
+def get_chatlab_simulation_queryset_for_request(request, user):
+    return get_simulation_queryset_for_request(request, user).filter(
+        chatlab_session__isnull=False
+    )
+
+
 def get_simulation_queryset_for_scope(scope, user):
     from apps.simcore.models import Simulation
 
@@ -49,6 +55,12 @@ def can_access_simulation_in_request(user, simulation, request) -> bool:
     if simulation.account_id is None:
         return bool(getattr(account, "is_personal", False) and account.owner_user_id == user.id)
     return simulation.account_id == account.id
+
+
+def can_access_chatlab_simulation_in_request(user, simulation, request) -> bool:
+    return get_chatlab_simulation_queryset_for_request(request, user).filter(
+        pk=simulation.pk
+    ).exists()
 
 
 def can_access_simulation_in_scope(user, simulation, scope) -> bool:

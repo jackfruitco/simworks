@@ -7,6 +7,13 @@ from django.test import Client
 import pytest
 
 
+def _attach_chatlab_session(simulation):
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.get_or_create(simulation=simulation)
+    return simulation
+
+
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
@@ -44,12 +51,13 @@ def simulation(db, user):
     """Create a test simulation."""
     from apps.simcore.models import Simulation
 
-    return Simulation.objects.create(
+    simulation = Simulation.objects.create(
         user=user,
         diagnosis="Test Diagnosis",
         chief_complaint="Test Complaint",
         sim_patient_full_name="Test Patient",
     )
+    return _attach_chatlab_session(simulation)
 
 
 @pytest.fixture
@@ -136,6 +144,32 @@ def feedback_conversation_message(db, simulation, system_user, feedback_conversa
         is_from_ai=True,
         display_name="Stitch",
     )
+
+
+@pytest.mark.django_db
+class TestChatLabHome:
+    def test_index_excludes_trainerlab_backed_simulations(self, client: Client, user):
+        from apps.simcore.models import Simulation
+        from apps.trainerlab.models import TrainerSession
+
+        chatlab_simulation = Simulation.objects.create(
+            user=user,
+            sim_patient_full_name="ChatLab Patient",
+        )
+        _attach_chatlab_session(chatlab_simulation)
+        trainerlab_simulation = Simulation.objects.create(
+            user=user,
+            sim_patient_full_name="TrainerLab Patient",
+        )
+        TrainerSession.objects.create(simulation=trainerlab_simulation)
+
+        client.force_login(user)
+        response = client.get("/chatlab/")
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert f'data-simulation-id="{chatlab_simulation.id}"' in content
+        assert f'data-simulation-id="{trainerlab_simulation.id}"' not in content
 
 
 @pytest.mark.django_db
@@ -261,6 +295,7 @@ class TestGetSingleMessage:
             chief_complaint="Other Complaint",
             sim_patient_full_name="Other Patient",
         )
+        _attach_chatlab_session(other_simulation)
 
         client.force_login(user)
 

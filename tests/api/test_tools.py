@@ -8,6 +8,13 @@ import pytest
 from api.v1.auth import create_access_token
 
 
+def _attach_chatlab_session(simulation):
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.get_or_create(simulation=simulation)
+    return simulation
+
+
 @pytest.fixture
 def user_role(db):
     from apps.accounts.models import UserRole
@@ -56,10 +63,11 @@ def auth_client(test_user):
 def simulation(test_user):
     from apps.simcore.models import Simulation
 
-    return Simulation.objects.create(
+    simulation = Simulation.objects.create(
         user=test_user,
         sim_patient_full_name="Tool Patient",
     )
+    return _attach_chatlab_session(simulation)
 
 
 @pytest.fixture
