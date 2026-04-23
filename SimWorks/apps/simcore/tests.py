@@ -1,5 +1,4 @@
 from datetime import timedelta
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -18,8 +17,7 @@ def _make_user(email="test@example.com"):
 
 
 def _make_simulation(user=None, status=Simulation.SimulationStatus.IN_PROGRESS):
-    sim = Simulation.objects.create(user=user, status=status)
-    return sim
+    return Simulation.objects.create(user=user, status=status)
 
 
 class SimulationArchiveMethodTests(TestCase):
@@ -50,7 +48,6 @@ class SimulationArchiveMethodTests(TestCase):
         first_ts = now() - timedelta(seconds=10)
         self.sim.archive(reason=Simulation.ArchiveReason.SYSTEM_FAILED, timestamp=first_ts)
         self.sim.refresh_from_db()
-        # Second call with different timestamp should be a no-op
         second_ts = now()
         self.sim.archive(reason=Simulation.ArchiveReason.USER_ARCHIVED, timestamp=second_ts)
         self.sim.refresh_from_db()
@@ -67,9 +64,7 @@ class SimulationArchiveMethodTests(TestCase):
 
     def test_archive_without_save_does_not_persist(self):
         self.sim.archive(reason=Simulation.ArchiveReason.SYSTEM_FAILED, save=False)
-        # In-memory change applied
         self.assertTrue(self.sim.is_archived)
-        # But not persisted
         fresh = Simulation.objects.get(pk=self.sim.pk)
         self.assertFalse(fresh.is_archived)
 
@@ -82,22 +77,33 @@ class SimulationArchiveMethodTests(TestCase):
 
 
 class IsSimulationBillableTests(TestCase):
+    """is_simulation_billable() is scoped to TrainerLab failed simulations only."""
+
     def test_in_progress_simulation_is_billable(self):
         sim = _make_simulation(status=Simulation.SimulationStatus.IN_PROGRESS)
-        self.assertTrue(is_simulation_billable(sim))
+        self.assertTrue(is_simulation_billable(sim, lab_type="trainerlab"))
 
     def test_completed_simulation_is_billable(self):
         sim = _make_simulation(status=Simulation.SimulationStatus.COMPLETED)
-        self.assertTrue(is_simulation_billable(sim))
+        self.assertTrue(is_simulation_billable(sim, lab_type="trainerlab"))
 
     def test_timed_out_simulation_is_billable(self):
         sim = _make_simulation(status=Simulation.SimulationStatus.TIMED_OUT)
-        self.assertTrue(is_simulation_billable(sim))
+        self.assertTrue(is_simulation_billable(sim, lab_type="trainerlab"))
 
     def test_canceled_simulation_is_billable(self):
         sim = _make_simulation(status=Simulation.SimulationStatus.CANCELED)
-        self.assertTrue(is_simulation_billable(sim))
+        self.assertTrue(is_simulation_billable(sim, lab_type="trainerlab"))
 
-    def test_failed_simulation_is_not_billable(self):
+    def test_failed_trainerlab_simulation_is_not_billable(self):
         sim = _make_simulation(status=Simulation.SimulationStatus.FAILED)
-        self.assertFalse(is_simulation_billable(sim))
+        self.assertFalse(is_simulation_billable(sim, lab_type="trainerlab"))
+
+    def test_failed_chatlab_simulation_is_billable(self):
+        sim = _make_simulation(status=Simulation.SimulationStatus.FAILED)
+        self.assertTrue(is_simulation_billable(sim, lab_type="chatlab"))
+
+    def test_failed_simulation_without_lab_type_is_billable(self):
+        # Conservative default: unknown lab type → billable
+        sim = _make_simulation(status=Simulation.SimulationStatus.FAILED)
+        self.assertTrue(is_simulation_billable(sim))

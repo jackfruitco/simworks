@@ -4,6 +4,7 @@ from celery import shared_task
 from django.tasks import task
 from django.utils import timezone
 
+from apps.common.utils import get_system_user
 from config.logging import get_logger
 
 from .models import SessionStatus, TrainerSession
@@ -104,7 +105,6 @@ def archive_failed_trainerlab_simulations() -> None:
     """
     from datetime import timedelta
 
-    from apps.common.utils import get_system_user
     from apps.simcore.models import Simulation
 
     cutoff = timezone.now() - timedelta(seconds=FAILED_SIMULATION_ARCHIVE_AFTER_SECONDS)

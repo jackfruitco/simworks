@@ -55,9 +55,10 @@ def on_service_call_succeeded(sender, **kwargs):
     product_code = _resolve_product_code(simulation, lab_type)
 
     from apps.simcore.services import is_simulation_billable
+
     from .services import record_usage
 
-    billable = is_simulation_billable(simulation)
+    billable = is_simulation_billable(simulation, lab_type=lab_type)
     record_usage(
         simulation_id=simulation_id,
         user_id=getattr(simulation.user, "pk", None) if billable else None,
