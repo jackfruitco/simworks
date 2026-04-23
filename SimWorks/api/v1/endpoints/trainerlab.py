@@ -62,7 +62,11 @@ from api.v1.schemas.trainerlab import (
     trainer_run_to_out,
     trainer_state_to_out,
 )
-from api.v1.sse import aresolve_outbox_stream_anchor, build_outbox_events_stream_response
+from api.v1.sse import (
+    aresolve_outbox_stream_anchor,
+    aresolve_outbox_stream_anchor_for_queryset,
+    build_outbox_events_stream_response,
+)
 from api.v1.utils import (
     get_account_for_request,
     get_simulation_for_user,
@@ -135,6 +139,7 @@ router = Router(tags=["trainerlab"], auth=JWTAuth())
 UserModel = get_user_model()
 IDEMPOTENCY_POLL_INTERVAL_SECONDS = 0.01
 IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 5.0
+TRAINERLAB_HUB_EVENT_TYPES = (outbox_events.SIMULATION_STATUS_UPDATED,)
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:
@@ -165,6 +170,18 @@ def _get_session_for_simulation(
 
 def _get_correlation_id(request: HttpRequest) -> str | None:
     return getattr(request, "correlation_id", None)
+
+
+def _build_trainer_hub_outbox_queryset(request: HttpRequest, user):
+    """Return durable row-level TrainerLab events visible in the request scope."""
+    simulation_queryset = get_simulation_queryset_for_request(request, user)
+    visible_trainer_simulation_ids = TrainerSession.objects.filter(
+        simulation__in=simulation_queryset
+    ).values("simulation_id")
+    return OutboxEvent.objects.filter(
+        simulation_id__in=visible_trainer_simulation_ids,
+        event_type__in=TRAINERLAB_HUB_EVENT_TYPES,
+    )
 
 
 def _accepted(command: TrainerCommand) -> TrainerCommandAck:
@@ -759,6 +776,7 @@ def create_trainer_session(
     "/simulations/",
     response=PaginatedResponse[TrainerRunOut],
     summary="List TrainerLab simulations for user",
+    description="Authoritative polling fallback for the TrainerLab session hub.",
 )
 @api_rate_limit
 def list_trainer_sessions(
@@ -817,6 +835,7 @@ def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunO
     "/simulations/{simulation_id}/state/",
     response=TrainerRestViewModelOut,
     summary="Get authoritative TrainerLab runtime state snapshot",
+    description="Authoritative polling fallback for a single TrainerLab runtime screen.",
 )
 @api_rate_limit
 def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRestViewModelOut:
@@ -1889,6 +1908,61 @@ def create_vital_event(
 
 
 @router.get(
+    "/events/stream/",
+    response={200: None, 400: ErrorResponse, 410: ErrorResponse},
+    summary="SSE stream for TrainerLab hub events",
+    description=(
+        "Streams durable row-level TrainerLab events for all sessions visible in\n"
+        "the authenticated request/account scope.\n\n"
+        "**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\n"
+        "created after the connection opens.\n\n"
+        "**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\n"
+        "beginning of the visible hub event space.\n\n"
+        "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
+        "that checkpoint.\n\n"
+        "**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\n"
+        "before any stream bytes are sent. The client must re-bootstrap from\n"
+        "``GET /trainerlab/simulations/`` before opening a new stream.\n\n"
+        "Delivery semantics are **at-least-once**. Clients must deduplicate by\n"
+        "``event_id``."
+    ),
+)
+async def stream_trainer_hub_events(
+    request: HttpRequest,
+    cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
+    replay: bool = Query(default=False, description="Replay visible events from the beginning"),
+) -> StreamingHttpResponse:
+    from asgiref.sync import sync_to_async
+
+    user = request.auth
+    await sync_to_async(_require_lab_access)(request)
+    base_queryset = await sync_to_async(_build_trainer_hub_outbox_queryset)(request, user)
+
+    last_event = await aresolve_outbox_stream_anchor_for_queryset(
+        base_queryset=base_queryset,
+        cursor=cursor,
+        replay=replay,
+        log_context={
+            "stream_scope": "trainerlab_hub",
+            "user_id": getattr(user, "id", None),
+        },
+    )
+    return build_outbox_events_stream_response(
+        last_event=last_event,
+        queryset_factory=lambda: base_queryset.all(),
+        cursor=cursor,
+        sse_event_name="trainerlab",
+        heartbeat_interval_seconds=10.0,
+        poll_interval_seconds=1.0,
+        heartbeat_comment=": keep-alive\n\n",
+        log_context={
+            "stream_scope": "trainerlab_hub",
+            "user_id": getattr(user, "id", None),
+        },
+    )
+
+
+@router.get(
     "/simulations/{simulation_id}/events/",
     response=PaginatedResponse[EventEnvelope],
     summary="List TrainerLab runtime events",
@@ -1968,6 +2042,10 @@ def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
     summary="SSE stream for TrainerLab events",
     description=(
         "Streams outbox events for a TrainerLab simulation session.\n\n"
+        "**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\n"
+        "created after the connection opens.\n\n"
+        "**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\n"
+        "beginning of this simulation's event space.\n\n"
         "**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\n"
         "that checkpoint.\n\n"
         "**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\n"
@@ -1982,6 +2060,7 @@ async def stream_trainer_events(
     request: HttpRequest,
     simulation_id: int,
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
+    replay: bool = Query(default=False, description="Replay events from the beginning"),
 ) -> StreamingHttpResponse:
     from asgiref.sync import sync_to_async
 
@@ -1991,6 +2070,7 @@ async def stream_trainer_events(
     last_event = await aresolve_outbox_stream_anchor(
         simulation_id=session.simulation_id,
         cursor=cursor,
+        replay=replay,
     )
     return build_outbox_events_stream_response(
         simulation_id=session.simulation_id,

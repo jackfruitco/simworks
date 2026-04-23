@@ -24,7 +24,7 @@ def csv_from_env(name: str, default: list[str] | None = None) -> list[str]:
 
 def int_from_env(name: str, default: int, *, minimum: int | None = None) -> int:
     value = os.getenv(name)
-    if value is None:
+    if value is None or value.strip() == "":
         result = default
     else:
         try:
@@ -34,6 +34,20 @@ def int_from_env(name: str, default: int, *, minimum: int | None = None) -> int:
                 f"Environment variable {name} must be an integer, got: {value!r}"
             ) from exc
 
+    if minimum is not None and result < minimum:
+        raise ValueError(f"Environment variable {name} must be >= {minimum}, got: {result}")
+    return result
+
+
+def optional_int_from_env(name: str, *, minimum: int | None = None) -> int | None:
+    """Return int if the env var is set to a non-blank value, otherwise None."""
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+    try:
+        result = int(value)
+    except ValueError as exc:
+        raise ValueError(f"Environment variable {name} must be an integer, got: {value!r}") from exc
     if minimum is not None and result < minimum:
         raise ValueError(f"Environment variable {name} must be >= {minimum}, got: {result}")
     return result

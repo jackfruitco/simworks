@@ -83,6 +83,7 @@ TERMINAL_SESSION_STATUSES = {SessionStatus.COMPLETED, SessionStatus.FAILED}
 RUNTIME_STATE_EXCLUDED_KEYS = frozenset(
     {"current_snapshot", "scenario_brief", "snapshot_annotations"}
 )
+TRAINERLAB_LAB_SLUG = "trainerlab"
 logger = get_logger(__name__)
 
 VITAL_TYPE_MODEL_MAP = {
@@ -558,6 +559,40 @@ def emit_domain_runtime_event(
     )
 
 
+def build_simulation_status_payload(
+    *,
+    session: TrainerSession,
+    previous_status: str | None,
+    retryable: bool | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the normalized TrainerLab lifecycle event payload."""
+    state = get_runtime_state(session)
+    simulation = session.simulation
+    payload = {
+        "simulation_id": session.simulation_id,
+        "session_id": session.id,
+        "lab_slug": TRAINERLAB_LAB_SLUG,
+        "status": session.status,
+        "phase": state.get("phase"),
+        "created_at": _iso_or_none(session.created_at),
+        "updated_at": _iso_or_none(session.modified_at),
+        "state_revision": state.get("state_revision"),
+        "retryable": retryable,
+        "patient_name": getattr(simulation, "sim_patient_full_name", "") or None,
+        "chief_complaint": getattr(simulation, "chief_complaint", "") or None,
+        "diagnosis": getattr(simulation, "diagnosis", "") or None,
+        "terminal_reason_code": getattr(simulation, "terminal_reason_code", "") or None,
+        "terminal_reason_text": getattr(simulation, "terminal_reason_text", "") or None,
+    }
+    if previous_status is not None:
+        payload["from"] = previous_status
+        payload["to"] = session.status
+    if extra:
+        payload.update(extra)
+    return payload
+
+
 def emit_simulation_status_event(
     *,
     session: TrainerSession,
@@ -568,20 +603,12 @@ def emit_simulation_status_event(
     idempotency_key: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
-    state = get_runtime_state(session)
-    payload = {
-        "simulation_id": session.simulation_id,
-        "session_id": session.id,
-        "status": session.status,
-        "phase": state.get("phase"),
-    }
-    if previous_status is not None:
-        payload["from"] = previous_status
-        payload["to"] = session.status
-    if retryable is not None:
-        payload["retryable"] = retryable
-    if extra:
-        payload.update(extra)
+    payload = build_simulation_status_payload(
+        session=session,
+        previous_status=previous_status,
+        retryable=retryable,
+        extra=extra,
+    )
     return emit_runtime_event(
         session=session,
         event_type=outbox_events.SIMULATION_STATUS_UPDATED,
@@ -812,6 +839,11 @@ def fail_initial_scenario_generation(
     if session is None:
         return None
 
+    state = get_runtime_state(session)
+    if session.status == SessionStatus.FAILED and state.get("phase") == "failed":
+        return session
+
+    previous_status = session.status
     normalized_reason = _normalize_initial_generation_reason(reason_code)
     retryable = retryable and has_user_retries_remaining(session.simulation.initial_retry_count)
     _set_session_phase(
@@ -826,10 +858,11 @@ def fail_initial_scenario_generation(
         reason_code=normalized_reason,
         reason_text=reason_text,
         retryable=retryable,
+        emit_event=False,
     )
     emit_simulation_status_event(
         session=session,
-        previous_status=SessionStatus.SEEDING,
+        previous_status=previous_status,
         correlation_id=correlation_id,
         retryable=retryable,
         idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:{normalized_reason}",
@@ -866,6 +899,7 @@ def complete_initial_scenario_generation(
     if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
         return session
 
+    previous_status = session.status
     state["phase"] = "seeded"
     state["last_runtime_error"] = ""
     state["initial_generation_retryable"] = None
@@ -875,7 +909,7 @@ def complete_initial_scenario_generation(
 
     emit_simulation_status_event(
         session=session,
-        previous_status=SessionStatus.SEEDING,
+        previous_status=previous_status,
         correlation_id=correlation_id,
         idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeded",
         extra={
@@ -946,8 +980,9 @@ def retry_initial_scenario_generation(
 
     session.simulation.initial_retry_count += 1
     session.simulation.save(update_fields=["initial_retry_count"])
-    session.simulation.mark_in_progress()
+    session.simulation.mark_in_progress(emit_event=False)
 
+    previous_status = session.status
     state = get_runtime_state(session)
     state["phase"] = "seeding"
     state["last_runtime_error"] = ""
@@ -958,6 +993,19 @@ def retry_initial_scenario_generation(
     session.save(update_fields=["status", "runtime_state_json", "modified_at"])
 
     retryable = has_user_retries_remaining(session.simulation.initial_retry_count)
+    emit_simulation_status_event(
+        session=session,
+        previous_status=previous_status,
+        correlation_id=correlation_id,
+        retryable=retryable,
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_STATUS_UPDATED}:"
+            f"{session.id}:retry-seeding:{session.simulation.initial_retry_count}"
+        ),
+        extra={
+            "state_revision": state["state_revision"],
+        },
+    )
     return enqueue_initial_scenario_generation(
         session=session,
         correlation_id=correlation_id,
@@ -3033,11 +3081,6 @@ def start_session(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:running",
-        extra={
-            "status": session.status,
-            "from": previous_status,
-            "to": session.status,
-        },
     )
     append_pending_runtime_reason(
         session=session,
@@ -3069,12 +3112,9 @@ def pause_session(
         previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:paused",
-        extra={
-            "status": session.status,
-            "from": previous_status,
-            "to": session.status,
-        },
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:paused:{session.tick_nonce}"
+        ),
     )
 
     # Sync guard state for manual pause.
@@ -3113,12 +3153,9 @@ def resume_session(
         previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:resumed",
-        extra={
-            "status": session.status,
-            "from": previous_status,
-            "to": session.status,
-        },
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:resumed:{session.tick_nonce}"
+        ),
     )
     append_pending_runtime_reason(
         session=session,
@@ -3147,7 +3184,7 @@ def stop_session(
     session.save(update_fields=["status", "run_completed_at", "runtime_state_json", "modified_at"])
 
     if not session.simulation.is_complete:
-        session.simulation.mark_completed()
+        session.simulation.mark_completed(emit_event=False)
 
     emit_simulation_status_event(
         session=session,

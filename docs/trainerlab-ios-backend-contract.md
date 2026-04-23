@@ -9,9 +9,11 @@ The normative schema remains the generated OpenAPI document at
 Map iOS service methods to these canonical backend paths:
 
 - `listSessions` -> `GET /api/v1/trainerlab/simulations/`
+- `streamSessionHubEvents` -> `GET /api/v1/trainerlab/events/stream/`
 - `createSession` -> `POST /api/v1/trainerlab/simulations/`
 - `getSession` -> `GET /api/v1/trainerlab/simulations/{simulation_id}/`
 - `getRuntimeState` -> `GET /api/v1/trainerlab/simulations/{simulation_id}/state/`
+- `streamRuntimeEvents` -> `GET /api/v1/trainerlab/simulations/{simulation_id}/events/stream/`
 - `getRunSummary` -> `GET /api/v1/trainerlab/simulations/{simulation_id}/summary/`
 - `startRun` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/start/`
 - `pauseRun` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/pause/`
@@ -48,6 +50,8 @@ Important route choice:
 - Duplicate-key conflicts and incompatible replays return `409`.
 - Missing simulations or sessions return `404`.
 - Initial create returns `201`; an idempotent replay of the same create returns `200`.
+- Runtime screens should treat the simulation SSE stream as primary live transport and `/state/` as polling/resync fallback.
+- The session hub should treat the hub SSE stream as primary live transport and `/simulations/` as polling/resync fallback.
 
 ## iOS follow-up
 

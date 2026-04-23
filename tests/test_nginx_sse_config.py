@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SSE_LOCATION = "location ~ ^/api/v1/trainerlab/simulations/[0-9]+/events/stream/?$ {"
+SSE_LOCATION = (
+    "location ~ ^/api/v1/trainerlab/(events/stream|simulations/[0-9]+/events/stream)/?$ {"
+)
 REQUIRED_SSE_DIRECTIVES = (
     "proxy_http_version 1.1;",
     "proxy_buffering off;",
