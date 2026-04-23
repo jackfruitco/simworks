@@ -78,7 +78,9 @@ def simulation_required(kwarg_name: str = "simulation_id", owner_required: bool 
                 if (
                     owner_required
                     and request.user.is_authenticated
-                    and not can_access_simulation_in_request(request.user, simulation, request)
+                    and not await sync_to_async(can_access_simulation_in_request)(
+                        request.user, simulation, request
+                    )
                 ):
                     return HttpResponseForbidden("This isn't your simulation.")
                 request.simulation = simulation
