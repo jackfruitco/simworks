@@ -179,9 +179,7 @@ class TestListSimulations:
         data = response.json()
         assert len(data["items"]) == 0  # No simulations for test_user
 
-    def test_list_simulations_excludes_trainerlab_backed_simulations(
-        self, auth_client, test_user
-    ):
+    def test_list_simulations_excludes_trainerlab_backed_simulations(self, auth_client, test_user):
         """ChatLab list only returns simulations with a ChatSession."""
         from apps.simcore.models import Simulation
         from apps.trainerlab.models import TrainerSession

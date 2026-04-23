@@ -37,9 +37,7 @@ def get_chatlab_simulation_queryset_for_request(request, user):
     This is the canonical ChatLab request-scoped queryset helper for both
     web views and API endpoints.
     """
-    return get_simulation_queryset_for_request(request, user).filter(
-        chatlab_session__isnull=False
-    )
+    return get_simulation_queryset_for_request(request, user).filter(chatlab_session__isnull=False)
 
 
 def get_simulation_queryset_for_scope(scope, user):
@@ -63,9 +61,9 @@ def can_access_simulation_in_request(user, simulation, request) -> bool:
 
 
 def can_access_chatlab_simulation_in_request(user, simulation, request) -> bool:
-    return get_chatlab_simulation_queryset_for_request(request, user).filter(
-        pk=simulation.pk
-    ).exists()
+    return (
+        get_chatlab_simulation_queryset_for_request(request, user).filter(pk=simulation.pk).exists()
+    )
 
 
 def can_access_simulation_in_scope(user, simulation, scope) -> bool:
