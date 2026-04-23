@@ -20,6 +20,13 @@ from api.v1.auth import create_access_token
 from tests.helpers.assertions import assert_payload_has_fields, assert_response_status
 
 
+def _attach_chatlab_session(simulation):
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.get_or_create(simulation=simulation)
+    return simulation
+
+
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
@@ -113,12 +120,13 @@ def simulation(test_user):
     """Create a test simulation."""
     from apps.simcore.models import Simulation
 
-    return Simulation.objects.create(
+    simulation = Simulation.objects.create(
         user=test_user,
         diagnosis="Test Diagnosis",
         chief_complaint="Test Complaint",
         sim_patient_full_name="John Doe",
     )
+    return _attach_chatlab_session(simulation)
 
 
 @pytest.fixture

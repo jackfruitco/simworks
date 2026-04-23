@@ -5,6 +5,7 @@ from ninja.errors import HttpError
 
 from apps.accounts.context import resolve_request_account
 from apps.accounts.permissions import can_view_account_runs, can_view_simulation
+from apps.simcore.access import get_chatlab_simulation_queryset_for_request
 
 
 def get_account_for_request(request, user):
@@ -63,3 +64,24 @@ def get_simulation_for_user(simulation_id: int, user, request=None):
     if simulation.account_id and not can_view_simulation(user, simulation):
         raise HttpError(404, "Simulation not found")
     return simulation
+
+
+def get_chatlab_simulation_for_user(simulation_id: int, user, request=None):
+    """Get a ChatLab-backed simulation, ensuring the user has access."""
+    from apps.simcore.models import Simulation
+
+    if request is not None:
+        queryset = get_chatlab_simulation_queryset_for_request(request, user)
+        try:
+            return queryset.get(pk=simulation_id)
+        except Simulation.DoesNotExist as err:
+            raise HttpError(404, "Simulation not found") from err
+
+    try:
+        return (
+            Simulation.objects.select_related("account", "chatlab_session")
+            .filter(user=user, chatlab_session__isnull=False)
+            .get(pk=simulation_id)
+        )
+    except Simulation.DoesNotExist as err:
+        raise HttpError(404, "Simulation not found") from err

@@ -11,7 +11,7 @@ from api.v1.auth import DualAuth
 from api.v1.endpoints._lab_order_submission import submit_lab_orders_request
 from api.v1.schemas.lab_orders import LabOrdersOut
 from api.v1.schemas.tools import SignOrdersIn, ToolListResponse, ToolOut
-from api.v1.utils import get_simulation_for_user
+from api.v1.utils import get_chatlab_simulation_for_user
 from apps.common.ratelimit import api_rate_limit
 
 router = Router(tags=["tools"], auth=DualAuth())
@@ -44,7 +44,7 @@ def list_simulation_tools(
     from apps.simcore.tools import list_tools
 
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user, request=request)
+    simulation = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     if names:
         tool_names = [name.lower() for name in names]
@@ -73,7 +73,7 @@ def get_simulation_tool(
     tool_name: str,
 ) -> ToolOut:
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user, request=request)
+    simulation = get_chatlab_simulation_for_user(simulation_id, user, request=request)
     tool_class = _resolve_tool_or_404(tool_name)
     return ToolOut(**tool_class(simulation).to_dict())
 

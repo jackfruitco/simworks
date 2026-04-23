@@ -16,7 +16,7 @@ from apps.chatlab.utils import (
     create_new_simulation,
     maybe_start_simulation,
 )
-from apps.common.decorators import resolve_user, simulation_required
+from apps.common.decorators import resolve_user
 from apps.common.models import OutboxEvent
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.retries import (
@@ -25,8 +25,8 @@ from apps.common.retries import (
 )
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
 from apps.simcore.access import (
-    can_access_simulation_in_request,
-    get_simulation_queryset_for_request,
+    can_access_chatlab_simulation_in_request,
+    get_chatlab_simulation_queryset_for_request,
 )
 from apps.simcore.models import Simulation
 from apps.simcore.tools import aget_tool, alist_tools
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 @login_required
 def index(request):
     simulations = (
-        get_simulation_queryset_for_request(request, request.user)
+        get_chatlab_simulation_queryset_for_request(request, request.user)
         if request.user.is_authenticated
         else Simulation.objects.none()
     )
@@ -68,7 +68,9 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "chatlab/partials/simulation_history_list.html" if request.htmx else "chatlab/index.html"
+        "chatlab/partials/simulation_history_list.html"
+        if getattr(request, "htmx", False)
+        else "chatlab/index.html"
     )
     return render(
         request,
@@ -99,9 +101,13 @@ async def create_simulation(request):
 
 @login_required
 @resolve_user
-@simulation_required("simulation_id", owner_required=True)
 async def run_simulation(request, simulation_id, included_tools="__ALL__"):
-    simulation = request.simulation
+    simulation = await sync_to_async(
+        lambda: get_object_or_404(
+            get_chatlab_simulation_queryset_for_request(request, request.user),
+            id=simulation_id,
+        )
+    )()
 
     tools = []
 
@@ -151,7 +157,7 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
 def get_metadata_checksum(request, simulation_id):
     """Return simulation metadata checksum."""
     simulation = get_object_or_404(
-        get_simulation_queryset_for_request(request, request.user),
+        get_chatlab_simulation_queryset_for_request(request, request.user),
         id=simulation_id,
     )
     return JsonResponse({"checksum": simulation.metadata_checksum})
@@ -160,7 +166,10 @@ def get_metadata_checksum(request, simulation_id):
 @require_GET
 @login_required
 def refresh_messages(request, simulation_id):
-    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
+    get_object_or_404(
+        get_chatlab_simulation_queryset_for_request(request, request.user),
+        id=simulation_id,
+    )
     qs = Message.objects.filter(simulation_id=simulation_id)
 
     # Filter by conversation when specified (multi-conversation support)
@@ -176,7 +185,10 @@ def refresh_messages(request, simulation_id):
 @require_GET
 @login_required
 def load_older_messages(request, simulation_id):
-    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
+    get_object_or_404(
+        get_chatlab_simulation_queryset_for_request(request, request.user),
+        id=simulation_id,
+    )
     before_id = request.GET.get("before")
     try:
         before_message = Message.objects.get(id=before_id, simulation_id=simulation_id)
@@ -224,7 +236,7 @@ def modifier_selector(request):
 @login_required
 def end_simulation(request, simulation_id):
     simulation = get_object_or_404(
-        get_simulation_queryset_for_request(request, request.user),
+        get_chatlab_simulation_queryset_for_request(request, request.user),
         id=simulation_id,
     )
     if not simulation.end_timestamp:
@@ -236,7 +248,10 @@ def end_simulation(request, simulation_id):
 @login_required
 def get_single_message(request, simulation_id, message_id):
     """Return HTML for a single message (for HTMX append after WebSocket notification)."""
-    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
+    get_object_or_404(
+        get_chatlab_simulation_queryset_for_request(request, request.user),
+        id=simulation_id,
+    )
     try:
         message = (
             Message.objects.select_related("sender")
@@ -290,7 +305,7 @@ def watch_simulation(request, simulation_id):
         back_url=run_url,
         lab_name="ChatLab",
         can_go_to_simulation=request.user.is_authenticated
-        and can_access_simulation_in_request(request.user, simulation, request),
+        and can_access_chatlab_simulation_in_request(request.user, simulation, request),
         go_to_simulation_url=run_url,
     )
     return render(

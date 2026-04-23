@@ -17,7 +17,7 @@ from api.v1.schemas.messages import (
     MessageOut,
     message_to_out,
 )
-from api.v1.utils import get_simulation_for_user
+from api.v1.utils import get_chatlab_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
@@ -332,7 +332,7 @@ def list_messages(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     # Base queryset with select_related to avoid N+1 on conversation_type
     queryset = (
@@ -404,7 +404,7 @@ def create_message(
     from apps.chatlab.models import Message, RoleChoices
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     # ── Guard: ChatLab send-lock check ──────────────────────────────
     _guard_chat_send(sim)
@@ -481,7 +481,7 @@ def retry_message(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     # ── Guard: ChatLab send-lock check ──────────────────────────────
     _guard_chat_send(sim)
@@ -557,7 +557,7 @@ def get_message(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (
@@ -588,7 +588,7 @@ def mark_message_read(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (
