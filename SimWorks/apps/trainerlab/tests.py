@@ -214,11 +214,14 @@ class TrainerSessionLifecycleEventTests(TestCase):
             ).order_by("created_at", "id")
         )
         self.assertEqual(len(status_events), 3)
-        self.assertEqual([event.payload["status"] for event in status_events], [
-            SessionStatus.SEEDING,
-            SessionStatus.FAILED,
-            SessionStatus.SEEDING,
-        ])
+        self.assertEqual(
+            [event.payload["status"] for event in status_events],
+            [
+                SessionStatus.SEEDING,
+                SessionStatus.FAILED,
+                SessionStatus.SEEDING,
+            ],
+        )
 
         failed_payload = status_events[1].payload
         self.assertEqual(failed_payload["lab_slug"], "trainerlab")

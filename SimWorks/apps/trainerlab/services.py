@@ -3113,8 +3113,7 @@ def pause_session(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=(
-            f"{outbox_events.SIMULATION_STATUS_UPDATED}:"
-            f"{session.id}:paused:{session.tick_nonce}"
+            f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:paused:{session.tick_nonce}"
         ),
     )
 
@@ -3155,8 +3154,7 @@ def resume_session(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=(
-            f"{outbox_events.SIMULATION_STATUS_UPDATED}:"
-            f"{session.id}:resumed:{session.tick_nonce}"
+            f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:resumed:{session.tick_nonce}"
         ),
     )
     append_pending_runtime_reason(
