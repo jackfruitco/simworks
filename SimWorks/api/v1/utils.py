@@ -5,6 +5,7 @@ from ninja.errors import HttpError
 
 from apps.accounts.context import resolve_request_account
 from apps.accounts.permissions import can_view_account_runs, can_view_simulation
+from apps.simcore.access import get_chatlab_simulation_queryset_for_request
 
 
 def get_account_for_request(request, user):
@@ -29,12 +30,6 @@ def get_simulation_queryset_for_request(request, user):
     if can_view_account_runs(user, account):
         return queryset
     return queryset.filter(user=user)
-
-
-def get_chatlab_simulation_queryset_for_request(request, user):
-    return get_simulation_queryset_for_request(request, user).filter(
-        chatlab_session__isnull=False
-    )
 
 
 def get_simulation_for_user(simulation_id: int, user, request=None):

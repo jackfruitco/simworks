@@ -32,6 +32,11 @@ def get_simulation_queryset_for_request(request, user):
 
 
 def get_chatlab_simulation_queryset_for_request(request, user):
+    """Return request-scoped simulations that are ChatLab-backed.
+
+    This is the canonical ChatLab request-scoped queryset helper for both
+    web views and API endpoints.
+    """
     return get_simulation_queryset_for_request(request, user).filter(
         chatlab_session__isnull=False
     )

@@ -23,7 +23,6 @@ from api.v1.schemas.simulations import (
 from api.v1.utils import (
     get_account_for_request,
     get_chatlab_simulation_for_user,
-    get_chatlab_simulation_queryset_for_request,
 )
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
@@ -33,6 +32,7 @@ from apps.common.retries import (
     has_user_retries_remaining,
     is_simulation_initial_generation_retryable,
 )
+from apps.simcore.access import get_chatlab_simulation_queryset_for_request
 from config.logging import get_logger
 
 logger = get_logger(__name__)
