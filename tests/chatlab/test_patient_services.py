@@ -171,6 +171,33 @@ class TestGenerateInitialResponseService:
         assert "Reveal information gradually" in text
         assert "Prefer realistic under-disclosure" in text
 
+    def test_medication_box_scenario_includes_patient_environment_boundaries(self):
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+        text = instruction_cls.instruction or ""
+        assert "Speak only from the patient's own perspective" in text
+        assert "Do not ask the clinician/user to provide images" in text
+        assert "medication box" in text
+        assert "The patient should never request any action whose main purpose is to help the model obtain missing context." in text
+
+    def test_disclosure_instruction_lists_disallowed_role_inversion_requests(self):
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+        text = instruction_cls.instruction or ""
+        assert "Can you send me a picture of the bottle?" in text
+        assert "Upload the ingredient list so I can check it." in text
+        assert "Can you inspect the box for me?" in text
+        assert "Can you look at the label and tell me what it says?" in text
+
+    def test_disclosure_instruction_lists_allowed_patient_perspective_outputs(self):
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+        text = instruction_cls.instruction or ""
+        assert "Hold on, I have the box here... it says acetaminophen 500 mg." in text
+        assert "I can't find the bottle right now." in text
+        assert "The label is smudged; I can't really read it." in text
+        assert "It's a small white bottle with a blue cap." in text
+
     def test_reply_instruction_marks_metadata_optional(self):
         service = GenerateReplyResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientReplyDetailInstruction")
@@ -215,6 +242,13 @@ class TestGenerateReplyResponseService:
     def test_resolves_expected_instruction_names_in_order(self):
         service = GenerateReplyResponse(context={"simulation_id": 1})
         assert _instruction_names(service) == EXPECTED_REPLY_INSTRUCTION_NAMES
+
+    def test_reply_path_includes_same_patient_environment_boundary_instruction(self):
+        service = GenerateReplyResponse(context={"simulation_id": 1})
+        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
+        text = instruction_cls.instruction or ""
+        assert "Do not ask the clinician/user to provide images" in text
+        assert "The patient must never ask the clinician to look at, upload, inspect, or retrieve such an object on the patient's behalf." in text
 
 
 class TestGenerateImageResponseService:
