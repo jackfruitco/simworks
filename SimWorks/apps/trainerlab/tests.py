@@ -10,7 +10,12 @@ from apps.accounts.models import UserRole
 from apps.common.models import OutboxEvent
 from apps.common.outbox import event_types as outbox_events
 from apps.trainerlab.models import RuntimeEvent, SessionStatus
-from apps.trainerlab.services import complete_initial_scenario_generation, create_session
+from apps.trainerlab.services import (
+    complete_initial_scenario_generation,
+    create_session,
+    fail_initial_scenario_generation,
+    retry_initial_scenario_generation,
+)
 
 User = get_user_model()
 
@@ -172,3 +177,77 @@ class TrainerSessionLifecycleEventTests(TestCase):
         )
         self.assertFalse(OutboxEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
         self.assertFalse(RuntimeEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
+
+    @patch("apps.trainerlab.services.enqueue_initial_scenario_generation", return_value="call-456")
+    @patch("apps.trainerlab.services.generate_fake_name", new_callable=AsyncMock)
+    def test_failure_and_retry_emit_normalized_status_events_once(
+        self, mock_name: AsyncMock, _mock_enqueue
+    ) -> None:
+        mock_name.return_value = "Casey Patient"
+
+        session = create_session(
+            user=self.user,
+            scenario_spec={"diagnosis": "Shock", "chief_complaint": "Weakness"},
+            directives="Begin seeding",
+            modifiers=[],
+            status=SessionStatus.SEEDING,
+            emit_seeded_event=False,
+            correlation_id="corr-create",
+        )
+
+        fail_initial_scenario_generation(
+            simulation_id=session.simulation_id,
+            reason_code="provider_timeout",
+            reason_text="Timed out.",
+            retryable=True,
+            correlation_id="corr-fail",
+        )
+        session.refresh_from_db()
+
+        retry_initial_scenario_generation(session=session, correlation_id="corr-retry")
+        session.refresh_from_db()
+
+        status_events = list(
+            OutboxEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type=outbox_events.SIMULATION_STATUS_UPDATED,
+            ).order_by("created_at", "id")
+        )
+        self.assertEqual(len(status_events), 3)
+        self.assertEqual(
+            [event.payload["status"] for event in status_events],
+            [
+                SessionStatus.SEEDING,
+                SessionStatus.FAILED,
+                SessionStatus.SEEDING,
+            ],
+        )
+
+        failed_payload = status_events[1].payload
+        self.assertEqual(failed_payload["lab_slug"], "trainerlab")
+        self.assertEqual(failed_payload["from"], SessionStatus.SEEDING)
+        self.assertEqual(failed_payload["to"], SessionStatus.FAILED)
+        self.assertEqual(failed_payload["retryable"], True)
+        self.assertEqual(failed_payload["patient_name"], "Casey Patient")
+        self.assertEqual(failed_payload["chief_complaint"], "Weakness")
+        self.assertEqual(failed_payload["diagnosis"], "Shock")
+        self.assertEqual(
+            failed_payload["terminal_reason_code"],
+            "trainerlab_initial_generation_provider_timeout",
+        )
+        self.assertEqual(failed_payload["reason_code"], failed_payload["terminal_reason_code"])
+        self.assertIn("created_at", failed_payload)
+        self.assertIn("updated_at", failed_payload)
+        self.assertIn("state_revision", failed_payload)
+
+        retry_payload = status_events[2].payload
+        self.assertEqual(retry_payload["from"], SessionStatus.FAILED)
+        self.assertEqual(retry_payload["to"], SessionStatus.SEEDING)
+        self.assertIsNone(retry_payload["terminal_reason_code"])
+        self.assertEqual(retry_payload["lab_slug"], "trainerlab")
+
+        runtime_status_count = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
+        ).count()
+        self.assertEqual(runtime_status_count, 3)

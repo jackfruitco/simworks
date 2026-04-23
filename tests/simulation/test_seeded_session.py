@@ -471,7 +471,7 @@ class TestSeedingSessionLifecycle:
             == 1
         )
 
-    def test_retry_initial_scenario_generation_resets_phase_without_duplicate_status_event(
+    def test_retry_initial_scenario_generation_resets_phase_and_emits_transition_event(
         self, user, monkeypatch
     ):
         from apps.trainerlab.models import RuntimeEvent
@@ -504,8 +504,11 @@ class TestSeedingSessionLifecycle:
             simulation_id=session.simulation_id,
             event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
-        assert _phase_event_count(runtime_status_events, phase="seeding") == 1
+        assert _phase_event_count(runtime_status_events, phase="seeding") == 2
         assert _phase_event_count(runtime_status_events, phase="failed") == 1
+        retry_event = runtime_status_events.order_by("created_at", "id").last()
+        assert retry_event.payload["from"] == "failed"
+        assert retry_event.payload["to"] == "seeding"
 
     def test_ai_response_failed_signal_marks_failed(self, user, monkeypatch):
         monkeypatch.setattr(

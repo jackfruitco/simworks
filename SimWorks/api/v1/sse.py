@@ -18,6 +18,7 @@ Delivery semantics are **at-least-once**.  Clients must deduplicate by
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import json
 import time
 from typing import TYPE_CHECKING, Any
@@ -34,7 +35,11 @@ from apps.common.outbox.outbox import (
 from config.logging import get_logger
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
+
     from apps.common.models import OutboxEvent
+
+    OutboxQuerysetFactory = Callable[[], QuerySet[OutboxEvent]]
 
 logger = get_logger(__name__)
 
@@ -99,6 +104,66 @@ def _parse_cursor_uuid(cursor: str | None) -> uuid.UUID | None:
         raise HttpError(400, "Invalid cursor format") from None
 
 
+def resolve_outbox_stream_anchor_for_queryset(
+    *,
+    base_queryset,
+    cursor: str | None = None,
+    replay: bool = False,
+    log_context: dict[str, Any] | None = None,
+) -> OutboxEvent | None:
+    """Resolve the initial stream anchor for an arbitrary OutboxEvent queryset.
+
+    This preserves the shared cursor/replay/stale-cursor contract for streams
+    that are not scoped to exactly one simulation, such as the TrainerLab hub.
+    """
+    cursor_uuid = _parse_cursor_uuid(cursor)
+    queryset = order_outbox_queryset(base_queryset)
+
+    if cursor_uuid is not None:
+        cursor_event = queryset.filter(id=cursor_uuid).first()
+        if cursor_event is None:
+            logger.warning(
+                "sse_stale_cursor",
+                cursor=str(cursor_uuid),
+                **(log_context or {}),
+            )
+            raise HttpError(410, STALE_CURSOR_DETAIL)
+        return cursor_event
+
+    if replay:
+        return None
+
+    return queryset.last()
+
+
+async def aresolve_outbox_stream_anchor_for_queryset(
+    *,
+    base_queryset,
+    cursor: str | None = None,
+    replay: bool = False,
+    log_context: dict[str, Any] | None = None,
+) -> OutboxEvent | None:
+    """Async variant of :func:`resolve_outbox_stream_anchor_for_queryset`."""
+    cursor_uuid = _parse_cursor_uuid(cursor)
+    queryset = order_outbox_queryset(base_queryset)
+
+    if cursor_uuid is not None:
+        cursor_event = await queryset.filter(id=cursor_uuid).afirst()
+        if cursor_event is None:
+            logger.warning(
+                "sse_stale_cursor",
+                cursor=str(cursor_uuid),
+                **(log_context or {}),
+            )
+            raise HttpError(410, STALE_CURSOR_DETAIL)
+        return cursor_event
+
+    if replay:
+        return None
+
+    return await queryset.alast()
+
+
 def resolve_outbox_stream_anchor(
     *,
     simulation_id: int,
@@ -116,27 +181,15 @@ def resolve_outbox_stream_anchor(
         HttpError(400): invalid cursor UUID format.
         HttpError(410): cursor was a valid UUID but the event no longer exists.
     """
-    cursor_uuid = _parse_cursor_uuid(cursor)
     base_qs = _build_outbox_base_queryset(
         simulation_id=simulation_id, event_type_prefix=event_type_prefix
     )
-
-    if cursor_uuid is not None:
-        cursor_event = order_outbox_queryset(base_qs).filter(id=cursor_uuid).first()
-        if cursor_event is None:
-            logger.warning(
-                "sse_stale_cursor",
-                simulation_id=simulation_id,
-                cursor=str(cursor_uuid),
-            )
-            raise HttpError(410, STALE_CURSOR_DETAIL)
-        return cursor_event
-
-    if replay:
-        return None  # Full replay from beginning
-
-    # Default: tail-only — start after the current latest event.
-    return order_outbox_queryset(base_qs).last()
+    return resolve_outbox_stream_anchor_for_queryset(
+        base_queryset=base_qs,
+        cursor=cursor,
+        replay=replay,
+        log_context={"simulation_id": simulation_id},
+    )
 
 
 async def aresolve_outbox_stream_anchor(
@@ -154,32 +207,22 @@ async def aresolve_outbox_stream_anchor(
         HttpError(400): invalid cursor UUID format.
         HttpError(410): cursor was a valid UUID but the event no longer exists.
     """
-    cursor_uuid = _parse_cursor_uuid(cursor)
     base_qs = _build_outbox_base_queryset(
         simulation_id=simulation_id, event_type_prefix=event_type_prefix
     )
-
-    if cursor_uuid is not None:
-        cursor_event = await order_outbox_queryset(base_qs).filter(id=cursor_uuid).afirst()
-        if cursor_event is None:
-            logger.warning(
-                "sse_stale_cursor",
-                simulation_id=simulation_id,
-                cursor=str(cursor_uuid),
-            )
-            raise HttpError(410, STALE_CURSOR_DETAIL)
-        return cursor_event
-
-    if replay:
-        return None
-
-    return await order_outbox_queryset(base_qs).alast()
+    return await aresolve_outbox_stream_anchor_for_queryset(
+        base_queryset=base_qs,
+        cursor=cursor,
+        replay=replay,
+        log_context={"simulation_id": simulation_id},
+    )
 
 
 def build_outbox_events_stream_response(
     *,
-    simulation_id: int,
+    simulation_id: int | None = None,
     last_event: OutboxEvent | None,
+    queryset_factory: OutboxQuerysetFactory | None = None,
     cursor: str | None = None,
     event_type_prefix: str | None = None,
     sse_event_name: str = "simulation",
@@ -187,6 +230,7 @@ def build_outbox_events_stream_response(
     poll_interval_seconds: float = 1.0,
     heartbeat_comment: str = ": keep-alive\n\n",
     emit_named_heartbeat: bool = False,
+    log_context: dict[str, Any] | None = None,
 ) -> StreamingHttpResponse:
     """Build the SSE ``StreamingHttpResponse`` for a pre-resolved stream anchor.
 
@@ -200,13 +244,24 @@ def build_outbox_events_stream_response(
     if heartbeat_interval_seconds is not None and heartbeat_interval_seconds <= 0:
         raise ValueError("heartbeat_interval_seconds must be positive")
 
-    media_enricher = _make_message_media_enricher(simulation_id)
+    if queryset_factory is None:
+        if simulation_id is None:
+            raise ValueError("simulation_id is required when queryset_factory is omitted")
+
+        def queryset_factory():
+            return _build_outbox_base_queryset(
+                simulation_id=simulation_id,
+                event_type_prefix=event_type_prefix,
+            )
+
+    media_enricher = _make_message_media_enricher(simulation_id) if simulation_id else None
+    log_fields = {"simulation_id": simulation_id, **(log_context or {})}
 
     logger.info(
         "sse_stream_opened",
-        simulation_id=simulation_id,
         cursor=cursor,
         tail_from=str(last_event.id) if last_event else None,
+        **log_fields,
     )
 
     async def event_stream():
@@ -220,28 +275,24 @@ def build_outbox_events_stream_response(
         try:
             while True:
                 try:
-                    queryset = _build_outbox_base_queryset(
-                        simulation_id=simulation_id,
-                        event_type_prefix=event_type_prefix,
-                    )
-                    queryset = order_outbox_queryset(queryset)
+                    queryset = order_outbox_queryset(queryset_factory())
 
                     if last_event is not None:
                         queryset = apply_outbox_cursor(queryset, last_event)
 
                     events = [e async for e in queryset[:100]]
                 except (asyncio.CancelledError, GeneratorExit):
-                    logger.debug("sse_stream_cancelled", simulation_id=simulation_id)
+                    logger.debug("sse_stream_cancelled", **log_fields)
                     return
                 except Exception:
                     logger.exception(
                         "sse_stream_db_error",
-                        simulation_id=simulation_id,
+                        **log_fields,
                     )
                     break
 
                 for event in events:
-                    enriched_payload = await media_enricher(event)
+                    enriched_payload = await media_enricher(event) if media_enricher else None
                     if enriched_payload is not None:
                         data = build_transport_envelope(
                             event,
@@ -264,14 +315,14 @@ def build_outbox_events_stream_response(
                     if emit_named_heartbeat:
                         yield "event: heartbeat\ndata: {}\n\n"
                     last_signal_at = now
-                    logger.debug("sse_heartbeat_sent", simulation_id=simulation_id)
+                    logger.debug("sse_heartbeat_sent", **log_fields)
 
                 await asyncio.sleep(poll_interval_seconds)
         except (asyncio.CancelledError, GeneratorExit):
-            logger.debug("sse_stream_cancelled", simulation_id=simulation_id)
+            logger.debug("sse_stream_cancelled", **log_fields)
             return
         finally:
-            logger.info("sse_stream_closed", simulation_id=simulation_id)
+            logger.info("sse_stream_closed", **log_fields)
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache, no-transform"

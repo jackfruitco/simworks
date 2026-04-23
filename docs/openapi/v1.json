@@ -2331,6 +2331,7 @@
             }
           }
         },
+        "description": "Authoritative polling fallback for the TrainerLab session hub.",
         "tags": [
           "trainerlab"
         ],
@@ -2405,6 +2406,7 @@
             }
           }
         },
+        "description": "Authoritative polling fallback for a single TrainerLab runtime screen.",
         "tags": [
           "trainerlab"
         ],
@@ -3211,6 +3213,78 @@
         ]
       }
     },
+    "/api/v1/trainerlab/events/stream/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_stream_trainer_hub_events",
+        "summary": "SSE stream for TrainerLab hub events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "replay",
+            "schema": {
+              "default": false,
+              "description": "Replay visible events from the beginning",
+              "title": "Replay",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "Replay visible events from the beginning"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Streams durable row-level TrainerLab events for all sessions visible in\nthe authenticated request/account scope.\n\n**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\ncreated after the connection opens.\n\n**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\nbeginning of the visible hub event space.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent. The client must re-bootstrap from\n``GET /trainerlab/simulations/`` before opening a new stream.\n\nDelivery semantics are **at-least-once**. Clients must deduplicate by\n``event_id``.",
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_list_trainer_events",
@@ -3357,6 +3431,18 @@
             },
             "required": false,
             "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "replay",
+            "schema": {
+              "default": false,
+              "description": "Replay events from the beginning",
+              "title": "Replay",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "Replay events from the beginning"
           }
         ],
         "responses": {
@@ -3384,7 +3470,7 @@
             }
           }
         },
-        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
+        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\ncreated after the connection opens.\n\n**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\nbeginning of this simulation's event space.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "trainerlab"
         ],
@@ -5597,7 +5683,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab clients pass ``latest_event_cursor`` to the SSE stream.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",

@@ -426,7 +426,7 @@ class Simulation(models.Model):
         except Exception:
             logger.exception("Failed to broadcast simulation state change for sim=%s", self.pk)
 
-    def mark_in_progress(self) -> None:
+    def mark_in_progress(self, *, emit_event: bool = True) -> None:
         previous_status = self.status
         self.end_timestamp = None
         self.status = self.SimulationStatus.IN_PROGRESS
@@ -442,9 +442,10 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(previous_status=previous_status, retryable=True)
+        if emit_event:
+            self._broadcast_state_change(previous_status=previous_status, retryable=True)
 
-    def mark_completed(self) -> None:
+    def mark_completed(self, *, emit_event: bool = True) -> None:
         previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
@@ -461,9 +462,10 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(previous_status=previous_status, retryable=False)
+        if emit_event:
+            self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
-    def mark_timed_out(self) -> None:
+    def mark_timed_out(self, *, emit_event: bool = True) -> None:
         previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
@@ -480,7 +482,8 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(previous_status=previous_status, retryable=False)
+        if emit_event:
+            self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
     def mark_failed(
         self,
@@ -488,6 +491,7 @@ class Simulation(models.Model):
         reason_code: str,
         reason_text: str,
         retryable: bool = True,
+        emit_event: bool = True,
     ) -> None:
         previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
@@ -505,10 +509,15 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(previous_status=previous_status, retryable=retryable)
+        if emit_event:
+            self._broadcast_state_change(previous_status=previous_status, retryable=retryable)
 
     def mark_canceled(
-        self, *, reason_code: str = "canceled_by_user", reason_text: str = "Canceled by user"
+        self,
+        *,
+        reason_code: str = "canceled_by_user",
+        reason_text: str = "Canceled by user",
+        emit_event: bool = True,
     ) -> None:
         previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
@@ -526,7 +535,8 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(previous_status=previous_status, retryable=False)
+        if emit_event:
+            self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
     def end(self) -> None:
         self.mark_completed()
