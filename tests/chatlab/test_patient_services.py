@@ -127,8 +127,9 @@ class TestGenerateInitialResponseService:
 
     def test_service_collects_instruction_classes(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
-        assert PatientNameInstruction in service._instruction_classes
-        assert PatientRecentScenarioHistoryInstruction in service._instruction_classes
+        names = _instruction_names(service)
+        assert "PatientNameInstruction" in names
+        assert "PatientRecentScenarioHistoryInstruction" in names
 
     def test_resolves_expected_instruction_names_in_order(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
