@@ -15,7 +15,7 @@ from api.v1.schemas.conversations import (
     ConversationOut,
     conversation_to_out,
 )
-from api.v1.utils import get_simulation_for_user
+from api.v1.utils import get_chatlab_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
@@ -87,7 +87,7 @@ def list_conversations(
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     conversations = (
         Conversation.objects.filter(simulation=sim, is_archived=False)
@@ -117,7 +117,7 @@ def create_conversation(
     from apps.simcore.models import Conversation, ConversationType
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     # Resolve conversation type
     try:
@@ -181,7 +181,7 @@ def get_conversation(
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user, request=request)
+    sim = get_chatlab_simulation_for_user(simulation_id, user, request=request)
 
     try:
         conv = (

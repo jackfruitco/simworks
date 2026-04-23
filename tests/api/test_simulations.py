@@ -19,6 +19,13 @@ from api.v1.auth import create_access_token
 from tests.helpers.assertions import assert_payload_has_fields, assert_response_status
 
 
+def _attach_chatlab_session(simulation):
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.get_or_create(simulation=simulation)
+    return simulation
+
+
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
@@ -112,12 +119,13 @@ def simulation(test_user):
     """Create a test simulation."""
     from apps.simcore.models import Simulation
 
-    return Simulation.objects.create(
+    simulation = Simulation.objects.create(
         user=test_user,
         diagnosis="Test Diagnosis",
         chief_complaint="Test Complaint",
         sim_patient_full_name="John Doe",
     )
+    return _attach_chatlab_session(simulation)
 
 
 @pytest.fixture
@@ -125,7 +133,8 @@ def chatlab_session(simulation):
     """Attach a ChatSession to the test simulation (makes it ChatLab-backed)."""
     from apps.chatlab.models import ChatSession
 
-    return ChatSession.objects.create(simulation=simulation)
+    session, _ = ChatSession.objects.get_or_create(simulation=simulation)
+    return session
 
 
 @pytest.mark.django_db
@@ -156,18 +165,40 @@ class TestListSimulations:
         from apps.simcore.models import Simulation
 
         # Create simulation for other user
-        Simulation.objects.create(
+        other_simulation = Simulation.objects.create(
             user=other_user,
             diagnosis="Other Diagnosis",
             chief_complaint="Other Complaint",
             sim_patient_full_name="Jane Doe",
         )
+        _attach_chatlab_session(other_simulation)
 
         response = auth_client.get("/api/v1/simulations/")
 
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 0  # No simulations for test_user
+
+    def test_list_simulations_excludes_trainerlab_backed_simulations(self, auth_client, test_user):
+        """ChatLab list only returns simulations with a ChatSession."""
+        from apps.simcore.models import Simulation
+        from apps.trainerlab.models import TrainerSession
+
+        chatlab_simulation = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="ChatLab Patient",
+        )
+        _attach_chatlab_session(chatlab_simulation)
+        trainerlab_simulation = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="TrainerLab Patient",
+        )
+        TrainerSession.objects.create(simulation=trainerlab_simulation)
+
+        response = auth_client.get("/api/v1/simulations/")
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()["items"]] == [chatlab_simulation.id]
 
     def test_list_simulations_with_status_filter(self, auth_client, test_user):
         """Can filter by status."""
@@ -176,15 +207,17 @@ class TestListSimulations:
         from apps.simcore.models import Simulation
 
         # Create an in-progress and completed simulation
-        Simulation.objects.create(
+        active_simulation = Simulation.objects.create(
             user=test_user,
             sim_patient_full_name="Active Patient",
         )
-        Simulation.objects.create(
+        _attach_chatlab_session(active_simulation)
+        completed_simulation = Simulation.objects.create(
             user=test_user,
             sim_patient_full_name="Done Patient",
             end_timestamp=now(),
         )
+        _attach_chatlab_session(completed_simulation)
 
         # Filter for in_progress
         response = auth_client.get("/api/v1/simulations/?status=in_progress")
@@ -209,6 +242,7 @@ class TestListSimulations:
                 user=test_user,
                 sim_patient_full_name=f"Patient {i}",
             )
+            _attach_chatlab_session(sim)
             sims.append(sim)
 
         # Get first page with limit=2
@@ -241,7 +275,9 @@ class TestListSimulations:
         from apps.simcore.models import Simulation
 
         simulations = [
-            Simulation.objects.create(user=test_user, sim_patient_full_name=f"Patient {i}")
+            _attach_chatlab_session(
+                Simulation.objects.create(user=test_user, sim_patient_full_name=f"Patient {i}")
+            )
             for i in range(3)
         ]
         shared_timestamp = timezone.now()
@@ -270,16 +306,18 @@ class TestListSimulations:
     def test_list_simulations_supports_search_query(self, auth_client, test_user):
         from apps.simcore.models import Simulation
 
-        Simulation.objects.create(
+        pulmonary_simulation = Simulation.objects.create(
             user=test_user,
             diagnosis="Pulmonary Embolism",
             sim_patient_full_name="Patient A",
         )
-        Simulation.objects.create(
+        _attach_chatlab_session(pulmonary_simulation)
+        appendicitis_simulation = Simulation.objects.create(
             user=test_user,
             diagnosis="Appendicitis",
             sim_patient_full_name="Patient B",
         )
+        _attach_chatlab_session(appendicitis_simulation)
 
         response = auth_client.get("/api/v1/simulations/?q=Pulmonary")
         assert response.status_code == 200
@@ -295,6 +333,7 @@ class TestListSimulations:
             user=test_user,
             sim_patient_full_name="Patient M",
         )
+        _attach_chatlab_session(sim)
         conversation_type, _ = ConversationType.objects.get_or_create(
             slug="simulated_patient",
             defaults={
@@ -367,6 +406,21 @@ class TestGetSimulation:
 
         assert response.status_code == 404
 
+    def test_get_simulation_trainerlab_backed_returns_404(self, auth_client, test_user):
+        """ChatLab detail route does not expose TrainerLab-only simulations."""
+        from apps.simcore.models import Simulation
+        from apps.trainerlab.models import TrainerSession
+
+        trainerlab_simulation = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="TrainerLab Patient",
+        )
+        TrainerSession.objects.create(simulation=trainerlab_simulation)
+
+        response = auth_client.get(f"/api/v1/simulations/{trainerlab_simulation.pk}/")
+
+        assert response.status_code == 404
+
 
 @pytest.mark.django_db
 class TestCreateSimulation:
@@ -403,6 +457,9 @@ class TestCreateSimulation:
         assert data["chief_complaint"] == "New Complaint"
         assert data["status"] == "in_progress"
         assert data["user_id"] == test_user.pk
+        from apps.chatlab.models import ChatSession
+
+        assert ChatSession.objects.filter(simulation_id=data["id"]).exists()
 
     def test_create_simulation_with_time_limit(self, auth_client):
         """Creates simulation with time limit."""
@@ -661,6 +718,7 @@ class TestSimulationOutputFormat:
             sim_patient_full_name="Test Patient",
             time_limit=timedelta(hours=1),
         )
+        _attach_chatlab_session(sim)
 
         failure_artifacts.capture_request(method="GET", url=f"/api/v1/simulations/{sim.pk}/")
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
@@ -695,6 +753,7 @@ class TestSimulationOutputFormat:
             user=test_user,
             sim_patient_full_name="Patient",
         )
+        _attach_chatlab_session(sim)
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
         assert response.json()["status"] == "in_progress"
 
@@ -754,8 +813,10 @@ class TestSimulationOutputFormat:
         assert item["status"] == "failed"
         assert item["retryable"] is False
 
-    def test_trainerlab_failed_simulation_serializes_retryable_false(self, auth_client, test_user):
-        """TrainerLab-backed failed simulation always has retryable=False."""
+    def test_trainerlab_failed_simulation_is_hidden_from_chatlab_route(
+        self, auth_client, test_user
+    ):
+        """TrainerLab-backed failed simulations are not exposed by ChatLab detail."""
         from apps.simcore.models import Simulation
         from apps.trainerlab.models import TrainerSession
 
@@ -772,8 +833,7 @@ class TestSimulationOutputFormat:
         )
 
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
-        assert response.status_code == 200
-        assert response.json()["retryable"] is False
+        assert response.status_code == 404
 
     def test_legacy_initial_generation_code_retryable_for_chatlab_backed_simulation(
         self, auth_client, test_user
@@ -798,10 +858,10 @@ class TestSimulationOutputFormat:
         assert response.status_code == 200
         assert response.json()["retryable"] is True
 
-    def test_legacy_initial_generation_code_not_retryable_for_trainerlab_backed_simulation(
+    def test_legacy_initial_generation_code_hidden_for_trainerlab_backed_simulation(
         self, auth_client, test_user
     ):
-        """Legacy unprefixed initial_generation_* codes are NOT retryable for TrainerLab sims."""
+        """Legacy unprefixed initial_generation_* failures are hidden for TrainerLab sims."""
         from apps.simcore.models import Simulation
         from apps.trainerlab.models import TrainerSession
 
@@ -818,8 +878,7 @@ class TestSimulationOutputFormat:
         )
 
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
-        assert response.status_code == 200
-        assert response.json()["retryable"] is False
+        assert response.status_code == 404
 
 
 @pytest.mark.django_db
@@ -884,8 +943,8 @@ class TestRetryInitialSimulation:
         assert data["terminal_reason_code"] == "chatlab_initial_generation_enqueue_failed"
         assert data["retryable"] is False
 
-    def test_retry_initial_rejects_trainerlab_simulation_with_400(self, auth_client, test_user):
-        """retry-initial/ returns 400 for a TrainerLab-backed simulation."""
+    def test_retry_initial_hides_trainerlab_simulation_with_404(self, auth_client, test_user):
+        """retry-initial/ does not expose TrainerLab-backed simulations."""
         from apps.simcore.models import Simulation
         from apps.trainerlab.models import TrainerSession
 
@@ -900,7 +959,7 @@ class TestRetryInitialSimulation:
         TrainerSession.objects.create(simulation=sim)
 
         response = auth_client.post(f"/api/v1/simulations/{sim.pk}/retry-initial/")
-        assert response.status_code == 400
+        assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

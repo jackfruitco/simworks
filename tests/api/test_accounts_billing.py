@@ -182,6 +182,10 @@ def test_account_scoped_simulation_listing_respects_org_roles(
     member_sim = Simulation.objects.create(
         user=member_user, account=org_account, sim_patient_full_name="Member"
     )
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.create(simulation=admin_sim)
+    ChatSession.objects.create(simulation=member_sim)
 
     admin_client = auth_client_factory(owner_user)
     member_client = auth_client_factory(member_user)

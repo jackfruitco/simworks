@@ -26,6 +26,13 @@ from api.v1.auth import (
 )
 
 
+def _attach_chatlab_session(simulation):
+    from apps.chatlab.models import ChatSession
+
+    ChatSession.objects.get_or_create(simulation=simulation)
+    return simulation
+
+
 @pytest.fixture
 def test_user(django_user_model):
     """Create a test user with a role."""
@@ -430,6 +437,7 @@ class TestDualAuth:
             user=test_user,
             sim_patient_full_name="Test Patient",
         )
+        _attach_chatlab_session(sim)
 
         response = client.get(f"/api/v1/simulations/{sim.pk}/messages/")
         assert response.status_code == 200
@@ -446,6 +454,7 @@ class TestDualAuth:
             user=test_user,
             sim_patient_full_name="Test Patient",
         )
+        _attach_chatlab_session(sim)
 
         response = client.get(
             f"/api/v1/simulations/{sim.pk}/messages/",
@@ -471,6 +480,7 @@ class TestDualAuth:
             user=test_user,
             sim_patient_full_name="Test Patient",
         )
+        _attach_chatlab_session(sim)
 
         # JWT is for other_user who doesn't own the simulation
         token = create_access_token(other_user)

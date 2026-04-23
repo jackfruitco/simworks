@@ -6,7 +6,7 @@ from ninja.errors import HttpError
 
 from api.v1.auth import JWTAuth
 from api.v1.schemas.events import EventEnvelope, EventReplayResponse
-from api.v1.utils import get_simulation_for_user
+from api.v1.utils import get_chatlab_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
 from apps.chatlab.models import Message
@@ -58,7 +58,7 @@ def list_events(
     """List durable events for explicit ChatLab replay."""
     _require_chatlab_access(request)
     user = request.auth
-    get_simulation_for_user(simulation_id, user, request=request)
+    get_chatlab_simulation_for_user(simulation_id, user, request=request)
     anchor_found: bool | None = None
 
     queryset = order_outbox_queryset(
