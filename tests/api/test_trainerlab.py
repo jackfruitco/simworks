@@ -909,6 +909,8 @@ class TestTrainerLabSessionLifecycle:
         instructor_user,
         instructor_membership,
     ):
+        from apps.common.models import OutboxEvent
+
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="session-state-machine")
         simulation_id = session["simulation_id"]
@@ -937,6 +939,22 @@ class TestTrainerLabSessionLifecycle:
         assert resume.status_code == 200
         assert resume.json()["status"] == "running"
 
+        pause_again = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/pause/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="run-pause-2",
+        )
+        assert pause_again.status_code == 200
+        assert pause_again.json()["status"] == "paused"
+
+        resume_again = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/resume/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="run-resume-2",
+        )
+        assert resume_again.status_code == 200
+        assert resume_again.json()["status"] == "running"
+
         stop = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/run/stop/",
             content_type="application/json",
@@ -950,6 +968,24 @@ class TestTrainerLabSessionLifecycle:
         body = summary.json()
         assert body["simulation_id"] == simulation_id
         assert body["status"] == "completed"
+
+        status_events = list(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+                event_type=SIMULATION_STATUS_UPDATED,
+            ).order_by("created_at", "id")
+        )
+        assert [event.payload["status"] for event in status_events] == [
+            "seeding",
+            "seeded",
+            "running",
+            "paused",
+            "running",
+            "paused",
+            "running",
+            "completed",
+        ]
+        assert all(event.payload["lab_slug"] == "trainerlab" for event in status_events)
 
     def test_summary_returns_404_until_generated(
         self,
@@ -1802,6 +1838,115 @@ class TestTrainerLabEvents:
         assert first_chunk == ": keep-alive\n\n"
         assert "event:" not in first_chunk
         assert clock.current == pytest.approx(0.0)
+
+    def test_sse_stream_endpoint_supports_replay_and_stale_cursor(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from tests.helpers.sse import collect_streaming_chunks
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="sse-replay-session")
+        simulation_id = session["simulation_id"]
+
+        replay = client.get(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?replay=true"
+        )
+        assert replay.status_code == 200
+        payload = "".join(collect_streaming_chunks(replay, 7))
+        assert payload.index('"status": "seeding"') < payload.index('"status": "seeded"')
+        assert '"lab_slug": "trainerlab"' in payload
+
+        stale = client.get(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={uuid4()}"
+        )
+        assert stale.status_code == 410
+
+    def test_hub_sse_replay_filters_to_visible_trainerlab_sessions(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        other_instructor_user,
+        other_instructor_membership,
+    ):
+        from tests.helpers.sse import collect_streaming_chunks
+
+        client = auth_client_factory(instructor_user)
+        other_client = auth_client_factory(other_instructor_user)
+        visible = _create_session(client, idempotency_key="hub-visible-session")
+        hidden = _create_session(other_client, idempotency_key="hub-hidden-session")
+
+        response = client.get("/api/v1/trainerlab/events/stream/?replay=true")
+        assert response.status_code == 200
+        assert response["Content-Type"].startswith("text/event-stream")
+        assert response["Cache-Control"] == "no-cache, no-transform"
+        assert response["X-Accel-Buffering"] == "no"
+
+        payload = "".join(collect_streaming_chunks(response, 7))
+        assert "event: trainerlab\n" in payload
+        assert f'"simulation_id": {visible["simulation_id"]}' in payload
+        assert f'"simulation_id": {hidden["simulation_id"]}' not in payload
+        assert payload.index('"status": "seeding"') < payload.index('"status": "seeded"')
+        assert '"lab_slug": "trainerlab"' in payload
+        assert '"patient_name":' in payload
+        assert '"chief_complaint": "Altered mental status"' in payload
+        assert '"diagnosis": "Heat stroke"' in payload
+
+    def test_hub_sse_cursor_resume_and_stale_cursor(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from tests.helpers.sse import collect_streaming_chunks
+
+        client = auth_client_factory(instructor_user)
+        first = _create_session(client, idempotency_key="hub-cursor-first")
+        anchor = (
+            OutboxEvent.objects.filter(
+                simulation_id=first["simulation_id"],
+                event_type=SIMULATION_STATUS_UPDATED,
+            )
+            .order_by("created_at", "id")
+            .last()
+        )
+        assert anchor is not None
+
+        second = _create_session(client, idempotency_key="hub-cursor-second")
+        response = client.get(f"/api/v1/trainerlab/events/stream/?cursor={anchor.id}")
+        assert response.status_code == 200
+
+        payload = "".join(collect_streaming_chunks(response, 7))
+        assert f'"simulation_id": {first["simulation_id"]}' not in payload
+        assert f'"simulation_id": {second["simulation_id"]}' in payload
+        assert payload.index('"status": "seeding"') < payload.index('"status": "seeded"')
+
+        stale = client.get(f"/api/v1/trainerlab/events/stream/?cursor={uuid4()}")
+        assert stale.status_code == 410
+
+    def test_hub_sse_tail_only_receives_new_sessions(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from tests.helpers.sse import collect_streaming_chunks
+
+        client = auth_client_factory(instructor_user)
+        response = client.get("/api/v1/trainerlab/events/stream/")
+        assert response.status_code == 200
+
+        created = _create_session(client, idempotency_key="hub-tail-new-session")
+        payload = "".join(collect_streaming_chunks(response, 7))
+
+        assert "event: trainerlab\n" in payload
+        assert f'"simulation_id": {created["simulation_id"]}' in payload
+        assert '"status": "seeding"' in payload
+        assert '"status": "seeded"' in payload
 
 
 @pytest.mark.django_db
