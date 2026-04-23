@@ -1,0 +1,25 @@
+{% extends "allauth/layouts/entrance.html" %}
+{% load i18n %}
+
+{% block head_title %}Check Your Email — {{ SITE_NAME }}{% endblock %}
+
+{% block heading %}
+  <h1 class="text-3xl font-bold text-content mb-6 text-center">Check Your Email</h1>
+{% endblock %}
+
+{% block inner_content %}
+  <div class="text-center mb-6">
+    <span class="iconify text-5xl text-jckfrt-olive" data-icon="mdi:email-check-outline"></span>
+  </div>
+
+  <p class="text-content-secondary text-center mb-4">
+    We sent a verification link to <strong>{{ user.email }}</strong>.
+    Click the link in that email to activate your account before continuing.
+  </p>
+
+  <p class="text-sm text-content-secondary text-center">
+    Didn't receive it? Check your spam folder. If it still hasn't arrived,
+    <a href="{% url 'account_login' %}" class="text-jckfrt-olive hover:underline">return to login</a>
+    and sign in once it does.
+  </p>
+{% endblock %}
