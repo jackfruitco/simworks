@@ -178,7 +178,10 @@ class TestGenerateInitialResponseService:
         assert "Speak only from the patient's own perspective" in text
         assert "Do not ask the clinician/user to provide images" in text
         assert "medication box" in text
-        assert "The patient should never request any action whose main purpose is to help the model obtain missing context." in text
+        assert (
+            "The patient should never request any action whose main purpose is to help the model obtain missing context."
+            in text
+        )
 
     def test_disclosure_instruction_lists_disallowed_role_inversion_requests(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
@@ -248,7 +251,10 @@ class TestGenerateReplyResponseService:
         instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
         text = instruction_cls.instruction or ""
         assert "Do not ask the clinician/user to provide images" in text
-        assert "The patient must never ask the clinician to look at, upload, inspect, or retrieve such an object on the patient's behalf." in text
+        assert (
+            "The patient must never ask the clinician to look at, upload, inspect, or retrieve such an object on the patient's behalf."
+            in text
+        )
 
 
 class TestGenerateImageResponseService:
