@@ -25,7 +25,7 @@ from apps.common.retries import (
 )
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
 from apps.simcore.access import (
-    can_access_chatlab_simulation_in_request,
+    can_access_simulation_in_request,
     get_chatlab_simulation_queryset_for_request,
 )
 from apps.simcore.models import Simulation
@@ -305,7 +305,7 @@ def watch_simulation(request, simulation_id):
         back_url=run_url,
         lab_name="ChatLab",
         can_go_to_simulation=request.user.is_authenticated
-        and can_access_chatlab_simulation_in_request(request.user, simulation, request),
+        and can_access_simulation_in_request(request.user, simulation, request),
         go_to_simulation_url=run_url,
     )
     return render(

@@ -871,6 +871,18 @@ def fail_initial_scenario_generation(
             "reason_text": reason_text,
         },
     )
+
+    from .failure_service import finalize_trainerlab_failure
+
+    finalize_trainerlab_failure(
+        simulation=session.simulation,
+        trainer_session=session,
+        reason_code=normalized_reason,
+        reason_text=reason_text,
+        retryable=retryable,
+        correlation_id=correlation_id or "",
+    )
+
     return session
 
 

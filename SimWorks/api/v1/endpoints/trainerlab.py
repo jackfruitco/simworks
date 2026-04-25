@@ -784,16 +784,22 @@ def list_trainer_sessions(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
 ) -> PaginatedResponse[TrainerRunOut]:
     user = request.auth
     _require_lab_access(request)
     simulation_queryset = get_simulation_queryset_for_request(request, user)
+
+    # Only staff users may opt into seeing archived sessions.
+    show_archived = include_archived and getattr(user, "is_staff", False)
 
     queryset = (
         TrainerSession.objects.select_related("simulation", "simulation__account")
         .filter(simulation__in=simulation_queryset)
         .order_by("-id")
     )
+    if not show_archived:
+        queryset = queryset.filter(simulation__archived_at__isnull=True)
 
     if status:
         queryset = queryset.filter(status=status)

@@ -1875,3 +1875,68 @@ class PulseAssessment(BaseDomainEvent):
             f"PulseAssessment {self.timestamp:%H:%M:%S} "
             f"{self.location}: {'present' if self.present else 'absent'} ({self.description})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Failure records
+# ---------------------------------------------------------------------------
+
+
+class SimulationFailureRecord(models.Model):
+    """Structured durable record of a terminal simulation failure.
+
+    One row per simulation (OneToOneField enforces idempotency).
+    Captures environment, linkage, terminal reason, exception, and trace info
+    for staff-visible operational review.
+    """
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    environment = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    lab_slug = models.CharField(max_length=64, blank=True, default="", db_index=True)
+
+    simulation = models.OneToOneField(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="failure_record",
+    )
+    trainer_session = models.ForeignKey(
+        "trainerlab.TrainerSession",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="failure_records",
+    )
+
+    user_id = models.IntegerField(null=True, blank=True)
+    account_id = models.IntegerField(null=True, blank=True)
+
+    simulation_status = models.CharField(max_length=24, blank=True, default="")
+    session_status = models.CharField(max_length=16, blank=True, default="")
+
+    terminal_reason_code = models.CharField(max_length=100, blank=True, default="")
+    terminal_reason_text = models.TextField(blank=True, default="")
+
+    exception_class = models.CharField(max_length=255, blank=True, default="")
+    exception_message = models.TextField(blank=True, default="")
+    traceback_text = models.TextField(blank=True, default="")
+
+    correlation_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    service_call_id = models.CharField(max_length=100, blank=True, default="")
+
+    retryable = models.BooleanField(default=True)
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["environment", "lab_slug", "created_at"],
+                name="idx_failure_env_lab",
+            ),
+        ]
+
+    def __str__(self):
+        return f"FailureRecord(sim={self.simulation_id}, code={self.terminal_reason_code})"

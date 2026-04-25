@@ -241,6 +241,11 @@ class Simulation(models.Model):
         FAILED = "failed", "Failed"
         CANCELED = "canceled", "Canceled"
 
+    class ArchiveReason(models.TextChoices):
+        SYSTEM_FAILED = "system_failed", "System: Failed"
+        USER_ARCHIVED = "user_archived", "User Archived"
+        STAFF_ARCHIVED = "staff_archived", "Staff Archived"
+
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
     status = models.CharField(
@@ -252,6 +257,24 @@ class Simulation(models.Model):
     terminal_reason_code = models.CharField(max_length=100, blank=True, default="")
     terminal_reason_text = models.TextField(blank=True, default="")
     terminal_at = models.DateTimeField(blank=True, null=True)
+
+    # Soft user-facing archival — archived_at is null means active in default hub queries.
+    archived_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    archived_reason = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        choices=ArchiveReason.choices,
+        db_index=True,
+    )
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="archived_simulations",
+    )
+
     initial_retry_count = models.PositiveSmallIntegerField(default=0)
     feedback_retry_count = models.PositiveSmallIntegerField(default=0)
 
@@ -301,6 +324,7 @@ class Simulation(models.Model):
         indexes = [
             models.Index(fields=["account", "start_timestamp"], name="idx_sim_account_started"),
             models.Index(fields=["account", "status"], name="idx_sim_account_status"),
+            models.Index(fields=["status", "archived_at"], name="idx_sim_status_archived"),
         ]
 
     def history(self, _format=None) -> list:
@@ -366,6 +390,35 @@ class Simulation(models.Model):
     @property
     def is_canceled(self) -> bool:
         return self.status == self.SimulationStatus.CANCELED
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
+
+    def archive(
+        self,
+        *,
+        reason: str,
+        archived_by=None,
+        timestamp=None,
+        save: bool = True,
+    ) -> None:
+        """Soft user-facing archival. Does not delete data or alter terminal status fields."""
+        if self.archived_at is not None:
+            return  # idempotent
+        self.archived_at = timestamp or now()
+        self.archived_reason = reason
+        self.archived_by = archived_by
+        if save:
+            self.save(update_fields=["archived_at", "archived_reason", "archived_by"])
+
+    def unarchive(self, *, save: bool = True) -> None:
+        """Clear archival fields, restoring the simulation to the default hub view."""
+        self.archived_at = None
+        self.archived_reason = ""
+        self.archived_by = None
+        if save:
+            self.save(update_fields=["archived_at", "archived_reason", "archived_by"])
 
     @property
     def length(self) -> timedelta | None:

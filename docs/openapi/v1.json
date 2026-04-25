@@ -2317,6 +2317,16 @@
               "title": "Status"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -7061,6 +7071,40 @@
               }
             ],
             "title": "Retryable"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived Reason"
+          },
+          "archived_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By Id"
           }
         },
         "required": [

@@ -22,6 +22,7 @@ from .models import (
     ScenarioBrief,
     ScenarioInstruction,
     ScenarioInstructionPermission,
+    SimulationFailureRecord,
     SimulationNote,
     TrainerCommand,
     TrainerRunSummary,
@@ -261,3 +262,40 @@ class BloodPressureAdmin(admin.ModelAdmin):
 admin.site.register(TrainerRunSummary)
 admin.site.register(ScenarioInstruction)
 admin.site.register(ScenarioInstructionPermission)
+
+
+@admin.register(SimulationFailureRecord)
+class SimulationFailureRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "simulation",
+        "environment",
+        "lab_slug",
+        "terminal_reason_code",
+        "retryable",
+        "created_at",
+    )
+    list_filter = ("environment", "lab_slug", "retryable")
+    search_fields = (
+        "simulation__id",
+        "trainer_session__id",
+        "correlation_id",
+        "terminal_reason_code",
+        "exception_class",
+    )
+    readonly_fields = (
+        "simulation",
+        "trainer_session",
+        "created_at",
+        "updated_at",
+        "environment",
+        "lab_slug",
+        "terminal_reason_code",
+        "terminal_reason_text",
+        "exception_class",
+        "exception_message",
+        "traceback_text",
+        "correlation_id",
+        "service_call_id",
+    )
+    ordering = ("-created_at",)
