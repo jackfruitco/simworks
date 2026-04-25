@@ -14,8 +14,38 @@ from .models import (
 )
 
 admin.site.register(User)
-admin.site.register(Invitation)
 admin.site.register(InvitationAuditEvent)
+
+
+@admin.register(Invitation)
+class InvitationAdmin(admin.ModelAdmin):
+    list_display = (
+        "email",
+        "invited_by",
+        "is_claimed",
+        "claimed_at",
+        "sent_at",
+        "send_count",
+        "staging_setup_reminder_sent_at",
+        "created_at",
+    )
+    list_filter = ("is_claimed",)
+    search_fields = ("email", "invited_by__email")
+    readonly_fields = (
+        "uuid",
+        "token",
+        "sent_at",
+        "last_sent_at",
+        "send_count",
+        "is_claimed",
+        "claimed_at",
+        "claimed_by",
+        "claimed_account",
+        "staging_setup_reminder_sent_at",
+        "created_at",
+    )
+
+
 admin.site.register(UserRole)
 admin.site.register(RoleResource)
 admin.site.register(Lab)
