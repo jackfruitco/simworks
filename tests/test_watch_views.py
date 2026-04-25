@@ -253,7 +253,9 @@ def test_chatlab_watch_button_reflects_owner_access(
     client.force_login(chatlab_owner)
     owner_response = client.get(watch_url)
     assert owner_response.status_code == 200
-    assert f'href="{run_url}"' in owner_response.content.decode()
+    owner_content = owner_response.content.decode()
+    assert run_url in owner_content
+    assert "Go to simulation" in owner_content
 
     client.force_login(chatlab_admin)
     admin_response = client.get(watch_url)
