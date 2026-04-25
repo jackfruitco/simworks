@@ -21,6 +21,7 @@ from apps.accounts.services.accounts import (
 from apps.billing.catalog import is_valid_product_code
 from apps.billing.models import Entitlement
 from apps.billing.services.entitlements import grant_manual_product_entitlement
+from apps.common.emailing.environment import get_email_environment_label, is_staging_email_context
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -229,6 +230,7 @@ def claim_invitation_for_user(
     user,
     request=None,
 ) -> tuple[Account, AccountMembership, Entitlement | None]:
+    environment_hint = get_email_environment_label(request=request)
     del request
     if not getattr(user, "is_authenticated", True):
         raise InvitationClaimError("A signed-in user is required to claim an invitation.")
@@ -338,6 +340,10 @@ def claim_invitation_for_user(
                     "source_ref": entitlement.source_ref,
                 },
             )
+        maybe_send_staging_account_ready_email(
+            invitation=invitation,
+            environment_hint=environment_hint,
+        )
         return account, membership, entitlement
 
 
@@ -358,6 +364,26 @@ def audit_invitation_sent(*, invitation: Invitation) -> None:
         event_type="invitation.sent",
         metadata={"send_count": invitation.send_count},
     )
+
+
+def maybe_send_staging_account_ready_email(
+    *,
+    invitation: Invitation,
+    environment_hint: str | None = None,
+) -> None:
+    if not is_staging_email_context(environment_hint=environment_hint):
+        return
+    if not invitation.email:
+        return
+    if invitation.staging_setup_reminder_sent_at is not None:
+        return
+
+    def _enqueue() -> None:
+        from apps.accounts.tasks import send_staging_account_ready_email_task
+
+        send_staging_account_ready_email_task.delay(invitation.id, environment_hint)
+
+    transaction.on_commit(_enqueue)
 
 
 def revoke_invitation(*, invitation: Invitation, revoked_by) -> Invitation:

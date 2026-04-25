@@ -9,8 +9,21 @@ Accept your invitation:
 
 {% endif %}This invitation expires on {{ invitation.expires_at }}.
 
-{% if is_staging %}---
-STAGING NOTICE: This email was sent from the staging environment.
----
+{% if is_staging %}
+========================================
+IMPORTANT: This is a staging account
+========================================
+You were invited to the MedSim staging environment. Before signing in
+on the iOS app, switch the app environment to Staging.
+
+How to switch environments:
+  1. Open the MedSim iOS app.
+  2. Go to Settings.
+  3. Open Environment.
+  4. Select Staging.
+  5. Return to Sign In and use the account you just created.
+
+If you stay on Production, your staging account will not work.
+========================================
 {% endif %}
 Need help? Contact {{ support_email|default:"support@jackfruitco.com" }}.

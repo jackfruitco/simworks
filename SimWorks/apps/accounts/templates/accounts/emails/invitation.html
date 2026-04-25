@@ -25,9 +25,19 @@
   <p style="word-break:break-all;"><a href="{{ accept_url }}">{{ accept_url }}</a></p>
 
   {% if is_staging %}
-    <p style="padding:8px;border:1px solid #d79b00;background:#fff8e1;">
-      <strong>STAGING</strong> - This message came from the staging environment.
-    </p>
+    <div style="margin-top:20px;padding:14px 16px;border:2px solid #d79b00;background:#fff8e1;border-radius:6px;">
+      <p style="margin:0 0 8px;font-weight:700;font-size:15px;">&#9888; Important: This is a staging account</p>
+      <p style="margin:0 0 8px;">You were invited to the <strong>MedSim staging environment</strong>. Before signing in on the iOS app, switch the app environment to Staging.</p>
+      <p style="margin:0 0 6px;font-weight:600;">How to switch environments:</p>
+      <ol style="margin:0 0 8px;padding-left:20px;">
+        <li>Open the MedSim iOS app.</li>
+        <li>Go to <strong>Settings</strong>.</li>
+        <li>Open <strong>Environment</strong>.</li>
+        <li>Select <strong>Staging</strong>.</li>
+        <li>Return to Sign In and use the account you just created.</li>
+      </ol>
+      <p style="margin:0;color:#7a5c00;">If you stay on Production, your staging account will not work.</p>
+    </div>
   {% endif %}
 
   <p>Need help? <a href="mailto:{{ support_email|default:'support@jackfruitco.com' }}">{{ support_email|default:"support@jackfruitco.com" }}</a></p>

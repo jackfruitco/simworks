@@ -94,14 +94,17 @@ def trainer_membership(trainer_member):
 
 @pytest.fixture
 def chat_simulation(chatlab_owner):
+    from apps.chatlab.models import ChatSession
     from apps.simcore.models import Simulation
 
-    return Simulation.objects.create(
+    simulation = Simulation.objects.create(
         user=chatlab_owner,
         diagnosis="Appendicitis",
         chief_complaint="Abdominal pain",
         sim_patient_full_name="Casey Chat",
     )
+    ChatSession.objects.create(simulation=simulation)
+    return simulation
 
 
 @pytest.fixture

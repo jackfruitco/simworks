@@ -454,6 +454,7 @@ class Invitation(models.Model):
 
     is_claimed = models.BooleanField(default=False)
     claimed_at = models.DateTimeField(blank=True, null=True)
+    staging_setup_reminder_sent_at = models.DateTimeField(blank=True, null=True)
     claimed_by = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
