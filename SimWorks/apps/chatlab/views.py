@@ -90,12 +90,17 @@ async def create_simulation(request):
     account = await sync_to_async(resolve_request_account)(request, user=request.user)
     if account is None:
         return HttpResponseForbidden("Account access required.")
-    # Errors during AI service execution are handled via signal receivers
-    simulation = await create_new_simulation(
-        user=request.user,
-        modifiers=modifiers,
-        account=account,
-    )
+    from apps.simcore.modifiers import SelectionConstraintError, UnknownModifierError
+
+    try:
+        # Errors during AI service execution are handled via signal receivers
+        simulation = await create_new_simulation(
+            user=request.user,
+            modifiers=modifiers,
+            account=account,
+        )
+    except (UnknownModifierError, SelectionConstraintError) as exc:
+        return HttpResponse(str(exc), status=400)
     return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 

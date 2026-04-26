@@ -1,6 +1,6 @@
 # chatlab/checks.py
 
-from django.core.checks import Error, register
+from django.core.checks import Error, Warning, register
 
 
 @register()
@@ -42,5 +42,20 @@ def check_chatlab_modifier_catalog(app_configs, **kwargs):
                     id="chatlab.E003",
                 )
             )
+
+    # Tolerant DB check — warn if catalog not seeded, but don't block startup
+    try:
+        from apps.simcore.models import ModifierCatalog
+
+        if not ModifierCatalog.objects.filter(lab_type="chatlab", is_active=True).exists():
+            errors.append(
+                Warning(
+                    "ChatLab modifier catalog is not seeded in the database.",
+                    hint="Run: python manage.py sync_lab_modifiers --lab chatlab",
+                    id="chatlab.W001",
+                )
+            )
+    except Exception:
+        pass  # DB not available yet (pre-migration), skip silently
 
     return errors

@@ -132,6 +132,102 @@ class ConversationType(models.Model):
         return self.display_name
 
 
+class ModifierCatalog(models.Model):
+    """DB-backed modifier catalog seeded from a lab's modifiers.yaml.
+
+    YAML is the default seed source only. Runtime reads from this table.
+    Staff can edit group/modifier rows directly; the sync command respects
+    ``manually_edited`` on ModifierDefinition rows.
+    """
+
+    lab_type = models.CharField(max_length=50, db_index=True)
+    version = models.PositiveSmallIntegerField(default=1)
+    source = models.CharField(max_length=50, default="yaml")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lab_type"]
+        verbose_name = "Modifier Catalog"
+        verbose_name_plural = "Modifier Catalogs"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lab_type"], name="uniq_modifier_catalog_lab_type"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.lab_type} v{self.version}"
+
+
+class ModifierGroup(models.Model):
+    """A grouping of related modifiers within a catalog."""
+
+    catalog = models.ForeignKey(
+        ModifierCatalog, on_delete=models.CASCADE, related_name="groups"
+    )
+    key = models.CharField(max_length=100)
+    label = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    selection_mode = models.CharField(
+        max_length=10,
+        choices=[("single", "Single"), ("multiple", "Multiple")],
+        default="single",
+    )
+    required = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "key"]
+        verbose_name = "Modifier Group"
+        verbose_name_plural = "Modifier Groups"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["catalog", "key"], name="uniq_modifier_group_catalog_key"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.catalog.lab_type}/{self.key}"
+
+
+class ModifierDefinition(models.Model):
+    """A single modifier option within a group."""
+
+    group = models.ForeignKey(
+        ModifierGroup, on_delete=models.CASCADE, related_name="modifiers"
+    )
+    key = models.CharField(max_length=100)
+    label = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    prompt_fragment = models.TextField(blank=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    manually_edited = models.BooleanField(
+        default=False,
+        help_text="If True, sync will not overwrite this row unless --force is used.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "key"]
+        verbose_name = "Modifier Definition"
+        verbose_name_plural = "Modifier Definitions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "key"], name="uniq_modifier_definition_group_key"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.group}/{self.key}"
+
+
 class Conversation(PersistModel):
     """A distinct message thread within a simulation.
 
@@ -321,6 +417,14 @@ class Simulation(models.Model):
         default=list,
         blank=True,
         help_text="Canonical modifier keys selected at simulation creation",
+    )
+    modifier_snapshot = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Snapshot of resolved modifier data at simulation creation time. "
+            "Each entry: {key, group_key, label, description, prompt_fragment}."
+        ),
     )
 
     sim_patient_full_name = models.CharField(max_length=100, blank=True)

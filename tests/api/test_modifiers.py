@@ -1,7 +1,14 @@
 """Tests for modifier API endpoints."""
 
-import pytest
 from django.test import Client
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def seed_chatlab(db):
+    from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+    sync_lab_modifiers("chatlab")
 
 
 @pytest.mark.django_db

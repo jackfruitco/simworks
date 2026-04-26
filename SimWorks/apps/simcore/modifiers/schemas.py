@@ -6,34 +6,34 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class ModifierDefinition(BaseModel):
+class ModifierDefinitionSchema(BaseModel):
     key: str
     label: str
     description: str
     prompt_fragment: str | None = None
 
 
-class SelectionConfig(BaseModel):
+class SelectionConfigSchema(BaseModel):
     mode: Literal["single", "multiple"]
     required: bool = False
 
 
-class ModifierGroup(BaseModel):
+class ModifierGroupSchema(BaseModel):
     key: str
     label: str
     description: str
-    selection: SelectionConfig
-    modifiers: list[ModifierDefinition]
+    selection: SelectionConfigSchema
+    modifiers: list[ModifierDefinitionSchema]
 
 
-class ModifierCatalog(BaseModel):
+class ModifierCatalogSchema(BaseModel):
     lab: str
     version: int
-    groups: list[ModifierGroup]
+    groups: list[ModifierGroupSchema]
 
 
 @dataclass
 class ResolvedModifier:
     key: str
     group_key: str
-    definition: ModifierDefinition
+    definition: ModifierDefinitionSchema

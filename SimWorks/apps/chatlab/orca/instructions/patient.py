@@ -64,13 +64,26 @@ class PatientModifierInstruction(BaseInstruction):
                     return ""
         if simulation is None:
             return ""
+
+        # Try snapshot first — no DB query needed
+        snapshot = getattr(simulation, "modifier_snapshot", None) or []
+        if snapshot:
+            from apps.simcore.modifiers import render_modifier_prompt_from_snapshot
+
+            prompt = render_modifier_prompt_from_snapshot(snapshot)
+            if prompt:
+                return f"### Scenario Modifier Constraints\n{prompt}"
+
+        # Fallback: re-resolve from stored keys via DB
         modifiers = getattr(simulation, "modifiers", None) or []
         if not modifiers:
             return ""
         try:
+            from asgiref.sync import sync_to_async
+
             from apps.simcore.modifiers import render_modifier_prompt
 
-            prompt = render_modifier_prompt("chatlab", modifiers)
+            prompt = await sync_to_async(render_modifier_prompt)("chatlab", modifiers)
         except Exception:
             return ""
         if not prompt:

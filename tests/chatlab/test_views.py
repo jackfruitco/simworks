@@ -303,3 +303,27 @@ class TestGetSingleMessage:
 
         # Should return 404 because message doesn't belong to this simulation
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestCreateSimulationModifierValidation:
+    """Tests that create_simulation returns 400 on invalid modifier keys."""
+
+    @pytest.fixture(autouse=True)
+    def seed_chatlab(self, db):
+        from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+        sync_lab_modifiers("chatlab")
+
+    def test_unknown_modifier_returns_400(self, client: Client, user):
+        from unittest.mock import AsyncMock, patch
+
+        from apps.simcore.modifiers import UnknownModifierError
+
+        client.force_login(user)
+        with patch(
+            "apps.chatlab.views.create_new_simulation",
+            new=AsyncMock(side_effect=UnknownModifierError("Unknown modifier keys: ['nonexistent_key_xyz']")),
+        ):
+            response = client.get("/chatlab/simulation/create/?modifier=nonexistent_key_xyz")
+        assert response.status_code == 400

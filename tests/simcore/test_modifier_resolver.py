@@ -1,28 +1,50 @@
-"""Unit tests for the simcore modifier resolver."""
+"""Unit tests for the simcore modifier resolver (DB-backed)."""
 
 import pytest
 
 from apps.simcore.modifiers import (
-    UnknownModifierError,
     SelectionConstraintError,
+    UnknownModifierError,
     get_modifier,
     get_modifier_groups,
     render_modifier_prompt,
+    render_modifier_prompt_from_snapshot,
     resolve_modifiers,
 )
 
 
 @pytest.fixture(autouse=True)
-def clear_modifier_cache():
-    from apps.simcore.modifiers import _clear_cache
-    _clear_cache()
-    yield
-    _clear_cache()
+def seed_chatlab(db):
+    from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+    sync_lab_modifiers("chatlab")
+
+
+@pytest.mark.django_db
+class TestGetActiveModifierCatalog:
+    def test_raises_if_no_catalog_in_db(self):
+        from django.core.exceptions import ImproperlyConfigured
+
+        from apps.simcore.models import ModifierCatalog
+        from apps.simcore.modifiers.resolver import _get_active_catalog
+
+        ModifierCatalog.objects.filter(lab_type="chatlab").delete()
+        with pytest.raises(ImproperlyConfigured, match="No active modifier catalog"):
+            _get_active_catalog("chatlab")
+
+    def test_raises_if_catalog_is_inactive(self):
+        from django.core.exceptions import ImproperlyConfigured
+
+        from apps.simcore.models import ModifierCatalog
+        from apps.simcore.modifiers.resolver import _get_active_catalog
+
+        ModifierCatalog.objects.filter(lab_type="chatlab").update(is_active=False)
+        with pytest.raises(ImproperlyConfigured, match="No active modifier catalog"):
+            _get_active_catalog("chatlab")
 
 
 @pytest.mark.django_db
 class TestGetModifierGroups:
-
     def test_returns_list_of_dicts(self):
         groups = get_modifier_groups("chatlab")
         assert isinstance(groups, list)
@@ -57,10 +79,26 @@ class TestGetModifierGroups:
         assert "clinical_scenario" in keys
         assert "clinical_duration" in keys
 
+    def test_inactive_groups_excluded(self):
+        from apps.simcore.models import ModifierGroup
+
+        ModifierGroup.objects.filter(key="clinical_duration").update(is_active=False)
+        groups = get_modifier_groups("chatlab")
+        keys = [g["key"] for g in groups]
+        assert "clinical_duration" not in keys
+
+    def test_inactive_modifiers_excluded(self):
+        from apps.simcore.models import ModifierDefinition
+
+        ModifierDefinition.objects.filter(key="musculoskeletal").update(is_active=False)
+        groups = get_modifier_groups("chatlab")
+        scenario = next(g for g in groups if g["key"] == "clinical_scenario")
+        mod_keys = [m["key"] for m in scenario["modifiers"]]
+        assert "musculoskeletal" not in mod_keys
+
 
 @pytest.mark.django_db
 class TestGetModifier:
-
     def test_returns_definition_for_known_key(self):
         mod = get_modifier("chatlab", "musculoskeletal")
         assert mod is not None
@@ -71,10 +109,16 @@ class TestGetModifier:
         mod = get_modifier("chatlab", "nonexistent_key_xyz")
         assert mod is None
 
+    def test_returns_none_for_inactive_modifier(self):
+        from apps.simcore.models import ModifierDefinition
+
+        ModifierDefinition.objects.filter(key="musculoskeletal").update(is_active=False)
+        mod = get_modifier("chatlab", "musculoskeletal")
+        assert mod is None
+
 
 @pytest.mark.django_db
 class TestResolveModifiers:
-
     def test_resolves_valid_keys(self):
         resolved = resolve_modifiers("chatlab", ["musculoskeletal"])
         assert len(resolved) == 1
@@ -103,16 +147,20 @@ class TestResolveModifiers:
         resolved = resolve_modifiers("chatlab", ["respiratory"])
         assert len(resolved) == 1
 
+    def test_resolved_definition_has_prompt_fragment(self):
+        resolved = resolve_modifiers("chatlab", ["musculoskeletal"])
+        assert resolved[0].definition.prompt_fragment is not None
+
 
 @pytest.mark.django_db
 class TestRenderModifierPrompt:
-
     def test_renders_prompt_fragment_for_single_key(self):
         prompt = render_modifier_prompt("chatlab", ["musculoskeletal"])
         assert "musculoskeletal" in prompt.lower()
 
-    def test_joins_multiple_fragments_from_different_groups(self):
+    def test_joins_multiple_fragments_with_newline(self):
         prompt = render_modifier_prompt("chatlab", ["respiratory", "acute"])
+        assert "\n" in prompt
         assert "respiratory" in prompt.lower()
         assert "acute" in prompt.lower()
 
@@ -123,3 +171,51 @@ class TestRenderModifierPrompt:
     def test_prompt_contains_expected_fragment(self):
         prompt = render_modifier_prompt("chatlab", ["chronic"])
         assert "more than 8 weeks" in prompt
+
+
+class TestRenderModifierPromptFromSnapshot:
+    def test_renders_from_snapshot_list(self):
+        snapshot = [
+            {
+                "key": "musculoskeletal",
+                "group_key": "clinical_scenario",
+                "label": "Musculoskeletal",
+                "description": "",
+                "prompt_fragment": "Prefer a musculoskeletal case.",
+            },
+            {
+                "key": "acute",
+                "group_key": "clinical_duration",
+                "label": "Acute",
+                "description": "",
+                "prompt_fragment": "Patient has had symptoms under 4 weeks.",
+            },
+        ]
+        prompt = render_modifier_prompt_from_snapshot(snapshot)
+        assert "musculoskeletal" in prompt.lower()
+        assert "4 weeks" in prompt
+        assert "\n" in prompt
+
+    def test_empty_snapshot_returns_empty_string(self):
+        assert render_modifier_prompt_from_snapshot([]) == ""
+
+    def test_skips_entries_without_prompt_fragment(self):
+        snapshot = [
+            {
+                "key": "musculoskeletal",
+                "group_key": "clinical_scenario",
+                "label": "Musculoskeletal",
+                "description": "",
+                "prompt_fragment": "",
+            },
+            {
+                "key": "acute",
+                "group_key": "clinical_duration",
+                "label": "Acute",
+                "description": "",
+                "prompt_fragment": "Under 4 weeks.",
+            },
+        ]
+        prompt = render_modifier_prompt_from_snapshot(snapshot)
+        assert "musculoskeletal" not in prompt.lower()
+        assert "4 weeks" in prompt

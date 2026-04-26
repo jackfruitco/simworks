@@ -5,7 +5,16 @@ from django.utils.html import format_html
 
 from apps.chatlab.models import Message, MessageMediaLink
 
-from .models import Conversation, ConversationType, Simulation, SimulationImage, SimulationMetadata
+from .models import (
+    Conversation,
+    ConversationType,
+    ModifierCatalog,
+    ModifierDefinition,
+    ModifierGroup,
+    Simulation,
+    SimulationImage,
+    SimulationMetadata,
+)
 
 
 class MetadataInline(admin.TabularInline):
@@ -138,6 +147,66 @@ class SimulationMetadataAdmin(admin.ModelAdmin):
 class SimulationImageAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class ModifierDefinitionInline(admin.TabularInline):
+    model = ModifierDefinition
+    extra = 0
+    fields = (
+        "key",
+        "label",
+        "description",
+        "prompt_fragment",
+        "sort_order",
+        "is_active",
+        "manually_edited",
+    )
+
+
+class ModifierGroupInline(admin.TabularInline):
+    model = ModifierGroup
+    extra = 0
+    fields = (
+        "key",
+        "label",
+        "description",
+        "selection_mode",
+        "required",
+        "sort_order",
+        "is_active",
+    )
+
+
+@admin.register(ModifierCatalog)
+class ModifierCatalogAdmin(admin.ModelAdmin):
+    list_display = ("lab_type", "version", "source", "is_active", "modified_at")
+    list_filter = ("is_active", "lab_type")
+    inlines: ClassVar[list] = [ModifierGroupInline]
+
+
+@admin.register(ModifierGroup)
+class ModifierGroupAdmin(admin.ModelAdmin):
+    list_display = (
+        "key",
+        "label",
+        "catalog",
+        "selection_mode",
+        "required",
+        "sort_order",
+        "is_active",
+    )
+    list_filter = ("catalog__lab_type", "is_active", "selection_mode")
+    search_fields = ("key", "label")
+    ordering = ("catalog__lab_type", "sort_order", "key")
+    inlines: ClassVar[list] = [ModifierDefinitionInline]
+
+
+@admin.register(ModifierDefinition)
+class ModifierDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("key", "label", "group", "sort_order", "is_active", "manually_edited")
+    list_filter = ("group__catalog__lab_type", "is_active", "manually_edited")
+    search_fields = ("key", "label", "description", "prompt_fragment")
+    ordering = ("group__catalog__lab_type", "group__sort_order", "sort_order", "key")
 
 
 @admin.register(ConversationType)

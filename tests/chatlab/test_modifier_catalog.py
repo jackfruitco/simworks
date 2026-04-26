@@ -1,39 +1,50 @@
 """Integration tests for the ChatLab modifier catalog."""
 
+
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture(autouse=True)
 def clear_modifier_cache():
     from apps.simcore.modifiers import _clear_cache
+
     _clear_cache()
     yield
     _clear_cache()
 
 
+@pytest.fixture
+def seed_chatlab(db):
+    from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+    sync_lab_modifiers("chatlab")
+
+
 @pytest.mark.django_db
 class TestChatLabModifierCatalog:
-
     def test_catalog_loads_for_chatlab(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         assert catalog.lab == "chatlab"
         assert catalog.version == 1
 
     def test_has_two_groups(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         assert len(catalog.groups) == 2
 
     def test_group_keys(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         keys = {g.key for g in catalog.groups}
         assert keys == {"clinical_scenario", "clinical_duration"}
 
     def test_clinical_scenario_has_three_modifiers(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         scenario = next(g for g in catalog.groups if g.key == "clinical_scenario")
         assert len(scenario.modifiers) == 3
@@ -42,6 +53,7 @@ class TestChatLabModifierCatalog:
 
     def test_clinical_duration_has_three_modifiers(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         duration = next(g for g in catalog.groups if g.key == "clinical_duration")
         assert len(duration.modifiers) == 3
@@ -50,6 +62,7 @@ class TestChatLabModifierCatalog:
 
     def test_all_modifiers_have_prompt_fragments(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         for group in catalog.groups:
             for mod in group.modifiers:
@@ -59,6 +72,7 @@ class TestChatLabModifierCatalog:
 
     def test_all_groups_are_single_select(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         for group in catalog.groups:
             assert group.selection.mode == "single", (
@@ -67,6 +81,7 @@ class TestChatLabModifierCatalog:
 
     def test_all_groups_are_not_required(self):
         from apps.simcore.modifiers import load_lab_modifier_catalog
+
         catalog = load_lab_modifier_catalog("chatlab")
         for group in catalog.groups:
             assert group.selection.required is False
@@ -74,16 +89,28 @@ class TestChatLabModifierCatalog:
 
 @pytest.mark.django_db
 class TestChatLabSystemCheck:
-
-    def test_check_passes_with_valid_catalog(self):
+    def test_check_passes_with_valid_yaml_and_seeded_db(self, seed_chatlab):
         from apps.chatlab.checks import check_chatlab_modifier_catalog
+
         errors = check_chatlab_modifier_catalog(None)
         assert errors == []
 
+    def test_check_warns_when_db_not_seeded(self):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.models import ModifierCatalog
+
+        # Data migration seeds chatlab; remove it to test the warning path
+        ModifierCatalog.objects.filter(lab_type="chatlab").delete()
+        errors = check_chatlab_modifier_catalog(None)
+        ids = [e.id for e in errors]
+        assert "chatlab.W001" in ids
+        assert "chatlab.E001" not in ids
+
     def test_check_fails_on_missing_yaml(self, tmp_path):
+        from django.apps import apps as django_apps
+
         from apps.chatlab.checks import check_chatlab_modifier_catalog
         from apps.simcore.modifiers import _clear_cache
-        from django.apps import apps as django_apps
 
         app_config = django_apps.get_app_config("chatlab")
         original_path = app_config.path
