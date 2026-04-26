@@ -537,6 +537,43 @@
         ]
       }
     },
+    "/api/v1/billing/stripe/customer-portal-session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_create_portal_session",
+        "summary": "Create a Stripe customer portal session for a personal account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPortalSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPortalSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/build-info/": {
       "get": {
         "operationId": "api_v1_endpoints_build_info_build_info",
@@ -4907,26 +4944,32 @@
       },
       "CheckoutSessionOut": {
         "properties": {
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+          "checkout_url": {
+            "title": "Checkout Url",
+            "type": "string"
           },
-          "detail": {
-            "title": "Detail",
+          "session_id": {
+            "title": "Session Id",
             "type": "string"
           }
         },
         "required": [
-          "enabled",
-          "detail"
+          "checkout_url",
+          "session_id"
         ],
         "title": "CheckoutSessionOut",
         "type": "object"
       },
       "CheckoutSessionIn": {
         "properties": {
-          "plan_code": {
-            "title": "Plan Code",
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "billing_interval": {
+            "const": "monthly",
+            "default": "monthly",
+            "title": "Billing Interval",
             "type": "string"
           },
           "success_url": {
@@ -4939,11 +4982,42 @@
           }
         },
         "required": [
-          "plan_code",
+          "product_code",
           "success_url",
           "cancel_url"
         ],
         "title": "CheckoutSessionIn",
+        "type": "object"
+      },
+      "CustomerPortalSessionOut": {
+        "properties": {
+          "portal_url": {
+            "title": "Portal Url",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portal_url",
+          "session_id"
+        ],
+        "title": "CustomerPortalSessionOut",
+        "type": "object"
+      },
+      "CustomerPortalSessionIn": {
+        "properties": {
+          "return_url": {
+            "title": "Return Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_url"
+        ],
+        "title": "CustomerPortalSessionIn",
         "type": "object"
       },
       "BackendBuildInfoOut": {

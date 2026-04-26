@@ -28,11 +28,42 @@ These codes live in [catalog.py](../../SimWorks/apps/billing/catalog.py).
 
 - Apple product IDs map to canonical internal products in `apps.billing.catalog`.
 - Stripe plan or price codes map to canonical internal products in `apps.billing.catalog`.
+- Web checkout requests send internal `product_code` only. MedSim maps
+  `product_code:monthly` to a Stripe price ID using `BILLING_STRIPE_PRICE_PLAN_MAP`.
 - Product-to-lab capability rules also live in the catalog. Use helpers such as
   `product_includes_lab(...)` or `product_codes_for_lab(...)` instead of hardcoding
   product lists in lab-specific access code.
 - Billing ingestion validates the provider identifier first, stores the provider-facing identifier on `Subscription.plan_code`, then reconciles entitlements with the mapped internal `product_code`.
 - Legacy aliases such as `chatlab` and `trainerlab` are tolerated only for normalization and read-path hardening. New writes must use canonical internal codes.
+
+## Web personal Stripe price map
+
+The web subscriptions MVP sells only these monthly personal products:
+
+- `chatlab_go`
+- `trainerlab_go`
+- `medsim_one`
+
+Configure their Stripe prices with JSON:
+
+```env
+BILLING_STRIPE_PRICE_PLAN_MAP='{
+  "chatlab_go:monthly": "price_...",
+  "trainerlab_go:monthly": "price_...",
+  "medsim_one:monthly": "price_..."
+}'
+```
+
+`BILLING_STRIPE_PROMO_COUPON_ID` may point at a Stripe coupon for the promotional first
+three months. Stripe Customer Portal plan-change options must be constrained in Stripe to
+the same three monthly products.
+
+Stripe Dashboard checklist:
+
+- Create exactly one monthly price for each MVP web product in the active map.
+- Customer Portal plan changes should include only those three monthly prices.
+- Do not expose annual prices, organization/enterprise products, quantity changes, or promo
+  code entry in the MVP portal configuration.
 
 ## First-pass entitlement rules
 

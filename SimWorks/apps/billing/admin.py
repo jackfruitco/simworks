@@ -27,6 +27,7 @@ def replay_webhook_events(modeladmin, request, queryset):
             process_stripe_webhook(
                 payload_bytes=json.dumps(event.payload).encode("utf-8"),
                 signature_header=(event.request_headers or {}).get("Stripe-Signature", ""),
+                verify_signature=False,
             )
         elif event.provider_type == "apple":
             from apps.accounts.models import Account

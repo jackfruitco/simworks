@@ -95,6 +95,37 @@ See [billing-product-catalog.md](./billing-product-catalog.md) for the active ma
 
 ## Stripe flow
 
+Web Stripe subscriptions are implemented for personal accounts only. The MVP products are
+ChatLab Go, TrainerLab Go, and MedSim One, sold monthly with a 14-day trial and optional
+first-period promotion configured in Stripe and referenced by env.
+
+Checkout flow:
+
+1. A signed-in web user posts an internal `product_code` to
+   `/api/v1/billing/stripe/checkout-session/`.
+2. MedSim ignores active organization context and resolves the user’s personal account.
+3. MedSim resolves `product_code:monthly` to a Stripe price ID from
+   `BILLING_STRIPE_PRICE_PLAN_MAP`; clients never submit Stripe price IDs.
+4. MedSim blocks checkout when the personal account already has an active, trialing,
+   past-due-with-access, or end-of-period-canceled subscription.
+5. Stripe Checkout creates the subscription and Stripe webhooks remain authoritative for
+   local `Subscription` and `Entitlement` state.
+
+Customer Portal handles payment method updates, cancellations, invoices, and allowed plan
+changes. The Stripe Dashboard portal configuration must be limited to ChatLab Go,
+TrainerLab Go, and MedSim One; no organization products, quantity changes, or annual plans.
+
+Stripe Dashboard checklist:
+
+- Create monthly Checkout products/prices for `chatlab_go`, `trainerlab_go`, and `medsim_one`.
+- Configure `BILLING_STRIPE_PRICE_PLAN_MAP` with only those three monthly price IDs.
+- Configure Customer Portal to allow plan changes only among those monthly prices.
+- Disable annual prices, organization/enterprise products, quantity changes, and promo code entry.
+- Configure the promotional first-three-month discount as a coupon and expose only its coupon ID
+  through `BILLING_STRIPE_PROMO_COUPON_ID`.
+
+Webhook ingestion:
+
 1. Stripe posts a signed webhook to `/api/v1/billing/stripe/webhook/`.
 2. MedSim verifies the signature.
 3. The payload is logged in `billing.WebhookEvent`.
@@ -104,10 +135,12 @@ See [billing-product-catalog.md](./billing-product-catalog.md) for the active ma
 
 Supported v1 lifecycle events:
 
+- `checkout.session.completed`
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
 - `invoice.payment_failed`
+- `invoice.payment_succeeded`
 
 ## Apple flow
 
@@ -174,9 +207,11 @@ Recommended support workflow for failed billing sync:
 ## Deferred items
 
 - self-serve organization checkout
+- enterprise/team checkout
 - invoicing and PO workflows
 - Apple server notification verification
 - SSO/SAML and SCIM
 - domain-based auto-join
 - usage overage billing
 - polished admin UX beyond Django admin
+- duplicate pending checkout-session suppression beyond the local active-subscription block

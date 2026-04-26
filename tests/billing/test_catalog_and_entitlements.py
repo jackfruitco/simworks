@@ -13,6 +13,8 @@ from apps.billing.catalog import (
     product_code_from_stripe_plan_code,
     product_codes_for_lab,
     product_includes_lab,
+    resolve_stripe_price_id,
+    stripe_product_code_from_price_id,
 )
 from apps.billing.forms import EntitlementAdminForm
 from apps.billing.models import Entitlement, SeatAllocation, SeatAssignment
@@ -56,6 +58,30 @@ def test_provider_catalog_maps_to_internal_product_codes():
         product_code_from_stripe_plan_code("price_trainerlab_plus_monthly")
         == ProductCode.TRAINERLAB_PLUS.value
     )
+
+
+@pytest.mark.django_db
+def test_web_personal_stripe_price_map_uses_internal_product_codes(settings):
+    settings.BILLING_STRIPE_PRICE_PLAN_MAP = {
+        "chatlab_go:monthly": "price_chatlab_go_test",
+        "trainerlab_go:monthly": "price_trainerlab_go_test",
+        "medsim_one:monthly": "price_medsim_one_test",
+    }
+
+    assert resolve_stripe_price_id(ProductCode.MEDSIM_ONE.value) == "price_medsim_one_test"
+    assert (
+        stripe_product_code_from_price_id("price_trainerlab_go_test")
+        == ProductCode.TRAINERLAB_GO.value
+    )
+    assert (
+        product_code_from_stripe_plan_code("price_chatlab_go_test") == ProductCode.CHATLAB_GO.value
+    )
+
+    with pytest.raises(ValueError):
+        resolve_stripe_price_id(ProductCode.CHATLAB_PLUS.value)
+
+    with pytest.raises(ValueError):
+        resolve_stripe_price_id(ProductCode.MEDSIM_ONE.value, "annual")
 
 
 @pytest.mark.django_db
