@@ -28,6 +28,8 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -226,6 +228,13 @@ class AssessmentCriterion(models.Model):
     def __str__(self) -> str:
         return f"{self.rubric.slug}/{self.slug} ({self.value_type})"
 
+    def _protect_delete_when_rubric_published(self) -> None:
+        if not self.rubric_id:
+            return
+        rubric_status = AssessmentRubric.objects.only("status").get(pk=self.rubric_id).status
+        if rubric_status == AssessmentRubric.Status.PUBLISHED:
+            raise ValidationError("Cannot delete criteria of a published rubric.")
+
     def clean(self) -> None:
         super().clean()
         if self.value_type == self.ValueType.ENUM:
@@ -260,6 +269,10 @@ class AssessmentCriterion(models.Model):
                 raise ValidationError("Cannot create or modify criteria of a published rubric.")
         self.full_clean()
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._protect_delete_when_rubric_published()
+        return super().delete(*args, **kwargs)
 
 
 class Assessment(models.Model):
@@ -489,7 +502,8 @@ class AssessmentSource(models.Model):
     An assessment may have multiple sources (e.g. one ``primary`` simulation
     plus a ``generated_from`` parent assessment for continuation Q&A).
     Either ``simulation`` or ``source_assessment`` is set, never both,
-    determined by ``source_type``.
+    determined by ``source_type``. Source references are protected on delete
+    so provenance rows cannot silently become nullable tombstones.
     """
 
     class SourceType(models.TextChoices):
@@ -509,14 +523,14 @@ class AssessmentSource(models.Model):
 
     simulation = models.ForeignKey(
         "simcore.Simulation",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="assessment_sources",
     )
     source_assessment = models.ForeignKey(
         "assessments.Assessment",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="referenced_by_sources",
@@ -578,3 +592,8 @@ class AssessmentSource(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+@receiver(pre_delete, sender=AssessmentCriterion)
+def _protect_published_rubric_criterion_delete(sender, instance, **kwargs):
+    instance._protect_delete_when_rubric_published()

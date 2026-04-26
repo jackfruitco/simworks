@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from io import StringIO
-from pathlib import Path
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -13,23 +12,37 @@ import pytest
 pytestmark = pytest.mark.django_db
 
 
-CHATLAB_RUBRICS_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "SimWorks" / "apps" / "chatlab" / "rubrics"
-)
-
-
 def _run(**kwargs):
     out = StringIO()
     call_command("sync_assessment_rubrics", stdout=out, **kwargs)
     return out.getvalue()
 
 
-def test_command_creates_rubric_from_chatlab_yaml():
+def _patch_fake_app(monkeypatch, tmp_path, *, label="fakelab"):
+    fake_app = type(
+        "FakeApp",
+        (),
+        {
+            "name": f"apps.{label}",
+            "label": label,
+            "path": str(tmp_path),
+        },
+    )()
+
+    from django.apps import apps as django_apps
+
+    real_get_app_configs = django_apps.get_app_configs
+
+    def patched():
+        return [*real_get_app_configs(), fake_app]
+
+    monkeypatch.setattr(django_apps, "get_app_configs", patched)
+    return fake_app
+
+
+def test_migration_seeds_chatlab_rubrics_for_fresh_db():
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
-    output = _run(app="chatlab")
-
-    assert "created chatlab_initial_feedback v1" in output
     rubric = AssessmentRubric.objects.get(slug="chatlab_initial_feedback")
     assert rubric.version == 1
     assert rubric.status == AssessmentRubric.Status.PUBLISHED
@@ -46,6 +59,36 @@ def test_command_creates_rubric_from_chatlab_yaml():
     assert criteria[2].value_type == AssessmentCriterion.ValueType.INT
     assert criteria[2].min_value == 0
     assert criteria[2].max_value == 5
+    assert AssessmentRubric.objects.filter(slug="chatlab_continuation_feedback").exists()
+
+
+def test_command_creates_rubric_from_yaml(tmp_path, monkeypatch):
+    from apps.assessments.models import AssessmentRubric
+
+    rubric_dir = tmp_path / "rubrics"
+    rubric_dir.mkdir()
+    (rubric_dir / "simple.yaml").write_text(
+        "slug: fake_initial_feedback\n"
+        "name: Fake Initial Feedback\n"
+        "description: Fake seeded rubric.\n"
+        "scope: global\n"
+        "lab_type: fakelab\n"
+        "assessment_type: initial_feedback\n"
+        "version: 1\n"
+        "status: published\n"
+        "criteria:\n"
+        "  - slug: complete\n"
+        "    label: Complete\n"
+        "    value_type: bool\n"
+        "    required: true\n"
+        "    sort_order: 10\n"
+    )
+    _patch_fake_app(monkeypatch, tmp_path)
+
+    output = _run(app="fakelab")
+
+    assert "created fake_initial_feedback v1" in output
+    assert AssessmentRubric.objects.filter(slug="fake_initial_feedback").exists()
 
 
 def test_published_at_set_when_status_published():
@@ -59,7 +102,6 @@ def test_published_at_set_when_status_published():
 def test_seed_metadata_recorded():
     from apps.assessments.models import AssessmentRubric
 
-    _run(app="chatlab")
     rubric = AssessmentRubric.objects.get(slug="chatlab_initial_feedback")
     assert rubric.seed_source_app == "chatlab"
     assert rubric.seed_source_path.endswith("initial_feedback_v1.yaml")
@@ -70,18 +112,31 @@ def test_seed_metadata_recorded():
 def test_rerun_unchanged_is_noop():
     from apps.assessments.models import AssessmentRubric
 
-    _run(app="chatlab")
     output = _run(app="chatlab")
     assert "unchanged chatlab_initial_feedback v1" in output
     assert AssessmentRubric.objects.filter(slug="chatlab_initial_feedback").count() == 1
 
 
-def test_dry_run_makes_no_changes():
+def test_dry_run_makes_no_changes(tmp_path, monkeypatch):
     from apps.assessments.models import AssessmentRubric
 
-    output = _run(app="chatlab", dry_run=True)
+    rubric_dir = tmp_path / "rubrics"
+    rubric_dir.mkdir()
+    (rubric_dir / "simple.yaml").write_text(
+        "slug: dry_run_feedback\n"
+        "name: Dry Run Feedback\n"
+        "scope: global\n"
+        "lab_type: fakelab\n"
+        "assessment_type: initial_feedback\n"
+        "version: 1\n"
+        "status: draft\n"
+        "criteria: []\n"
+    )
+    _patch_fake_app(monkeypatch, tmp_path)
+
+    output = _run(app="fakelab", dry_run=True)
     assert "(dry-run, rolled back)" in output
-    assert not AssessmentRubric.objects.filter(slug="chatlab_initial_feedback").exists()
+    assert not AssessmentRubric.objects.filter(slug="dry_run_feedback").exists()
 
 
 def test_app_filter_skips_other_apps():
@@ -90,8 +145,9 @@ def test_app_filter_skips_other_apps():
 
     # Run with a non-existent app label → no rubrics should be created
     # even though chatlab/rubrics exists.
+    count_before = AssessmentRubric.objects.count()
     _run(app="nonexistent")
-    assert not AssessmentRubric.objects.exists()
+    assert AssessmentRubric.objects.count() == count_before
 
 
 def test_published_yaml_change_fails_loudly(tmp_path, monkeypatch):
@@ -99,38 +155,64 @@ def test_published_yaml_change_fails_loudly(tmp_path, monkeypatch):
     from apps.assessments.models import AssessmentRubric
 
     AssessmentRubric.objects.create(
-        slug="chatlab_initial_feedback",
-        name="ChatLab Initial Feedback",
+        slug="stale_initial_feedback",
+        name="Stale Initial Feedback",
         scope=AssessmentRubric.Scope.GLOBAL,
-        lab_type="chatlab",
+        lab_type="fakelab",
         assessment_type="initial_feedback",
         version=1,
         status=AssessmentRubric.Status.PUBLISHED,
         seed_checksum="deadbeef" * 8,  # 64 chars, deliberately wrong
     )
+    rubric_dir = tmp_path / "rubrics"
+    rubric_dir.mkdir()
+    (rubric_dir / "stale.yaml").write_text(
+        "slug: stale_initial_feedback\n"
+        "name: Stale Initial Feedback\n"
+        "scope: global\n"
+        "lab_type: fakelab\n"
+        "assessment_type: initial_feedback\n"
+        "version: 1\n"
+        "status: published\n"
+        "criteria: []\n"
+    )
+    _patch_fake_app(monkeypatch, tmp_path)
 
     with pytest.raises(CommandError, match="differs from"):
-        _run(app="chatlab")
+        _run(app="fakelab")
 
 
-def test_published_change_with_create_draft_flag_creates_new_version():
+def test_published_change_with_create_draft_flag_creates_new_version(tmp_path, monkeypatch):
     from apps.assessments.models import AssessmentRubric
 
     AssessmentRubric.objects.create(
-        slug="chatlab_initial_feedback",
-        name="ChatLab Initial Feedback",
+        slug="stale_initial_feedback",
+        name="Stale Initial Feedback",
         scope=AssessmentRubric.Scope.GLOBAL,
-        lab_type="chatlab",
+        lab_type="fakelab",
         assessment_type="initial_feedback",
         version=1,
         status=AssessmentRubric.Status.PUBLISHED,
         seed_checksum="deadbeef" * 8,
     )
+    rubric_dir = tmp_path / "rubrics"
+    rubric_dir.mkdir()
+    (rubric_dir / "stale.yaml").write_text(
+        "slug: stale_initial_feedback\n"
+        "name: Stale Initial Feedback\n"
+        "scope: global\n"
+        "lab_type: fakelab\n"
+        "assessment_type: initial_feedback\n"
+        "version: 1\n"
+        "status: published\n"
+        "criteria: []\n"
+    )
+    _patch_fake_app(monkeypatch, tmp_path)
 
-    output = _run(app="chatlab", create_draft_on_change=True)
-    assert "drafted chatlab_initial_feedback v2" in output
+    output = _run(app="fakelab", create_draft_on_change=True)
+    assert "drafted stale_initial_feedback v2" in output
 
-    rows = AssessmentRubric.objects.filter(slug="chatlab_initial_feedback").order_by("version")
+    rows = AssessmentRubric.objects.filter(slug="stale_initial_feedback").order_by("version")
     assert [(r.version, r.status) for r in rows] == [
         (1, AssessmentRubric.Status.PUBLISHED),
         (2, AssessmentRubric.Status.DRAFT),
@@ -138,15 +220,15 @@ def test_published_change_with_create_draft_flag_creates_new_version():
     assert rows[1].based_on_id == rows[0].id
 
 
-def test_draft_yaml_change_replaces_criteria(tmp_path):
+def test_draft_yaml_change_replaces_criteria(tmp_path, monkeypatch):
     """Pre-create a DRAFT rubric with stale criteria; sync should overwrite."""
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
     draft = AssessmentRubric.objects.create(
-        slug="chatlab_initial_feedback",
+        slug="draft_initial_feedback",
         name="Old Name",
         scope=AssessmentRubric.Scope.GLOBAL,
-        lab_type="chatlab",
+        lab_type="fakelab",
         assessment_type="initial_feedback",
         version=1,
         status=AssessmentRubric.Status.DRAFT,
@@ -158,16 +240,30 @@ def test_draft_yaml_change_replaces_criteria(tmp_path):
         label="Stale",
         value_type=AssessmentCriterion.ValueType.TEXT,
     )
+    rubric_dir = tmp_path / "rubrics"
+    rubric_dir.mkdir()
+    (rubric_dir / "draft.yaml").write_text(
+        "slug: draft_initial_feedback\n"
+        "name: Draft Initial Feedback\n"
+        "scope: global\n"
+        "lab_type: fakelab\n"
+        "assessment_type: initial_feedback\n"
+        "version: 1\n"
+        "status: draft\n"
+        "criteria:\n"
+        "  - slug: fresh_criterion\n"
+        "    label: Fresh\n"
+        "    value_type: bool\n"
+    )
+    _patch_fake_app(monkeypatch, tmp_path)
 
-    output = _run(app="chatlab")
-    assert "updated draft chatlab_initial_feedback v1" in output
+    output = _run(app="fakelab")
+    assert "updated draft draft_initial_feedback v1" in output
 
     draft.refresh_from_db()
-    assert draft.name == "ChatLab Initial Feedback"
+    assert draft.name == "Draft Initial Feedback"
     assert sorted(c.slug for c in draft.criteria.all()) == [
-        "correct_diagnosis",
-        "correct_treatment_plan",
-        "patient_experience",
+        "fresh_criterion",
     ]
 
 
@@ -205,24 +301,7 @@ def test_account_scope_in_yaml_rejected(tmp_path, monkeypatch):
         "criteria: []\n"
     )
 
-    fake_app = type(
-        "FakeApp",
-        (),
-        {
-            "name": "apps.fakelab",
-            "label": "fakelab",
-            "path": str(tmp_path),
-        },
-    )()
-
-    from django.apps import apps as django_apps
-
-    real_get_app_configs = django_apps.get_app_configs
-
-    def patched():
-        return [*real_get_app_configs(), fake_app]
-
-    monkeypatch.setattr(django_apps, "get_app_configs", patched)
+    _patch_fake_app(monkeypatch, tmp_path)
     with pytest.raises(CommandError, match="scope='global'"):
         _run(app="fakelab")
 
@@ -234,23 +313,6 @@ def test_missing_required_field_raises(tmp_path, monkeypatch):
         "slug: bad\nname: Bad\nscope: global\n"
         # missing lab_type, assessment_type, version, status, criteria
     )
-    fake_app = type(
-        "FakeApp",
-        (),
-        {
-            "name": "apps.fakelab",
-            "label": "fakelab",
-            "path": str(tmp_path),
-        },
-    )()
-
-    from django.apps import apps as django_apps
-
-    real_get_app_configs = django_apps.get_app_configs
-
-    def patched():
-        return [*real_get_app_configs(), fake_app]
-
-    monkeypatch.setattr(django_apps, "get_app_configs", patched)
+    _patch_fake_app(monkeypatch, tmp_path)
     with pytest.raises(CommandError, match="missing required keys"):
         _run(app="fakelab")

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 from asgiref.sync import sync_to_async
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,17 @@ def _write_initial_assessment(*, sim, block, service_call_attempt_id):
         return None
 
     with transaction.atomic():
+        missing_required = [
+            criterion.slug
+            for criterion in rubric.criteria.all()
+            if criterion.required and criterion.slug not in _INITIAL_VALUE_BY_SLUG
+        ]
+        if missing_required:
+            raise ValidationError(
+                "Initial feedback rubric has required criteria with no persistence mapping: "
+                f"{', '.join(sorted(missing_required))}."
+            )
+
         assessment = Assessment.objects.create(
             rubric=rubric,
             account=sim.account,
@@ -116,8 +128,8 @@ def _write_initial_assessment(*, sim, block, service_call_attempt_id):
         for criterion in rubric.criteria.all().order_by("sort_order"):
             mapping = _INITIAL_VALUE_BY_SLUG.get(criterion.slug)
             if mapping is None:
-                logger.warning(
-                    "[assessments] criterion slug %r not in initial value map",
+                logger.info(
+                    "[assessments] optional criterion slug %r not in initial value map",
                     criterion.slug,
                 )
                 continue

@@ -73,8 +73,8 @@ def draft_rubric(db):
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
     rubric = AssessmentRubric.objects.create(
-        slug="chatlab_initial_feedback",
-        name="ChatLab Initial Feedback",
+        slug="test_initial_feedback",
+        name="Test Initial Feedback",
         description="Test fixture rubric.",
         scope=AssessmentRubric.Scope.GLOBAL,
         lab_type="chatlab",

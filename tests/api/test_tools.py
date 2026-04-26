@@ -97,7 +97,8 @@ def simulation_with_metadata(simulation):
     rubric = AssessmentRubric.objects.create(
         slug="chatlab_initial_feedback",
         name="ChatLab Initial Feedback",
-        scope=AssessmentRubric.Scope.GLOBAL,
+        scope=AssessmentRubric.Scope.ACCOUNT,
+        account=simulation.account,
         lab_type="chatlab",
         assessment_type="initial_feedback",
         version=1,

@@ -10,6 +10,7 @@ from __future__ import annotations
 from decimal import Decimal
 from types import SimpleNamespace
 
+from django.core.exceptions import ValidationError
 import pytest
 
 pytestmark = pytest.mark.django_db
@@ -30,6 +31,17 @@ def _block(**overrides):
 def _seed_continuation_rubric():
     """Create as DRAFT, attach criterion, then publish."""
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
+
+    existing = AssessmentRubric.objects.filter(
+        slug="chatlab_continuation_feedback",
+        scope=AssessmentRubric.Scope.GLOBAL,
+        account__isnull=True,
+        lab_type="chatlab",
+        assessment_type="continuation_feedback",
+        version=1,
+    ).first()
+    if existing is not None:
+        return existing
 
     rubric = AssessmentRubric.objects.create(
         slug="chatlab_continuation_feedback",
@@ -53,7 +65,7 @@ def _seed_continuation_rubric():
     return rubric
 
 
-def _seed_initial_rubric():
+def _seed_initial_rubric(*, account=None, extra_criteria=()):
     """Mirror the chatlab YAML shape: create as DRAFT, attach criteria, then publish.
 
     Criteria can't be created on a published rubric, so we follow the same
@@ -61,10 +73,23 @@ def _seed_initial_rubric():
     """
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
+    scope = AssessmentRubric.Scope.ACCOUNT if account is not None else AssessmentRubric.Scope.GLOBAL
+    existing = AssessmentRubric.objects.filter(
+        slug="chatlab_initial_feedback",
+        scope=scope,
+        account=account,
+        lab_type="chatlab",
+        assessment_type="initial_feedback",
+        version=1,
+    ).first()
+    if existing is not None:
+        return existing
+
     rubric = AssessmentRubric.objects.create(
         slug="chatlab_initial_feedback",
         name="ChatLab Initial Feedback",
-        scope=AssessmentRubric.Scope.GLOBAL,
+        scope=scope,
+        account=account,
         lab_type="chatlab",
         assessment_type="initial_feedback",
         version=1,
@@ -96,6 +121,8 @@ def _seed_initial_rubric():
         max_value=Decimal("5"),
         sort_order=30,
     )
+    for raw in extra_criteria:
+        AssessmentCriterion.objects.create(rubric=rubric, **raw)
     rubric.status = AssessmentRubric.Status.PUBLISHED
     rubric.save()
     return rubric
@@ -216,6 +243,67 @@ def test_initial_simulation_summary_uses_typed_values(simulation):
     assert summary.learning_points == ["Patient experience rated 3/5."]
 
 
+def test_initial_required_unmapped_criterion_aborts_transaction(simulation):
+    from apps.assessments.models import Assessment, AssessmentCriterion
+    from apps.assessments.services.persistence import _write_initial_assessment
+    from apps.simcore.models import SimulationSummary
+
+    _seed_initial_rubric(
+        account=simulation.account,
+        extra_criteria=[
+            {
+                "slug": "unmapped_required",
+                "label": "Unmapped Required",
+                "category": "safety",
+                "value_type": AssessmentCriterion.ValueType.BOOL,
+                "sort_order": 40,
+                "required": True,
+            }
+        ],
+    )
+
+    with pytest.raises(ValidationError, match="unmapped_required"):
+        _write_initial_assessment(
+            sim=simulation,
+            block=_block(),
+            service_call_attempt_id=None,
+        )
+
+    assert not Assessment.objects.filter(sources__simulation=simulation).exists()
+    assert not SimulationSummary.objects.filter(simulation=simulation).exists()
+
+
+def test_initial_optional_unmapped_criterion_is_skipped(simulation):
+    from apps.assessments.models import AssessmentCriterion, AssessmentCriterionScore
+    from apps.assessments.services.persistence import _write_initial_assessment
+
+    _seed_initial_rubric(
+        account=simulation.account,
+        extra_criteria=[
+            {
+                "slug": "optional_context",
+                "label": "Optional Context",
+                "category": "context",
+                "value_type": AssessmentCriterion.ValueType.TEXT,
+                "sort_order": 40,
+                "required": False,
+            }
+        ],
+    )
+
+    assessment = _write_initial_assessment(
+        sim=simulation,
+        block=_block(),
+        service_call_attempt_id=None,
+    )
+
+    assert assessment is not None
+    assert not AssessmentCriterionScore.objects.filter(
+        assessment=assessment,
+        criterion__slug="optional_context",
+    ).exists()
+
+
 def test_legacy_simulation_feedback_class_is_gone():
     """Phase 5 removed the SimulationFeedback polymorphic subclass."""
     import apps.simcore.models as simcore_models
@@ -223,10 +311,15 @@ def test_legacy_simulation_feedback_class_is_gone():
     assert not hasattr(simcore_models, "SimulationFeedback")
 
 
-def test_initial_returns_none_when_rubric_missing(simulation):
+def test_initial_returns_none_when_rubric_missing(simulation, monkeypatch):
+    import apps.assessments.services as assessment_services
+    from apps.assessments.services import RubricNotFoundError
     from apps.assessments.services.persistence import _write_initial_assessment
 
-    # No rubric seeded → resolver raises → function returns None.
+    def missing_rubric(**kwargs):
+        raise RubricNotFoundError("missing")
+
+    monkeypatch.setattr(assessment_services, "resolve_rubric", missing_rubric)
     result = _write_initial_assessment(sim=simulation, block=_block(), service_call_attempt_id=None)
     assert result is None
 
@@ -305,9 +398,15 @@ def test_continuation_without_prior_initial_still_creates(simulation):
     assert only.source_type == AssessmentSource.SourceType.SIMULATION
 
 
-def test_continuation_returns_none_when_rubric_missing(simulation):
+def test_continuation_returns_none_when_rubric_missing(simulation, monkeypatch):
+    import apps.assessments.services as assessment_services
+    from apps.assessments.services import RubricNotFoundError
     from apps.assessments.services.persistence import _write_continuation_assessment
 
+    def missing_rubric(**kwargs):
+        raise RubricNotFoundError("missing")
+
+    monkeypatch.setattr(assessment_services, "resolve_rubric", missing_rubric)
     result = _write_continuation_assessment(
         sim=simulation,
         block=SimpleNamespace(direct_answer="anything"),

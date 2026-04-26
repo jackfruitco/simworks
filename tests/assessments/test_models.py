@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 import pytest
 
 pytestmark = pytest.mark.django_db
@@ -208,6 +209,13 @@ def test_criterion_locked_when_rubric_published(published_rubric):
             label="Late addition",
             value_type=AssessmentCriterion.ValueType.BOOL,
         )
+
+
+def test_criterion_delete_locked_when_rubric_published(published_rubric):
+    criterion = published_rubric.criteria.get(slug="correct_diagnosis")
+
+    with pytest.raises(ValidationError, match="Cannot delete criteria"):
+        criterion.delete()
 
 
 def test_criterion_allowed_values_forbidden_for_non_enum(draft_rubric):
@@ -484,3 +492,34 @@ def test_source_multiple_non_primary_roles_allowed(published_rubric, account, us
         source_assessment=parent,
     )
     assert assessment.sources.count() == 2
+
+
+def test_source_protects_referenced_simulation(published_rubric, account, user, simulation):
+    from apps.assessments.models import AssessmentSource
+
+    assessment = _make_assessment(published_rubric, account, user)
+    AssessmentSource.objects.create(
+        assessment=assessment,
+        source_type=AssessmentSource.SourceType.SIMULATION,
+        role=AssessmentSource.Role.PRIMARY,
+        simulation=simulation,
+    )
+
+    with pytest.raises(ProtectedError):
+        simulation.delete()
+
+
+def test_source_protects_referenced_parent_assessment(published_rubric, account, user):
+    from apps.assessments.models import AssessmentSource
+
+    parent = _make_assessment(published_rubric, account, user)
+    child = _make_assessment(published_rubric, account, user)
+    AssessmentSource.objects.create(
+        assessment=child,
+        source_type=AssessmentSource.SourceType.ASSESSMENT,
+        role=AssessmentSource.Role.GENERATED_FROM,
+        source_assessment=parent,
+    )
+
+    with pytest.raises(ProtectedError):
+        parent.delete()
