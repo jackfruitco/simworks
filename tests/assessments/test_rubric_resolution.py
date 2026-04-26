@@ -86,9 +86,7 @@ def test_falls_back_to_global_when_account_has_no_rubric(account, account_b):
         account=account,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(
-        account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE
-    )
+    result = resolve_rubric(account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.slug == "g"
 
 
@@ -181,9 +179,7 @@ def test_account_scoped_for_other_account_not_returned(account, account_b):
         account=account,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(
-        account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE
-    )
+    result = resolve_rubric(account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.pk == g.pk
 
 
