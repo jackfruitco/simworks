@@ -72,7 +72,16 @@ def simulation(test_user):
 
 @pytest.fixture
 def simulation_with_metadata(simulation):
-    from apps.simcore.models import PatientDemographics, SimulationFeedback
+    from decimal import Decimal
+
+    from apps.assessments.models import (
+        Assessment,
+        AssessmentCriterion,
+        AssessmentCriterionScore,
+        AssessmentRubric,
+        AssessmentSource,
+    )
+    from apps.simcore.models import PatientDemographics
 
     PatientDemographics.objects.create(
         simulation=simulation,
@@ -84,15 +93,61 @@ def simulation_with_metadata(simulation):
         key="age",
         value="45",
     )
-    SimulationFeedback.objects.create(
-        simulation=simulation,
-        key="hotwash_correct_diagnosis",
-        value="True",
+
+    rubric = AssessmentRubric.objects.create(
+        slug="chatlab_initial_feedback",
+        name="ChatLab Initial Feedback",
+        scope=AssessmentRubric.Scope.GLOBAL,
+        lab_type="chatlab",
+        assessment_type="initial_feedback",
+        version=1,
+        status=AssessmentRubric.Status.PUBLISHED,
     )
-    SimulationFeedback.objects.create(
+    diag_criterion = AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="correct_diagnosis",
+        label="Correct Diagnosis",
+        category="clinical_reasoning",
+        value_type=AssessmentCriterion.ValueType.BOOL,
+        sort_order=10,
+    )
+    exp_criterion = AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="patient_experience",
+        label="Patient Experience",
+        category="communication",
+        value_type=AssessmentCriterion.ValueType.INT,
+        min_value=Decimal("0"),
+        max_value=Decimal("5"),
+        sort_order=30,
+    )
+
+    assessment = Assessment.objects.create(
+        rubric=rubric,
+        account=simulation.account,
+        assessed_user=simulation.user,
+        assessment_type="initial_feedback",
+        lab_type="chatlab",
+        overall_summary="Solid effort overall.",
+        overall_score=Decimal("0.900"),
+    )
+    AssessmentCriterionScore.objects.create(
+        assessment=assessment,
+        criterion=diag_criterion,
+        value_bool=True,
+        score=Decimal("1.000"),
+    )
+    AssessmentCriterionScore.objects.create(
+        assessment=assessment,
+        criterion=exp_criterion,
+        value_int=4,
+        score=Decimal("0.800"),
+    )
+    AssessmentSource.objects.create(
+        assessment=assessment,
+        source_type=AssessmentSource.SourceType.SIMULATION,
+        role=AssessmentSource.Role.PRIMARY,
         simulation=simulation,
-        key="hotwash_patient_experience",
-        value="4",
     )
     return simulation
 
@@ -160,33 +215,38 @@ class TestToolEndpoints:
         assert data["data"][0]["value"] == "John Smith"
         assert isinstance(data["data"][0]["db_pk"], int)
 
-    def test_get_simulation_feedback_returns_typed_payload(
+    def test_get_simulation_assessment_returns_typed_payload(
         self,
         auth_client,
         simulation_with_metadata,
     ):
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation_with_metadata.pk}/tools/simulation_feedback/"
+            f"/api/v1/simulations/{simulation_with_metadata.pk}/tools/simulation_assessment/"
         )
         assert response.status_code == 200
 
         data = response.json()
-        assert data["name"] == "simulation_feedback"
-        assert data["data"] == [
-            {
-                "kind": "simulation_feedback",
-                "key": "hotwash_correct_diagnosis",
-                "value": True,
-                "db_pk": data["data"][0]["db_pk"],
-            },
-            {
-                "kind": "simulation_feedback",
-                "key": "hotwash_patient_experience",
-                "value": 4,
-                "db_pk": data["data"][1]["db_pk"],
-            },
-        ]
-        assert all(isinstance(item["db_pk"], int) for item in data["data"])
+        assert data["name"] == "simulation_assessment"
+        assert len(data["data"]) == 1
+
+        item = data["data"][0]
+        assert item["kind"] == "simulation_assessment"
+        assert item["assessment_type"] == "initial_feedback"
+        assert item["lab_type"] == "chatlab"
+        assert item["rubric"]["slug"] == "chatlab_initial_feedback"
+        assert item["rubric"]["version"] == 1
+        assert item["overall_summary"] == "Solid effort overall."
+        assert item["overall_score"] == pytest.approx(0.900)
+
+        # Two criteria → two groups (one per category, in sort_order).
+        categories = [g["category"] for g in item["groups"]]
+        assert categories == ["clinical_reasoning", "communication"]
+
+        criteria = {c["slug"]: c for g in item["groups"] for c in g["criteria"]}
+        assert criteria["correct_diagnosis"]["value"] is True
+        assert criteria["correct_diagnosis"]["score"] == pytest.approx(1.000)
+        assert criteria["patient_experience"]["value"] == 4
+        assert criteria["patient_experience"]["score"] == pytest.approx(0.800)
 
     def test_get_unknown_tool_returns_404(self, auth_client, simulation):
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/tools/unknown_tool/")

@@ -28,7 +28,6 @@ def _metadata_kind(meta) -> str:
         "radresult": "rad_result",
         "patienthistory": "patient_history",
         "patientdemographics": "patient_demographics",
-        "simulationfeedback": "simulation_feedback",
         "simulationmetadata": "generic",
     }
     if model_name in kind_by_model:
