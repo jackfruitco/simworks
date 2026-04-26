@@ -1,21 +1,15 @@
-"""Tests for modifier API endpoints.
+"""Tests for modifier API endpoints."""
 
-Tests:
-1. List all modifier groups
-2. Filter by specific group names
-3. GraphQL endpoint returns 404
-"""
-
-from django.test import Client
 import pytest
+from django.test import Client
 
 
 @pytest.mark.django_db
 class TestListModifierGroups:
-    """Tests for GET /config/modifier-groups/."""
+    """Tests for GET /api/v1/config/modifier-groups/."""
 
-    def test_list_all_modifier_groups(self):
-        """Returns all modifier groups when no filter specified."""
+    def test_list_all_modifier_groups_defaults_to_chatlab(self):
+        """Returns chatlab modifier groups when no lab_type specified."""
         client = Client()
         response = client.get("/api/v1/config/modifier-groups/")
 
@@ -23,61 +17,77 @@ class TestListModifierGroups:
         data = response.json()
         assert len(data) == 2
 
-        group_names = [g["group"] for g in data]
-        assert "Clinical Scenario" in group_names
-        assert "Clinical Duration" in group_names
+        group_keys = [g["key"] for g in data]
+        assert "clinical_scenario" in group_keys
+        assert "clinical_duration" in group_keys
 
-    def test_filter_by_single_group(self):
-        """Can filter by a single group name."""
+    def test_explicit_chatlab_lab_type(self):
+        """Explicit lab_type=chatlab returns same as default."""
         client = Client()
-        response = client.get("/api/v1/config/modifier-groups/?groups=Clinical Scenario")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["group"] == "Clinical Scenario"
-        assert len(data[0]["modifiers"]) == 3
-
-    def test_filter_by_multiple_groups(self):
-        """Can filter by multiple group names."""
-        client = Client()
-        response = client.get(
-            "/api/v1/config/modifier-groups/?groups=Clinical Scenario&groups=Clinical Duration"
-        )
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=chatlab")
 
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
 
-        group_names = [g["group"] for g in data]
-        assert "Clinical Scenario" in group_names
-        assert "Clinical Duration" in group_names
-        assert "Feedback" not in group_names
-
-    def test_filter_nonexistent_group_returns_empty(self):
-        """Filtering by non-existent group returns empty list."""
+    def test_unknown_lab_type_returns_400(self):
+        """Unknown lab_type returns 400."""
         client = Client()
-        response = client.get("/api/v1/config/modifier-groups/?groups=NonExistent")
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=nonexistent")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 0
+        assert response.status_code == 400
 
     def test_modifier_group_structure(self):
-        """Response has correct structure."""
+        """Response has correct structure with new fields."""
         client = Client()
-        response = client.get("/api/v1/config/modifier-groups/?groups=Clinical Scenario")
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=chatlab")
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
 
         group = data[0]
-        assert "group" in group
+        assert "key" in group
+        assert "label" in group
         assert "description" in group
+        assert "selection" in group
         assert "modifiers" in group
+        assert "mode" in group["selection"]
+        assert "required" in group["selection"]
 
-        # Check modifier structure
-        modifier = group["modifiers"][0]
+    def test_modifier_structure_has_label(self):
+        """Each modifier includes key, label, and description."""
+        client = Client()
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=chatlab")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        modifier = data[0]["modifiers"][0]
         assert "key" in modifier
+        assert "label" in modifier
         assert "description" in modifier
+
+    def test_clinical_scenario_group_has_three_modifiers(self):
+        """Clinical scenario group contains musculoskeletal, respiratory, dermatologic."""
+        client = Client()
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=chatlab")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        scenario_group = next(g for g in data if g["key"] == "clinical_scenario")
+        mod_keys = [m["key"] for m in scenario_group["modifiers"]]
+        assert "musculoskeletal" in mod_keys
+        assert "respiratory" in mod_keys
+        assert "dermatologic" in mod_keys
+
+    def test_selection_mode_is_single_for_both_groups(self):
+        """Both groups are single-select."""
+        client = Client()
+        response = client.get("/api/v1/config/modifier-groups/?lab_type=chatlab")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        for group in data:
+            assert group["selection"]["mode"] == "single"

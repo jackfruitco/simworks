@@ -222,8 +222,7 @@ def modifier_selector(request):
     """
     from apps.simcore.modifiers import get_modifier_groups
 
-    # Get groups for chatlab (exclude Feedback group for now)
-    groups = get_modifier_groups(["ClinicalScenario", "ClinicalDuration"])
+    groups = get_modifier_groups("chatlab")
 
     return render(
         request,

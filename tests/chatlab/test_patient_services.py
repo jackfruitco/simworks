@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from apps.chatlab.orca.instructions import (
+    PatientModifierInstruction,
     PatientRecentScenarioHistoryInstruction,
     patient as patient_instruction_module,
 )
@@ -35,6 +36,7 @@ STATIC_PATIENT_INSTRUCTION_NAMES = (
 
 EXPECTED_INITIAL_INSTRUCTION_NAMES = (
     "PatientNameInstruction",
+    "PatientModifierInstruction",
     "PatientSafetyBoundariesInstruction",
     "PatientConversationBehaviorInstruction",
     "PatientInformationDisclosureInstruction",

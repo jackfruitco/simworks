@@ -317,6 +317,12 @@ class Simulation(models.Model):
     diagnosis = models.CharField(max_length=255, blank=True, null=True)
     chief_complaint = models.CharField(max_length=255, blank=True, null=True)
 
+    modifiers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Canonical modifier keys selected at simulation creation",
+    )
+
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 

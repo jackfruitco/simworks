@@ -45,6 +45,39 @@ class PatientNameInstruction(BaseInstruction):
         )
 
 
+@orca.instruction(order=5)
+class PatientModifierInstruction(BaseInstruction):
+    """Inject scenario modifier constraints from selected modifier keys."""
+
+    namespace = "chatlab"
+    group = "patient"
+
+    async def render_instruction(self) -> str:
+        simulation = self.context.get("simulation")
+        if simulation is None:
+            simulation_id = self.context.get("simulation_id")
+            if simulation_id:
+                try:
+                    simulation = await Simulation.objects.aget(pk=simulation_id)
+                    self.context["simulation"] = simulation
+                except (TypeError, ValueError, ObjectDoesNotExist):
+                    return ""
+        if simulation is None:
+            return ""
+        modifiers = getattr(simulation, "modifiers", None) or []
+        if not modifiers:
+            return ""
+        try:
+            from apps.simcore.modifiers import render_modifier_prompt
+
+            prompt = render_modifier_prompt("chatlab", modifiers)
+        except Exception:
+            return ""
+        if not prompt:
+            return ""
+        return f"### Scenario Modifier Constraints\n{prompt}"
+
+
 @orca.instruction(order=80)
 class PatientRecentScenarioHistoryInstruction(BaseInstruction):
     namespace = "chatlab"
