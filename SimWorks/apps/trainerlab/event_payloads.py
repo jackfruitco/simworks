@@ -8,7 +8,7 @@ from typing import Any
 
 from django.core.exceptions import SynchronousOnlyOperation
 
-from .injury_dictionary import get_injury_dictionary_choices
+from .injury_dictionary import get_injury_dictionary_choices, get_injury_location_label
 from .intervention_dictionary import get_intervention_label, get_intervention_site_label
 from .models import (
     ETCO2,
@@ -69,14 +69,10 @@ def _anatomical_location_label(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
         return ""
 
-    key = value.strip()
-    location_labels = _injury_label_maps()["injury_location"]
-    return (
-        location_labels.get(key)
-        or location_labels.get(key.upper())
-        or location_labels.get(key.lower())
-        or _humanize_code(key)
-    )
+    try:
+        return get_injury_location_label(value)
+    except ValueError:
+        return _humanize_code(value)
 
 
 def _laterality_label(value: Any) -> str:

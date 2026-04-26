@@ -6,20 +6,49 @@ from apps.trainerlab.event_payloads import (
     serialize_cause_snapshot,
     serialize_problem_snapshot,
 )
+from apps.trainerlab.injury_dictionary import get_injury_location_label
 
 
-def test_enrich_trainer_payload_adds_anatomy_and_laterality_labels():
+def test_get_injury_location_label_resolves_canonical_codes_and_labels():
+    assert get_injury_location_label("LLL") == "Left Lower Leg"
+    assert get_injury_location_label("Lll") == "Left Lower Leg"
+    assert get_injury_location_label("Left Lower Leg") == "Left Lower Leg"
+    assert get_injury_location_label("left lower leg") == "Left Lower Leg"
+
+
+def test_enrich_trainer_payload_adds_anatomy_and_laterality_labels_from_code():
     payload = enrich_trainer_payload(
         {
-            "anatomical_location": "Lll",
+            "anatomical_location": "LLL",
             "laterality": "left",
         }
     )
 
-    assert payload["anatomical_location"] == "Lll"
+    assert payload["anatomical_location"] == "LLL"
     assert payload["anatomical_location_label"] == "Left Lower Leg"
     assert payload["laterality"] == "left"
     assert payload["laterality_label"] == "Left"
+
+
+def test_enrich_trainer_payload_adds_anatomy_labels_from_mixed_case_code():
+    payload = enrich_trainer_payload({"anatomical_location": "Lll"})
+
+    assert payload["anatomical_location"] == "Lll"
+    assert payload["anatomical_location_label"] == "Left Lower Leg"
+
+
+def test_enrich_trainer_payload_adds_anatomy_labels_from_canonical_label():
+    payload = enrich_trainer_payload({"anatomical_location": "Left Lower Leg"})
+
+    assert payload["anatomical_location"] == "Left Lower Leg"
+    assert payload["anatomical_location_label"] == "Left Lower Leg"
+
+
+def test_enrich_trainer_payload_adds_anatomy_labels_from_lowercase_label():
+    payload = enrich_trainer_payload({"anatomical_location": "left lower leg"})
+
+    assert payload["anatomical_location"] == "left lower leg"
+    assert payload["anatomical_location_label"] == "Left Lower Leg"
 
 
 def test_enrich_trainer_payload_humanizes_unknown_anatomy_values():
@@ -30,6 +59,7 @@ def test_enrich_trainer_payload_humanizes_unknown_anatomy_values():
         }
     )
 
+    assert payload["anatomical_location"] == "left-lower-calf"
     assert payload["anatomical_location_label"] == "Left Lower Calf"
     assert payload["laterality_label"] == "Patient Right"
 
