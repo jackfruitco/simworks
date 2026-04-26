@@ -32,9 +32,9 @@ export type CanonicalOutboxEventType =
     | 'message.delivery.updated'
     | 'patient.metadata.created'
     | 'patient.results.updated'
-    | 'feedback.item.created'
-    | 'feedback.generation.failed'
-    | 'feedback.generation.updated'
+    | 'assessment.item.created'
+    | 'assessment.generation.failed'
+    | 'assessment.generation.updated'
     | 'simulation.status.updated'
     | 'patient.injury.created'
     | 'patient.injury.updated'
@@ -234,8 +234,8 @@ export interface SimulationStateChangedEvent extends BaseEvent {
     retryable?: boolean;
 }
 
-export interface FeedbackFailedEvent extends BaseEvent {
-    type: 'feedback.generation.failed';
+export interface AssessmentGenerationFailedEvent extends BaseEvent {
+    type: 'assessment.generation.failed';
     simulation_id: number;
     error_code?: string;
     error_text?: string;
@@ -243,8 +243,8 @@ export interface FeedbackFailedEvent extends BaseEvent {
     retry_count?: number;
 }
 
-export interface FeedbackRetryingEvent extends BaseEvent {
-    type: 'feedback.generation.updated';
+export interface AssessmentGenerationUpdatedEvent extends BaseEvent {
+    type: 'assessment.generation.updated';
     simulation_id: number;
     status?: 'retrying';
     retryable?: boolean;
@@ -252,10 +252,16 @@ export interface FeedbackRetryingEvent extends BaseEvent {
 }
 
 /**
- * Feedback created event
+ * Assessment created event (replaces legacy `feedback.item.created`).
  */
-export interface FeedbackCreatedEvent extends BaseEvent {
-    type: 'feedback.item.created';
+export interface AssessmentCreatedEvent extends BaseEvent {
+    type: 'assessment.item.created';
+    assessment_id?: string;
+    rubric_slug?: string;
+    rubric_version?: number;
+    assessment_type?: string;
+    lab_type?: string;
+    overall_score?: number | null;
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }

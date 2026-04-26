@@ -9,15 +9,15 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_event_bus_knows_feedback_created_event():
+def test_event_bus_knows_assessment_created_event():
     source = _read("SimWorks/apps/common/static/common/js/simulation-event-bus.js")
-    assert f"'{outbox_events.FEEDBACK_CREATED}'" in source
+    assert f"'{outbox_events.ASSESSMENT_CREATED}'" in source
 
 
-def test_chat_tool_config_listens_for_feedback_created():
+def test_chat_tool_config_listens_for_assessment_created():
     source = _read("SimWorks/apps/chatlab/static/chatlab/js/chat.js")
-    assert "'simulation_feedback'" in source
-    assert f"'{outbox_events.FEEDBACK_CREATED}'" in source
+    assert "'simulation_assessment'" in source
+    assert f"'{outbox_events.ASSESSMENT_CREATED}'" in source
 
 
 def test_new_message_button_is_nested_in_messages_panel_stack():

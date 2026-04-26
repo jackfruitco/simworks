@@ -65,7 +65,7 @@ def _emit_feedback_failure(
     from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
     event = enqueue_event_sync(
-        event_type=outbox_events.FEEDBACK_GENERATION_FAILED,
+        event_type=outbox_events.ASSESSMENT_GENERATION_FAILED,
         simulation_id=simulation_id,
         payload={
             "simulation_id": simulation_id,

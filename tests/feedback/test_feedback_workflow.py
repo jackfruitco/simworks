@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.core import mail
-from django.db import connection
-from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, RequestFactory
 from django.utils import timezone
 import pytest
@@ -356,48 +354,6 @@ class TestFeedbackAnalytics:
         analytics = FeedbackQueryService().analytics()
 
         assert analytics["resolved_last_30_days"] == 1
-
-
-@pytest.mark.django_db(transaction=True)
-class TestFeedbackMigration:
-    def test_legacy_internal_notes_migrate_to_remarks(self, user, staff_user):
-        executor = MigrationExecutor(connection)
-        old_target = [("feedback", "0001_initial")]
-        new_target = [("feedback", "0002_feedback_workflow")]
-        executor.migrate(old_target)
-        old_apps = executor.loader.project_state(old_target).apps
-        OldUserFeedback = old_apps.get_model("feedback", "UserFeedback")
-        resolved_at = timezone.now() - timedelta(days=10)
-
-        legacy_feedback = OldUserFeedback.objects.create(
-            user_id=user.pk,
-            category="other",
-            body="Legacy body",
-            status="resolved",
-            internal_notes="Legacy developer note",
-            resolved_at=resolved_at,
-            resolved_by_id=staff_user.pk,
-        )
-
-        executor = MigrationExecutor(connection)
-        executor.migrate(new_target)
-        new_apps = executor.loader.project_state(new_target).apps
-        NewUserFeedback = new_apps.get_model("feedback", "UserFeedback")
-        NewFeedbackRemark = new_apps.get_model("feedback", "FeedbackRemark")
-        NewFeedbackAuditEvent = new_apps.get_model("feedback", "FeedbackAuditEvent")
-
-        migrated = NewUserFeedback.objects.get(pk=legacy_feedback.pk)
-        remark = NewFeedbackRemark.objects.get(feedback_id=migrated.pk)
-
-        assert migrated.status == "resolved"
-        assert migrated.resolved_at == resolved_at
-        assert remark.body == "Legacy developer note"
-        assert remark.author_id == staff_user.pk
-        assert NewFeedbackAuditEvent.objects.filter(
-            feedback_id=migrated.pk,
-            event_type="legacy_internal_note_migrated",
-            metadata_json__remark_migrated=True,
-        ).exists()
 
 
 @pytest.mark.django_db

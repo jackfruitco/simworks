@@ -381,7 +381,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
 
     _emit_feedback_event(
         simulation_id=sim.id,
-        event_type=outbox_events.FEEDBACK_GENERATION_UPDATED,
+        event_type=outbox_events.ASSESSMENT_GENERATION_UPDATED,
         payload={
             "simulation_id": sim.id,
             "status": "retrying",
@@ -395,7 +395,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
         retryable = has_user_retries_remaining(sim.feedback_retry_count)
         _emit_feedback_event(
             simulation_id=sim.id,
-            event_type=outbox_events.FEEDBACK_GENERATION_FAILED,
+            event_type=outbox_events.ASSESSMENT_GENERATION_FAILED,
             payload={
                 "simulation_id": sim.id,
                 "error_code": "feedback_enqueue_failed",

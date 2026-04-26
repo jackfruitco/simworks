@@ -21,7 +21,7 @@ CANONICAL_DOMAINS = (
     "simulation",
     "patient",
     "message",
-    "feedback",
+    "assessment",
     "guard",
 )
 EVENT_TYPE_PATTERN = re.compile(
@@ -43,9 +43,9 @@ MESSAGE_DELIVERY_UPDATED = "message.delivery.updated"
 PATIENT_METADATA_CREATED = "patient.metadata.created"
 METADATA_CREATED = PATIENT_METADATA_CREATED
 PATIENT_RESULTS_UPDATED = "patient.results.updated"
-FEEDBACK_CREATED = "feedback.item.created"
-FEEDBACK_GENERATION_FAILED = "feedback.generation.failed"
-FEEDBACK_GENERATION_UPDATED = "feedback.generation.updated"
+ASSESSMENT_CREATED = "assessment.item.created"
+ASSESSMENT_GENERATION_FAILED = "assessment.generation.failed"
+ASSESSMENT_GENERATION_UPDATED = "assessment.generation.updated"
 SIMULATION_STATUS_UPDATED = "simulation.status.updated"
 SIMULATION_BRIEF_CREATED = "simulation.brief.created"
 SIMULATION_BRIEF_UPDATED = "simulation.brief.updated"
@@ -112,18 +112,18 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
         aliases=(),
     ),
     EventTypeSpec(
-        FEEDBACK_CREATED,
-        "A feedback item was created.",
+        ASSESSMENT_CREATED,
+        "An assessment was created.",
         aliases=(),
     ),
     EventTypeSpec(
-        FEEDBACK_GENERATION_FAILED,
-        "Feedback generation failed.",
+        ASSESSMENT_GENERATION_FAILED,
+        "Assessment generation failed.",
         aliases=(),
     ),
     EventTypeSpec(
-        FEEDBACK_GENERATION_UPDATED,
-        "Feedback generation state changed.",
+        ASSESSMENT_GENERATION_UPDATED,
+        "Assessment generation state changed.",
         aliases=(),
     ),
     EventTypeSpec(
