@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC
 from functools import lru_cache
+import re
 from typing import Any
 
 from django.core.exceptions import SynchronousOnlyOperation
@@ -56,6 +57,50 @@ def _injury_label_maps() -> dict[str, dict[str, str]]:
     }
 
 
+def _humanize_code(value: str) -> str:
+    normalized = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", value)
+    normalized = normalized.replace("_", " ").replace("-", " ").strip()
+    if not normalized:
+        return ""
+    return " ".join(normalized.split()).title()
+
+
+def _anatomical_location_label(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+
+    key = value.strip()
+    location_labels = _injury_label_maps()["injury_location"]
+    return (
+        location_labels.get(key)
+        or location_labels.get(key.upper())
+        or location_labels.get(key.lower())
+        or _humanize_code(key)
+    )
+
+
+def _laterality_label(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    key = value.strip().lower()
+    return {
+        "left": "Left",
+        "right": "Right",
+        "bilateral": "Bilateral",
+        "midline": "Midline",
+        "none": "None",
+    }.get(key, _humanize_code(value))
+
+
+def _enrich_anatomical_labels(payload: dict[str, Any]) -> None:
+    if "anatomical_location" in payload:
+        payload["anatomical_location_label"] = _anatomical_location_label(
+            payload.get("anatomical_location")
+        )
+    if "laterality" in payload:
+        payload["laterality_label"] = _laterality_label(payload.get("laterality"))
+
+
 def _event_timestamp_iso(obj: Any) -> str | None:
     timestamp = getattr(obj, "timestamp", None)
     if timestamp is None:
@@ -106,6 +151,7 @@ def _enrich_structured_intervention(payload: dict[str, Any]) -> bool:
 def enrich_trainer_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     enriched = dict(payload or {})
     _enrich_injury_labels(enriched)
+    _enrich_anatomical_labels(enriched)
     _enrich_structured_intervention(enriched)
     return enriched
 

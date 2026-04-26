@@ -44,6 +44,8 @@ def test_load_older_button_visibility_is_top_and_failure_bound():
 def test_trainerlab_event_contract_includes_friendly_labels():
     source = _read("SimWorks/apps/common/static/common/js/simulation-events.d.ts")
     assert "march_category_label?: string;" in source
+    assert "anatomical_location_label?: string;" in source
+    assert "laterality_label?: string;" in source
     assert "injury_location_label?: string;" in source
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
