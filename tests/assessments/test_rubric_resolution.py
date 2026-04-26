@@ -6,6 +6,9 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
+LAB_TYPE = "resolverlab"
+ASSESSMENT_TYPE = "resolver_feedback"
+
 
 def _make_rubric(
     *,
@@ -14,8 +17,8 @@ def _make_rubric(
     scope,
     status,
     account=None,
-    lab_type="chatlab",
-    assessment_type="initial_feedback",
+    lab_type=LAB_TYPE,
+    assessment_type=ASSESSMENT_TYPE,
 ):
     from apps.assessments.models import AssessmentRubric
 
@@ -41,7 +44,7 @@ def test_resolves_global_published_rubric():
         scope=AssessmentRubric.Scope.GLOBAL,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(account=None, lab_type="chatlab", assessment_type="initial_feedback")
+    result = resolve_rubric(account=None, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.slug == "r"
 
 
@@ -62,7 +65,7 @@ def test_prefers_account_scoped_over_global(account):
         account=account,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(account=account, lab_type="chatlab", assessment_type="initial_feedback")
+    result = resolve_rubric(account=account, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.pk == custom.pk
 
 
@@ -84,7 +87,7 @@ def test_falls_back_to_global_when_account_has_no_rubric(account, account_b):
         status=AssessmentRubric.Status.PUBLISHED,
     )
     result = resolve_rubric(
-        account=account_b, lab_type="chatlab", assessment_type="initial_feedback"
+        account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE
     )
     assert result.slug == "g"
 
@@ -105,7 +108,7 @@ def test_higher_version_wins_among_global():
         scope=AssessmentRubric.Scope.GLOBAL,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(account=None, lab_type="chatlab", assessment_type="initial_feedback")
+    result = resolve_rubric(account=None, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.pk == v2.pk
 
 
@@ -127,7 +130,7 @@ def test_higher_version_wins_among_account_scoped(account):
         account=account,
         status=AssessmentRubric.Status.PUBLISHED,
     )
-    result = resolve_rubric(account=account, lab_type="chatlab", assessment_type="initial_feedback")
+    result = resolve_rubric(account=account, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
     assert result.pk == v2.pk
 
 
@@ -142,7 +145,7 @@ def test_ignores_draft_rubrics():
         status=AssessmentRubric.Status.DRAFT,
     )
     with pytest.raises(RubricNotFoundError):
-        resolve_rubric(account=None, lab_type="chatlab", assessment_type="initial_feedback")
+        resolve_rubric(account=None, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
 
 
 def test_ignores_archived_rubrics():
@@ -158,7 +161,7 @@ def test_ignores_archived_rubrics():
     rubric.status = AssessmentRubric.Status.ARCHIVED
     rubric.save()
     with pytest.raises(RubricNotFoundError):
-        resolve_rubric(account=None, lab_type="chatlab", assessment_type="initial_feedback")
+        resolve_rubric(account=None, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
 
 
 def test_account_scoped_for_other_account_not_returned(account, account_b):
@@ -179,7 +182,7 @@ def test_account_scoped_for_other_account_not_returned(account, account_b):
         status=AssessmentRubric.Status.PUBLISHED,
     )
     result = resolve_rubric(
-        account=account_b, lab_type="chatlab", assessment_type="initial_feedback"
+        account=account_b, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE
     )
     assert result.pk == g.pk
 
@@ -193,10 +196,10 @@ def test_lab_type_mismatch_raises():
         version=1,
         scope=AssessmentRubric.Scope.GLOBAL,
         status=AssessmentRubric.Status.PUBLISHED,
-        lab_type="chatlab",
+        lab_type=LAB_TYPE,
     )
     with pytest.raises(RubricNotFoundError):
-        resolve_rubric(account=None, lab_type="trainerlab", assessment_type="initial_feedback")
+        resolve_rubric(account=None, lab_type="trainerlab", assessment_type=ASSESSMENT_TYPE)
 
 
 def test_assessment_type_mismatch_raises():
@@ -208,12 +211,12 @@ def test_assessment_type_mismatch_raises():
         version=1,
         scope=AssessmentRubric.Scope.GLOBAL,
         status=AssessmentRubric.Status.PUBLISHED,
-        assessment_type="initial_feedback",
+        assessment_type=ASSESSMENT_TYPE,
     )
     with pytest.raises(RubricNotFoundError):
         resolve_rubric(
             account=None,
-            lab_type="chatlab",
+            lab_type=LAB_TYPE,
             assessment_type="continuation_feedback",
         )
 
@@ -232,4 +235,4 @@ def test_account_none_only_matches_global(account):
     # Only an account-scoped rubric exists; with account=None, fall back
     # to GLOBAL — none exists, so we raise.
     with pytest.raises(RubricNotFoundError):
-        resolve_rubric(account=None, lab_type="chatlab", assessment_type="initial_feedback")
+        resolve_rubric(account=None, lab_type=LAB_TYPE, assessment_type=ASSESSMENT_TYPE)
