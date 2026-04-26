@@ -1224,4 +1224,613 @@ addresses those readers, Phase 5 deletes the model.
 
 ---
 
-*Phases 4–6 will be appended in subsequent passes.*
+## Phase 4 — Tool / API / serializer / template / privacy-export updates
+
+### Goal
+
+Replace every reader of `SimulationFeedback` with an assessment-shaped
+equivalent, exposed through the existing simulation-tools API surface, the
+chatlab UI partial, and the GDPR privacy export. After this phase the
+`SimulationFeedback` class still exists but is no longer referenced by any
+application code (the orca pipeline already stopped writing to it in Phase
+3); Phase 5 deletes the class.
+
+The tool slug becomes `simulation_assessment` (per user decision in
+planning). The OpenAPI tool-data discriminator changes to match. No legacy
+aliases.
+
+### Files to create
+
+```
+SimWorks/apps/simcore/tools/builtins/assessment.py
+```
+
+### Files to modify
+
+```
+SimWorks/api/v1/schemas/tools.py                  # drop SimulationFeedbackItem, add assessment items
+SimWorks/apps/simcore/tools/serializers.py        # drop serialize_simulation_feedback, add serialize_assessment
+SimWorks/apps/simcore/templates/simcore/tools.html  # rename partial; render assessment shape
+SimWorks/apps/privacy/services/export.py          # export assessments, not SimulationFeedback
+tests/api/test_tools.py                           # rebuild fixtures + assertions for assessment tool
+openapi.json                                      # regenerated via export_openapi management command
+```
+
+### Files to delete
+
+```
+SimWorks/apps/simcore/tools/builtins/feedback.py  # replaced by assessment.py
+```
+
+### Detailed work items
+
+#### 4.1 `api/v1/schemas/tools.py`
+
+Drop the `SimulationFeedbackItem` class entirely (no alias). Add the
+following Pydantic models (placed adjacent to the existing
+`ToolDataItemBase`):
+
+```python
+class AssessmentRubricRefItem(BaseModel):
+    slug: str = Field(..., description="Rubric slug")
+    version: int = Field(..., description="Rubric version")
+    name: str = Field(..., description="Human-readable rubric name")
+
+
+class AssessmentCriterionScoreItem(BaseModel):
+    slug: str = Field(..., description="Criterion slug")
+    label: str = Field(..., description="Human-readable criterion label")
+    value: bool | int | float | str | None = Field(
+        ...,
+        description="Typed criterion value (bool / int / decimal / text / enum / json).",
+    )
+    score: float | None = Field(
+        default=None, description="Normalized 0..1 score, if computed."
+    )
+    rationale: str = Field(default="", description="Optional rationale text.")
+    evidence: list[dict] = Field(
+        default_factory=list,
+        description="Evidence references; see assessments.AssessmentCriterionScore.evidence help_text.",
+    )
+
+
+class AssessmentCriterionGroupItem(BaseModel):
+    category: str = Field(..., description="Criterion category (may be empty string).")
+    criteria: list[AssessmentCriterionScoreItem]
+
+
+class AssessmentToolItem(ToolDataItemBase):
+    kind: Literal["simulation_assessment"] = "simulation_assessment"
+    assessment_id: str = Field(..., description="Assessment UUID as string")
+    assessment_type: str = Field(..., description="e.g. 'initial_feedback'")
+    lab_type: str = Field(..., description="e.g. 'chatlab'")
+    rubric: AssessmentRubricRefItem
+    overall_summary: str
+    overall_score: float | None
+    groups: list[AssessmentCriterionGroupItem]
+```
+
+Update the discriminated union:
+
+```python
+type ToolDataItem = (
+    SimulationMetadataItem
+    | AssessmentToolItem
+    | PatientHistoryItem
+    | LabResultItem
+)
+```
+
+Note: the union previously had four members; `SimulationFeedbackItem` is
+gone, `AssessmentToolItem` takes its slot. `db_pk` (inherited from
+`ToolDataItemBase`) remains nullable on `AssessmentToolItem` because the
+PK is a UUID surfaced through `assessment_id`.
+
+#### 4.2 `apps/simcore/tools/serializers.py`
+
+- Delete `serialize_simulation_feedback`.
+- Add `serialize_assessment(assessment) -> dict`:
+
+  ```python
+  from collections import defaultdict
+
+
+  def serialize_assessment(assessment) -> dict:
+      """Render an Assessment in the tool-API shape (single item dict)."""
+      scores = list(
+          assessment.criterion_scores.select_related("criterion").order_by(
+              "criterion__sort_order"
+          )
+      )
+      groups: dict[str, list[dict]] = defaultdict(list)
+      for s in scores:
+          groups[s.criterion.category or ""].append(_serialize_criterion_score(s))
+
+      return {
+          "kind": "simulation_assessment",
+          "db_pk": None,
+          "assessment_id": str(assessment.id),
+          "assessment_type": assessment.assessment_type,
+          "lab_type": assessment.lab_type,
+          "rubric": {
+              "slug": assessment.rubric.slug,
+              "version": assessment.rubric.version,
+              "name": assessment.rubric.name,
+          },
+          "overall_summary": assessment.overall_summary,
+          "overall_score": (
+              float(assessment.overall_score)
+              if assessment.overall_score is not None
+              else None
+          ),
+          "groups": [
+              {"category": cat, "criteria": items}
+              for cat, items in groups.items()
+          ],
+      }
+
+
+  def _serialize_criterion_score(score) -> dict:
+      """Coerce stored typed value into a JSON-friendly value."""
+      criterion = score.criterion
+      vt = criterion.value_type
+      if vt == "bool":
+          value = score.value_bool
+      elif vt == "int":
+          value = score.value_int
+      elif vt == "decimal":
+          value = float(score.value_decimal) if score.value_decimal is not None else None
+      elif vt in {"text", "enum"}:
+          value = score.value_text or None
+      elif vt == "json":
+          value = score.value_json
+      else:
+          value = None
+      return {
+          "slug": criterion.slug,
+          "label": criterion.label,
+          "value": value,
+          "score": float(score.score) if score.score is not None else None,
+          "rationale": score.rationale,
+          "evidence": score.evidence or [],
+      }
+  ```
+
+#### 4.3 `apps/simcore/tools/builtins/assessment.py`
+
+```python
+from apps.simcore.tools import GenericTool, register_tool
+from apps.simcore.tools.serializers import serialize_assessment
+
+
+@register_tool
+class SimulationAssessmentTool(GenericTool):
+    tool_name = "simulation_assessment"
+
+    def get_data(self):
+        from apps.assessments.models import Assessment, AssessmentSource
+
+        assessment = (
+            Assessment.objects.filter(
+                sources__simulation=self.simulation,
+                sources__source_type=AssessmentSource.SourceType.SIMULATION,
+                sources__role=AssessmentSource.Role.PRIMARY,
+                assessment_type="initial_feedback",
+            )
+            .select_related("rubric")
+            .order_by("-created_at")
+            .first()
+        )
+        if assessment is None:
+            return []
+        return [serialize_assessment(assessment)]
+```
+
+Notes:
+
+- The tool surfaces only the **initial-feedback** assessment to keep
+  parity with the legacy hotwash UX. Continuation assessments are
+  currently displayed in chatlab via the message stream and don't need
+  duplication into the tool panel; if that changes later, extend
+  `get_data` to include them.
+- Continued use of the existing `register_tool` decorator means
+  `apps/simcore/tools/__init__.py` discovery picks the new tool up
+  automatically as long as `builtins/assessment.py` is imported. The
+  existing builtin discovery (auto-import of every module in `builtins/`)
+  already handles this; verify by reading `apps/simcore/tools/__init__.py`
+  during implementation and add an explicit import only if discovery is
+  manual.
+
+#### 4.4 Delete `apps/simcore/tools/builtins/feedback.py`
+
+After 4.3 lands and the discovery confirms `simulation_assessment` is
+registered, delete this file. No alias.
+
+#### 4.5 `apps/simcore/templates/simcore/tools.html`
+
+Lines 27-28, 57, 76, 263 currently reference `simulation_feedback`. Edits:
+
+- Replace the partial name `tool_simulation_feedback` with
+  `tool_simulation_assessment`. Replace the partial body with a renderer
+  for the new shape:
+
+  ```django
+  {% partialdef tool_simulation_assessment %}
+    {% if tool.data %}
+      {% with item=tool.data.0 %}
+        <section class="assessment-panel" data-rubric="{{ item.rubric.slug }}">
+          <header>
+            <h3>{{ item.rubric.name }}
+              <span class="version">v{{ item.rubric.version }}</span>
+            </h3>
+            {% if item.overall_score is not None %}
+              <p class="overall-score">Score: {{ item.overall_score|floatformat:2 }}</p>
+            {% endif %}
+            <p class="overall-summary">{{ item.overall_summary|linebreaksbr }}</p>
+          </header>
+          {% for group in item.groups %}
+            <h4>{{ group.category|default:"General" }}</h4>
+            <ul>
+              {% for c in group.criteria %}
+                <li>
+                  <strong>{{ c.label }}</strong>:
+                  {% if c.value is True %}Yes{% elif c.value is False %}No
+                  {% else %}{{ c.value }}{% endif %}
+                  {% if c.score is not None %}
+                    <span class="criterion-score">({{ c.score|floatformat:2 }})</span>
+                  {% endif %}
+                  {% if c.rationale %}<p class="rationale">{{ c.rationale }}</p>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endfor %}
+        </section>
+      {% endwith %}
+    {% endif %}
+  {% endpartialdef %}
+  ```
+
+- Replace each `{% if tool.name == "simulation_feedback" %}` with
+  `{% if tool.name == "simulation_assessment" %}`.
+- Replace the data-icon mapping
+  (`...simulation_feedback %}mdi:comment-text...`) with
+  `...simulation_assessment %}mdi:clipboard-check-outline...` (or whatever
+  iconography the team prefers; pick a stable Material Design Icons name).
+
+#### 4.6 `apps/privacy/services/export.py`
+
+Current import is
+`from apps.simcore.models import Simulation, SimulationFeedback, SimulationSummary`.
+Replace with
+`from apps.assessments.models import Assessment, AssessmentCriterionScore`
+(and keep `Simulation`, `SimulationSummary`).
+
+For each user being exported, add a top-level `assessments` array:
+
+```python
+assessments = (
+    Assessment.objects
+    .filter(assessed_user=user)
+    .select_related("rubric")
+    .prefetch_related("criterion_scores__criterion", "sources")
+)
+
+export["assessments"] = [
+    {
+        "id": str(a.id),
+        "assessment_type": a.assessment_type,
+        "lab_type": a.lab_type,
+        "rubric": {"slug": a.rubric.slug, "version": a.rubric.version},
+        "overall_summary": a.overall_summary,
+        "overall_score": (
+            float(a.overall_score) if a.overall_score is not None else None
+        ),
+        "created_at": a.created_at.isoformat(),
+        "criterion_scores": [
+            {
+                "criterion_slug": cs.criterion.slug,
+                "value": _typed_value(cs),  # local helper mirroring serializers._serialize_criterion_score
+                "score": float(cs.score) if cs.score is not None else None,
+                "rationale": cs.rationale,
+            }
+            for cs in a.criterion_scores.all()
+        ],
+        "sources": [
+            {
+                "source_type": s.source_type,
+                "role": s.role,
+                "simulation_id": s.simulation_id,
+                "source_assessment_id": (
+                    str(s.source_assessment_id) if s.source_assessment_id else None
+                ),
+            }
+            for s in a.sources.all()
+        ],
+    }
+    for a in assessments
+]
+```
+
+Remove the existing `feedback_items` block that walks
+`SimulationFeedback`. The shape change is breaking by design (destructive
+refactor approved; downstream GDPR consumers will be updated separately if
+they exist).
+
+#### 4.7 `tests/api/test_tools.py`
+
+Lines 75, 89, 94, 178, 184 build `SimulationFeedback` directly and assert
+`hotwash_*` keys in the response. Rewrite:
+
+- Add a fixture `initial_assessment(simulation, account, user)` that
+  constructs:
+  - A published `chatlab_initial_feedback` rubric (or invokes
+    `sync_assessment_rubrics` against the bundled YAML).
+  - One `Assessment` linked to `simulation` with an
+    `AssessmentSource(role=primary)`.
+  - Three `AssessmentCriterionScore` rows (the three criteria slugs from
+    Phase 2 YAML) with typed values.
+- Update `test_simulation_tools_returns_feedback` (or equivalent) to
+  expect:
+  - `tool.name == "simulation_assessment"` (no longer
+    `"simulation_feedback"`).
+  - `tool.data` is a one-element list whose item has
+    `kind == "simulation_assessment"`,
+    `assessment_id`, `rubric.slug == "chatlab_initial_feedback"`,
+    `groups[*].criteria[*].slug` covering the three criteria with
+    correctly typed `value` (bool / int / etc.).
+  - The old `key` literal union (`hotwash_*`) is removed; tests do not
+    reference those strings anywhere.
+- Delete any test that asserted `hotwash_*` literals or the old four-item
+  list shape.
+
+#### 4.8 Regenerate `openapi.json`
+
+After 4.1 lands, run:
+
+```
+uv run python SimWorks/manage.py export_openapi --output openapi.json
+```
+
+Commit the regenerated spec. The diff should drop `SimulationFeedbackItem`
+and add `AssessmentToolItem`, `AssessmentCriterionScoreItem`,
+`AssessmentCriterionGroupItem`, `AssessmentRubricRefItem`.
+
+### Phase-4 verification
+
+1. `uv run python SimWorks/manage.py check` — clean.
+2. `uv run pytest tests/api tests/assessments tests/chatlab tests/simulation -q`
+   — green.
+3. Repo-wide grep for stale shape:
+   `rg "SimulationFeedbackItem|hotwash_correct_diagnosis|hotwash_correct_treatment_plan|hotwash_patient_experience|hotwash_overall_feedback|hotwash_continuation_direct_answer" SimWorks tests` →
+   no hits (all readers updated).
+4. Repo-wide grep for stale slug:
+   `rg "simulation_feedback" SimWorks tests` → only matches inside docstrings
+   describing historical context; no live code references.
+5. Manual smoke (optional, requires running services): hit
+   `GET /api/v1/simulations/<id>/tools/` against a simulation with a
+   completed assessment → response contains a tool entry
+   `name="simulation_assessment"` with `data[0].groups` populated and
+   `overall_score` rendered.
+6. UI check: load the chatlab post-session view → assessment panel renders
+   with rubric name, version, overall score, and per-criterion entries
+   grouped by category.
+
+At the end of Phase 4 every consumer reads from the assessments app, the
+API contract is assessment-shaped, the UI renders the new shape, and the
+privacy export emits assessments. The `SimulationFeedback` class still
+exists in `apps/simcore/models.py` but no application code references it —
+Phase 5 removes the class and resets project migrations.
+
+---
+
+## Phase 5 — Remove SimulationFeedback, sweep stale references, reset project migrations
+
+### Goal
+
+Delete the legacy model and any remaining stale code, then collapse all
+project-app migration history into a fresh `0001_initial.py` per app so a
+clean clone running `migrate` from an empty database produces only the new
+schema. Approved as destructive: the existing database may be wiped.
+
+After this phase:
+
+- `apps/simcore/models.py` no longer defines `SimulationFeedback`.
+- `apps/simcore/orca/persist/feedback_block.py` is gone.
+- Every project app has exactly `migrations/__init__.py` plus a freshly
+  generated `0001_initial.py` (and zero historical migrations). Third-party
+  packages (`packages/orchestrai_django/.../migrations/`) are untouched.
+- Repo-wide grep for `SimulationFeedback`, `hotwash_`, and
+  `feedback_block` returns only matches in `implementation-plan.md` and
+  CHANGELOG-style historical notes (if any).
+
+### Files to delete
+
+```
+SimWorks/apps/simcore/orca/persist/feedback_block.py
+SimWorks/apps/simcore/orca/persist/__init__.py        # only if directory becomes empty
+SimWorks/apps/{accounts,billing,chatlab,common,feedback,guards,simcore,trainerlab}/migrations/0*.py
+   # All non-__init__.py migration files; preserve every migrations/__init__.py.
+   # Performed by `reset_migrations` (apps/common/management/commands/reset_migrations.py).
+```
+
+### Files to modify
+
+```
+SimWorks/apps/simcore/models.py            # delete `class SimulationFeedback`
+SimWorks/apps/simcore/admin.py             # remove SimulationFeedback admin/inline references
+```
+
+### Files to create
+
+After `reset_migrations -m`:
+
+```
+SimWorks/apps/{accounts,billing,chatlab,common,feedback,guards,simcore,trainerlab}/migrations/0001_initial.py
+SimWorks/apps/assessments/migrations/0001_initial.py   # already created in Phase 1; resets here
+```
+
+### Detailed work items
+
+#### 5.1 Delete legacy persistence module
+
+```
+git rm SimWorks/apps/simcore/orca/persist/feedback_block.py
+```
+
+If `apps/simcore/orca/persist/__init__.py` is empty after the deletion and
+the `persist/` directory contains no other modules, `git rm` it as well
+and remove the (currently absent) imports from
+`apps/simcore/orca/persist/__init__.py`. Verified during exploration: the
+directory only contains `__init__.py` (empty) and `feedback_block.py`, so
+the whole `persist/` package can go.
+
+#### 5.2 Delete `SimulationFeedback` model
+
+In `apps/simcore/models.py` remove:
+
+```python
+class SimulationFeedback(SimulationMetadata):
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+```
+
+Leave `SimulationMetadata` and `SimulationSummary` and the other
+polymorphic subclasses (`LabResult`, `RadResult`, `PatientDemographics`,
+`PatientHistory`) untouched.
+
+#### 5.3 Sweep `apps/simcore/admin.py`
+
+Remove any `@admin.register(SimulationFeedback)` block, any reference to
+`SimulationFeedback` in `MetadataInline` allowed-types lists, any
+`@admin.display`-decorated method on `SimulationAdmin` that queried
+`metadata.filter(key="hotwash_*")` (lines around 0001 of
+`apps/simcore/admin.py` had a `correct_diagnosis` display reading
+`metadata.filter(key="correct diagnosis")`). Either delete those displays
+outright or rewrite them to query the latest
+`Assessment.criterion_scores` for the simulation. Default to **delete**:
+the new admin in `apps/assessments/admin.py` already surfaces the
+assessment-shaped data; duplicating it on `SimulationAdmin` adds drift.
+
+#### 5.4 Repo-wide stale-reference sweep
+
+Run each grep below; every hit must be either deleted or rewritten:
+
+```
+rg "SimulationFeedback" SimWorks tests packages
+rg "hotwash_" SimWorks tests packages
+rg "feedback_block" SimWorks tests packages
+rg "simulation_feedback" SimWorks tests
+rg "FEEDBACK_CREATED|FEEDBACK_GENERATION_FAILED|FEEDBACK_GENERATION_UPDATED" SimWorks tests
+rg "feedback\.item\.created|feedback\.generation\.(failed|updated)" SimWorks tests
+```
+
+Likely remaining hits after Phases 1–4:
+
+- Comments, docstrings, or fixture names still containing `hotwash_*`.
+- Imports like `from apps.simcore.models import SimulationFeedback` in
+  obsolete test files or scripts.
+- `tests/chatlab/test_persist_schema.py` lingering helpers.
+- Any developer fixture script under `scripts/`.
+
+The third-party `packages/` grep is a sanity check; expected zero hits
+because the legacy code lived only under `SimWorks/`.
+
+#### 5.5 Reset project migrations
+
+Pre-flight (must hold true):
+
+- All `migrations/__init__.py` files exist and are tracked. (Verified via
+  `find SimWorks/apps -path "*/migrations/__init__.py"` → 9 files.)
+- No third-party migrations reside under `SimWorks/apps`. (Verified during
+  exploration — third-party migrations live under `packages/`.)
+
+Execute:
+
+```
+uv run python SimWorks/manage.py reset_migrations -m
+```
+
+The command (defined in `apps/common/management/commands/reset_migrations.py`)
+walks every directory under `SimWorks/apps/`, deletes every non-`__init__.py`
+`*.py` file from each `migrations/` directory, then runs `makemigrations`.
+
+Verification after the command:
+
+```
+find SimWorks/apps -path "*/migrations/__init__.py" | wc -l   # → 9 (incl. assessments)
+find SimWorks/apps -path "*/migrations/0001_initial.py" | wc -l  # → 9
+find SimWorks/apps -path "*/migrations/00[2-9]*.py"             # → empty
+find packages/orchestrai_django -path "*/migrations/*.py"        # → still populated
+```
+
+If `makemigrations` emits zero changes for the `privacy` app (which has no
+models), that's expected — its `migrations/` directory holds only
+`__init__.py` after reset.
+
+#### 5.6 Apply on a clean DB
+
+The destructive nature is acknowledged: there's no `RunPython` data
+migration to keep old `SimulationFeedback` rows. Operator must wipe the DB
+before running migrations.
+
+```
+# Postgres example; substitute project DB name/user from settings.
+dropdb simworks_dev
+createdb simworks_dev
+uv run python SimWorks/manage.py migrate
+uv run python SimWorks/manage.py sync_assessment_rubrics
+```
+
+If the developer keeps a Docker compose stack:
+
+```
+docker compose down -v
+docker compose up -d postgres
+uv run python SimWorks/manage.py migrate
+uv run python SimWorks/manage.py sync_assessment_rubrics
+```
+
+#### 5.7 Tests
+
+No new test files added in Phase 5; the test suite is fully assessment-
+shaped after Phase 4. Phase 5 reruns the existing suite against the fresh
+schema as the verification step (see below). Two specific test-suite items
+to verify:
+
+- `tests/api/test_tools.py` — `from apps.simcore.models import
+  PatientDemographics, SimulationFeedback` import is removed (already
+  rewritten in Phase 4; double-check after deleting the model).
+- `tests/chatlab/test_persist_schema.py` — should no longer reference
+  `SimulationFeedback`; if any doc-only mention remains, scrub it.
+
+### Phase-5 verification
+
+1. `uv run python SimWorks/manage.py check` — clean.
+2. `find SimWorks/apps -name "00*.py"` produces only `0001_initial.py`
+   files (one per project app), and every `migrations/__init__.py` is
+   present.
+3. `find packages/orchestrai_django -name "00*.py"` is unchanged from
+   pre-reset (third-party migrations preserved).
+4. Fresh DB:
+   - `dropdb` + `createdb` (or `docker compose down -v && up -d`).
+   - `uv run python SimWorks/manage.py migrate` → exits 0.
+   - `uv run python SimWorks/manage.py sync_assessment_rubrics` →
+     `created=2 updated=0 unchanged=0 drafted=0` (ChatLab initial +
+     continuation rubrics).
+5. `uv run pytest -q` → all green.
+6. Final grep sweep confirms no remaining
+   `SimulationFeedback` / `hotwash_` / `feedback_block` / `feedback.item.created`
+   references in `SimWorks/` or `tests/`.
+
+At end of Phase 5 the codebase contains no legacy feedback code paths,
+project migrations are a single squashed `0001_initial.py` per app, and
+all tests pass against a fresh database. Phase 6 is the final end-to-end
+sign-off.
+
+---
+
+*Phase 6 will be appended in the next pass.*
