@@ -132,6 +132,7 @@ INSTALLED_APPS = [
     "django_htmx",
     "apps.common",
     "apps.simcore",
+    "apps.assessments",
     "apps.guards",
     "apps.chatlab",
     "apps.privacy",
