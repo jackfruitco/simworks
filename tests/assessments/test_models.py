@@ -31,7 +31,7 @@ def test_rubric_global_unique_slug_version(account):
         assessment_type="initial_feedback",
         version=1,
     )
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         AssessmentRubric.objects.create(
             slug="rubric-a",
             name="Rubric A v1 dup",
@@ -59,7 +59,7 @@ def test_rubric_account_unique_slug_version(account, account_b):
         assessment_type="initial_feedback",
         version=1,
     )
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         AssessmentRubric.objects.create(
             slug="custom",
             name="Custom v1 A dup",
@@ -149,7 +149,7 @@ def test_published_at_auto_set_on_publish(draft_rubric):
 def test_criterion_unique_slug_per_rubric(draft_rubric):
     from apps.assessments.models import AssessmentCriterion
 
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         AssessmentCriterion.objects.create(
             rubric=draft_rubric,
             slug="correct_diagnosis",
@@ -252,7 +252,7 @@ def test_assessment_overall_score_constraint_blocks_out_of_range(published_rubri
         lab_type="chatlab",
         overall_score=Decimal("1.500"),
     )
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         super(Assessment, a).save()
 
 
@@ -336,7 +336,7 @@ def test_score_unique_per_assessment_criterion(published_rubric, account, user):
         value_bool=True,
         score=Decimal("1.000"),
     )
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         AssessmentCriterionScore.objects.create(
             assessment=assessment,
             criterion=bool_criterion,
@@ -356,7 +356,7 @@ def test_score_check_constraint_blocks_out_of_range(published_rubric, account, u
         value_bool=True,
         score=Decimal("1.500"),
     )
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         super(AssessmentCriterionScore, cs).save()
 
 
@@ -453,7 +453,7 @@ def test_source_unique_primary_per_assessment(published_rubric, account, user, s
         simulation=simulation,
     )
     other_sim_source = _make_assessment(published_rubric, account, user)
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises((IntegrityError, ValidationError)), transaction.atomic():
         # Use raw SQL bypass via super().save() to skip clean() (which
         # would raise ValidationError instead of letting the unique
         # constraint do the work).

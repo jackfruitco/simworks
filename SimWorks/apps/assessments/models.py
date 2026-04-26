@@ -130,7 +130,7 @@ class AssessmentRubric(models.Model):
             ),
             models.CheckConstraint(
                 name="rubric_account_matches_scope",
-                check=(
+                condition=(
                     (models.Q(scope="account") & models.Q(account__isnull=False))
                     | (models.Q(scope="global") & models.Q(account__isnull=True))
                 ),
@@ -218,7 +218,7 @@ class AssessmentCriterion(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["rubric", "slug"], name="uniq_criterion_rubric_slug"),
             models.CheckConstraint(
-                check=models.Q(weight__gte=0), name="criterion_weight_nonnegative"
+                condition=models.Q(weight__gte=0), name="criterion_weight_nonnegative"
             ),
         ]
         ordering = ["rubric_id", "sort_order"]
@@ -316,7 +316,7 @@ class Assessment(models.Model):
         constraints = [
             models.CheckConstraint(
                 name="assessment_overall_score_in_unit",
-                check=(
+                condition=(
                     models.Q(overall_score__isnull=True)
                     | (models.Q(overall_score__gte=0) & models.Q(overall_score__lte=1))
                 ),
@@ -394,7 +394,7 @@ class AssessmentCriterionScore(models.Model):
             ),
             models.CheckConstraint(
                 name="score_in_unit",
-                check=(
+                condition=(
                     models.Q(score__isnull=True) | (models.Q(score__gte=0) & models.Q(score__lte=1))
                 ),
             ),

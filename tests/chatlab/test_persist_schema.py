@@ -479,6 +479,7 @@ class TestPatientResultsPersistence:
 
 
 def _seed_chatlab_initial_rubric():
+    """Two-phase seed: create as DRAFT, attach criteria, promote to PUBLISHED."""
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
     rubric = AssessmentRubric.objects.create(
@@ -488,7 +489,7 @@ def _seed_chatlab_initial_rubric():
         lab_type="chatlab",
         assessment_type="initial_feedback",
         version=1,
-        status=AssessmentRubric.Status.PUBLISHED,
+        status=AssessmentRubric.Status.DRAFT,
     )
     AssessmentCriterion.objects.create(
         rubric=rubric,
@@ -516,6 +517,8 @@ def _seed_chatlab_initial_rubric():
         max_value=5,
         sort_order=30,
     )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
     return rubric
 
 
@@ -529,7 +532,7 @@ def _seed_chatlab_continuation_rubric():
         lab_type="chatlab",
         assessment_type="continuation_feedback",
         version=1,
-        status=AssessmentRubric.Status.PUBLISHED,
+        status=AssessmentRubric.Status.DRAFT,
     )
     AssessmentCriterion.objects.create(
         rubric=rubric,
@@ -539,6 +542,8 @@ def _seed_chatlab_continuation_rubric():
         value_type=AssessmentCriterion.ValueType.TEXT,
         sort_order=10,
     )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
     return rubric
 
 

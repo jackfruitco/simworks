@@ -101,7 +101,7 @@ def simulation_with_metadata(simulation):
         lab_type="chatlab",
         assessment_type="initial_feedback",
         version=1,
-        status=AssessmentRubric.Status.PUBLISHED,
+        status=AssessmentRubric.Status.DRAFT,
     )
     diag_criterion = AssessmentCriterion.objects.create(
         rubric=rubric,
@@ -121,6 +121,8 @@ def simulation_with_metadata(simulation):
         max_value=Decimal("5"),
         sort_order=30,
     )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
 
     assessment = Assessment.objects.create(
         rubric=rubric,

@@ -31,14 +31,10 @@ def user(db, user_role):
 
 @pytest.fixture
 def account(db, user):
+    """Reuse the personal account auto-created by the user signal."""
     from apps.accounts.models import Account
 
-    return Account.objects.create(
-        name="Assessments Test Account",
-        slug="assessments-test-account",
-        account_type=Account.AccountType.PERSONAL,
-        owner_user=user,
-    )
+    return Account.objects.get(owner_user=user, account_type=Account.AccountType.PERSONAL)
 
 
 @pytest.fixture
@@ -51,12 +47,7 @@ def account_b(db):
         password="testpass123",
         role=role,
     )
-    return Account.objects.create(
-        name="Assessments Test Account B",
-        slug="assessments-test-account-b",
-        account_type=Account.AccountType.PERSONAL,
-        owner_user=other_user,
-    )
+    return Account.objects.get(owner_user=other_user, account_type=Account.AccountType.PERSONAL)
 
 
 @pytest.fixture

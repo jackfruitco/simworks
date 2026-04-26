@@ -226,7 +226,7 @@ class Command(BaseCommand):
         # Override version + status when shipping the bumped draft.
         bumped = dict(parsed)
         bumped["version"] = new_version
-        bumped["status"] = AssessmentRubric.Status.DRAFT
+        bumped["status"] = AssessmentRubric.Status.DRAFT.value
         # Recompute checksum on the bumped form so the new draft's
         # seed_checksum reflects what we actually stored.
         bumped_canonical = yaml.safe_dump(bumped, sort_keys=True, default_flow_style=False).encode(

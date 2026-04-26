@@ -28,6 +28,7 @@ def _block(**overrides):
 
 
 def _seed_continuation_rubric():
+    """Create as DRAFT, attach criterion, then publish."""
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
     rubric = AssessmentRubric.objects.create(
@@ -37,7 +38,7 @@ def _seed_continuation_rubric():
         lab_type="chatlab",
         assessment_type="continuation_feedback",
         version=1,
-        status=AssessmentRubric.Status.PUBLISHED,
+        status=AssessmentRubric.Status.DRAFT,
     )
     AssessmentCriterion.objects.create(
         rubric=rubric,
@@ -47,11 +48,17 @@ def _seed_continuation_rubric():
         value_type=AssessmentCriterion.ValueType.TEXT,
         sort_order=10,
     )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
     return rubric
 
 
 def _seed_initial_rubric():
-    """Mirror the chatlab YAML shape but stamp PUBLISHED with three criteria."""
+    """Mirror the chatlab YAML shape: create as DRAFT, attach criteria, then publish.
+
+    Criteria can't be created on a published rubric, so we follow the same
+    two-phase pattern the sync command uses.
+    """
     from apps.assessments.models import AssessmentCriterion, AssessmentRubric
 
     rubric = AssessmentRubric.objects.create(
@@ -61,7 +68,7 @@ def _seed_initial_rubric():
         lab_type="chatlab",
         assessment_type="initial_feedback",
         version=1,
-        status=AssessmentRubric.Status.PUBLISHED,
+        status=AssessmentRubric.Status.DRAFT,
     )
     AssessmentCriterion.objects.create(
         rubric=rubric,
@@ -89,6 +96,8 @@ def _seed_initial_rubric():
         max_value=Decimal("5"),
         sort_order=30,
     )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
     return rubric
 
 
