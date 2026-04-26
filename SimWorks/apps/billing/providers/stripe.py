@@ -459,7 +459,9 @@ def process_stripe_webhook(
             account = _resolve_account_from_payload(payload)
             if account is None:
                 raise ValueError("Unable to resolve account from Stripe payload")
-            _sync_subscription_from_payload(account=account, subscription=obj)
+            subscription = _sync_subscription_from_payload(account=account, subscription=obj)
+            if event_type == "customer.subscription.deleted":
+                _expire_and_reconcile_subscription(subscription)
         elif event_type == "checkout.session.completed":
             _handle_checkout_session_completed(obj)
         elif event_type == "invoice.payment_failed":

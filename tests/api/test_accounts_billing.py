@@ -531,6 +531,26 @@ def test_stripe_customer_portal_requires_existing_customer(owner_user, auth_clie
 
 
 @pytest.mark.django_db
+def test_stripe_customer_portal_disabled_returns_404(owner_user, auth_client_factory):
+    personal_account = get_personal_account_for_user(owner_user)
+    BillingAccount.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_customer_id="cus_test",
+        billing_email=owner_user.email,
+    )
+    client = auth_client_factory(owner_user)
+
+    response = client.post(
+        "/api/v1/billing/stripe/customer-portal-session/",
+        data={"return_url": "https://medsim.example/billing/"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
 @override_settings(BILLING_STRIPE_PORTAL_ENABLED=True)
 def test_stripe_customer_portal_creates_session(owner_user, auth_client_factory):
     personal_account = get_personal_account_for_user(owner_user)
@@ -564,6 +584,32 @@ def test_stripe_customer_portal_creates_session(owner_user, auth_client_factory)
 
 @pytest.mark.django_db
 @override_settings(
+    BILLING_STRIPE_PORTAL_ENABLED=True,
+    BILLING_STRIPE_RETURN_BASE_URL="https://medsim.example",
+)
+def test_stripe_customer_portal_rejects_foreign_return_url(owner_user, auth_client_factory):
+    personal_account = get_personal_account_for_user(owner_user)
+    BillingAccount.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_customer_id="cus_test",
+        billing_email=owner_user.email,
+    )
+    client = auth_client_factory(owner_user)
+
+    with patch("apps.billing.providers.stripe.stripe.billing_portal.Session.create") as create:
+        response = client.post(
+            "/api/v1/billing/stripe/customer-portal-session/",
+            data={"return_url": "https://evil.example/billing/"},
+            content_type="application/json",
+        )
+
+    assert response.status_code == 400
+    create.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(
     BILLING_STRIPE_CHECKOUT_ENABLED=True,
     BILLING_STRIPE_PORTAL_ENABLED=True,
 )
@@ -580,6 +626,31 @@ def test_billing_page_renders_personal_checkout_buttons(owner_user):
     assert ProductCode.TRAINERLAB_GO.value in content
     assert ProductCode.MEDSIM_ONE.value in content
     assert "/api/v1/billing/stripe/checkout-session/" in content
+
+
+@pytest.mark.django_db
+@override_settings(
+    BILLING_STRIPE_CHECKOUT_ENABLED=True,
+    BILLING_STRIPE_PRICE_PLAN_MAP={},
+)
+def test_stripe_checkout_missing_price_mapping_returns_400(owner_user, auth_client_factory):
+    client = auth_client_factory(owner_user)
+
+    with patch("apps.billing.providers.stripe.stripe.checkout.Session.create") as create:
+        response = client.post(
+            "/api/v1/billing/stripe/checkout-session/",
+            data={
+                "product_code": ProductCode.MEDSIM_ONE.value,
+                "billing_interval": "monthly",
+                "success_url": "https://medsim.example/billing/success/",
+                "cancel_url": "https://medsim.example/billing/",
+            },
+            content_type="application/json",
+        )
+
+    assert response.status_code == 400
+    assert "Missing Stripe price mapping" in response.json()["detail"]
+    create.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -763,6 +834,88 @@ def test_invoice_payment_failed_reconciles_entitlement_status(owner_user):
     entitlement = Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}")
     assert event.status == WebhookEvent.Status.PROCESSED
     assert subscription.status == Subscription.Status.PAST_DUE
+    assert entitlement.status == Entitlement.Status.EXPIRED
+
+
+@pytest.mark.django_db
+@override_settings(BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"})
+def test_invoice_payment_failed_with_future_period_keeps_access(owner_user):
+    personal_account = get_personal_account_for_user(owner_user)
+    subscription = Subscription.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id="sub_failed_future",
+        plan_code="price_test",
+        status=Subscription.Status.ACTIVE,
+        current_period_end=timezone.now() + timedelta(days=10),
+    )
+    from apps.billing.services.subscriptions import reconcile_subscription_entitlements
+
+    reconcile_subscription_entitlements(subscription)
+    payload = {
+        "id": "evt_invoice_failed_future",
+        "object": "event",
+        "type": "invoice.payment_failed",
+        "data": {"object": {"id": "in_failed_future", "subscription": "sub_failed_future"}},
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+
+    event = process_stripe_webhook(
+        payload_bytes=payload_bytes,
+        signature_header=_stripe_signature(payload_bytes),
+    )
+
+    subscription.refresh_from_db()
+    entitlement = Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}")
+    assert event.status == WebhookEvent.Status.PROCESSED
+    assert subscription.status == Subscription.Status.PAST_DUE
+    assert entitlement.status == Entitlement.Status.ACTIVE
+
+
+@pytest.mark.django_db
+@override_settings(BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"})
+def test_customer_subscription_deleted_expires_access(owner_user):
+    personal_account = get_personal_account_for_user(owner_user)
+    subscription = Subscription.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id="sub_deleted",
+        plan_code="price_test",
+        status=Subscription.Status.ACTIVE,
+        current_period_end=timezone.now() + timedelta(days=10),
+    )
+    from apps.billing.services.subscriptions import reconcile_subscription_entitlements
+
+    reconcile_subscription_entitlements(subscription)
+    payload = {
+        "id": "evt_sub_deleted",
+        "object": "event",
+        "type": "customer.subscription.deleted",
+        "data": {
+            "object": {
+                "id": "sub_deleted",
+                "customer": "cus_deleted",
+                "status": "canceled",
+                "metadata": {"account_uuid": str(personal_account.uuid)},
+                "items": {"data": [{"price": {"id": "price_test"}}]},
+                "start_date": 1_700_000_000,
+                "current_period_start": 1_700_000_000,
+                "current_period_end": 1_800_000_000,
+                "ended_at": 1_700_500_000,
+            }
+        },
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+
+    event = process_stripe_webhook(
+        payload_bytes=payload_bytes,
+        signature_header=_stripe_signature(payload_bytes),
+    )
+
+    subscription.refresh_from_db()
+    entitlement = Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}")
+    assert event.status == WebhookEvent.Status.PROCESSED
+    assert subscription.status == Subscription.Status.EXPIRED
     assert entitlement.status == Entitlement.Status.EXPIRED
 
 
