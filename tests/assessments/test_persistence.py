@@ -207,15 +207,11 @@ def test_initial_simulation_summary_uses_typed_values(simulation):
     assert summary.learning_points == ["Patient experience rated 3/5."]
 
 
-def test_initial_no_simulation_feedback_rows_created(simulation):
-    from apps.assessments.services.persistence import _write_initial_assessment
-    from apps.simcore.models import SimulationFeedback
+def test_legacy_simulation_feedback_class_is_gone():
+    """Phase 5 removed the SimulationFeedback polymorphic subclass."""
+    import apps.simcore.models as simcore_models
 
-    _seed_initial_rubric()
-
-    _write_initial_assessment(sim=simulation, block=_block(), service_call_attempt_id=None)
-
-    assert SimulationFeedback.objects.filter(simulation=simulation).count() == 0
+    assert not hasattr(simcore_models, "SimulationFeedback")
 
 
 def test_initial_returns_none_when_rubric_missing(simulation):

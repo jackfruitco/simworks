@@ -604,30 +604,11 @@ class TestInitialAssessmentPersistence:
         )
         assert await primary_sources.acount() == 1
 
-    async def test_no_simulation_feedback_rows_created(self, context):
-        from asgiref.sync import sync_to_async
+    async def test_legacy_simulation_feedback_class_is_gone(self, context):
+        """Phase 5 removed the SimulationFeedback polymorphic subclass."""
+        import apps.simcore.models as simcore_models
 
-        from apps.simcore.models import SimulationFeedback
-
-        await sync_to_async(_seed_chatlab_initial_rubric)()
-
-        schema = GenerateInitialSimulationFeedback.model_validate(
-            {
-                "llm_conditions_check": [],
-                "metadata": {
-                    "correct_diagnosis": True,
-                    "correct_treatment_plan": False,
-                    "patient_experience": 4,
-                    "overall_feedback": "Good job overall!",
-                },
-            }
-        )
-        await persist_schema(schema, context)
-
-        legacy_count = await SimulationFeedback.objects.filter(
-            simulation_id=context.simulation_id
-        ).acount()
-        assert legacy_count == 0
+        assert not hasattr(simcore_models, "SimulationFeedback")
 
     async def test_creates_outbox_event_for_websocket_broadcast(self, context):
         """GenerateInitialSimulationFeedback emits one assessment.item.created event."""
