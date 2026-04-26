@@ -135,8 +135,9 @@ def test_staging_account_ready_html_contains_ios_instructions():
     )
     assert "Staging" in html
     assert "If the app is set to Production" in html
-    assert "Settings" in html
-    assert "Environment" in html
+    assert "Long press" in html
+    assert "Env" in html
+    assert "Sign In screen" in html
 
 
 def test_staging_account_ready_txt_contains_ios_instructions():
@@ -146,8 +147,9 @@ def test_staging_account_ready_txt_contains_ios_instructions():
     )
     assert "Staging" in txt
     assert "If the app is set to Production" in txt
-    assert "Settings" in txt
-    assert "Environment" in txt
+    assert "Long press" in txt
+    assert "Env" in txt
+    assert "Sign In screen" in txt
 
 
 # ---------------------------------------------------------------------------
