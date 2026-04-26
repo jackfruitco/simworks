@@ -16,6 +16,16 @@ def test_get_injury_location_label_resolves_canonical_codes_and_labels():
     assert get_injury_location_label("left lower leg") == "Left Lower Leg"
 
 
+def test_enrich_trainer_payload_humanizes_separator_location_values():
+    underscore_payload = enrich_trainer_payload({"anatomical_location": "left_lower_leg"})
+    hyphen_payload = enrich_trainer_payload({"anatomical_location": "left-lower-leg"})
+
+    assert underscore_payload["anatomical_location"] == "left_lower_leg"
+    assert underscore_payload["anatomical_location_label"] == "Left Lower Leg"
+    assert hyphen_payload["anatomical_location"] == "left-lower-leg"
+    assert hyphen_payload["anatomical_location_label"] == "Left Lower Leg"
+
+
 def test_enrich_trainer_payload_adds_anatomy_and_laterality_labels_from_code():
     payload = enrich_trainer_payload(
         {
