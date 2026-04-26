@@ -393,4 +393,442 @@ unchanged at the end of this phase.
 
 ---
 
-*Phases 2–6 will be appended in subsequent passes.*
+## Phase 2 — YAML rubric seed + sync command + resolution service
+
+### Goal
+
+Add the per-lab YAML seed format, the `sync_assessment_rubrics` management
+command that discovers and imports them, and the `resolve_rubric` service
+that consumers will call in Phase 3. After this phase a fresh DB plus
+`migrate` plus `sync_assessment_rubrics` produces a published
+`chatlab_initial_feedback` rubric (v1) with three criteria. Persistence is
+still untouched — Phase 3 connects this to the orca pipeline.
+
+### Files to create
+
+```
+SimWorks/apps/chatlab/rubrics/initial_feedback_v1.yaml
+SimWorks/apps/assessments/services/__init__.py
+SimWorks/apps/assessments/services/rubric_resolution.py
+SimWorks/apps/assessments/services/scoring.py
+SimWorks/apps/assessments/management/__init__.py
+SimWorks/apps/assessments/management/commands/__init__.py
+SimWorks/apps/assessments/management/commands/sync_assessment_rubrics.py
+tests/assessments/test_rubric_resolution.py
+tests/assessments/test_scoring.py
+tests/assessments/test_sync_command.py
+```
+
+(Note: `apps/chatlab/rubrics/` does not need an `__init__.py` — discovery is
+filesystem-based via `Path(app_config.path) / "rubrics"`.)
+
+### Files to modify
+
+```
+pyproject.toml                          # add "pyyaml>=6.0" to [project] dependencies
+tests/assessments/conftest.py           # add tmp-rubric-dir fixture for sync tests
+```
+
+After editing `pyproject.toml`, run `uv sync` (already on lockfile via
+transitive deps; this promotes it to a direct dep).
+
+### Detailed work items
+
+#### 2.1 `pyproject.toml`
+
+Append `"pyyaml>=6.0"` to the `[project] dependencies` array. PyYAML is
+already in `uv.lock` as a transitive sub-dependency (verified at
+`uv.lock:2055`); promoting it to a direct dependency makes the import
+contract explicit.
+
+#### 2.2 `SimWorks/apps/chatlab/rubrics/initial_feedback_v1.yaml`
+
+```yaml
+slug: chatlab_initial_feedback
+name: ChatLab Initial Feedback
+description: Initial post-simulation assessment for ChatLab sessions.
+scope: global
+lab_type: chatlab
+assessment_type: initial_feedback
+version: 1
+status: published
+
+criteria:
+  - slug: correct_diagnosis
+    label: Correct Diagnosis
+    description: >
+      Whether the learner identified the expected diagnosis or a
+      sufficiently close working diagnosis during the simulation.
+    category: clinical_reasoning
+    value_type: bool
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 10
+
+  - slug: correct_treatment_plan
+    label: Correct Treatment Plan
+    description: >
+      Whether the learner recommended an appropriate treatment plan
+      for the scenario.
+    category: treatment
+    value_type: bool
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 20
+
+  - slug: patient_experience
+    label: Patient Experience
+    description: >
+      Communication quality, empathy, clarity, and patient-centeredness
+      across the encounter.
+    category: communication
+    value_type: int
+    min_value: 0
+    max_value: 5
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 30
+```
+
+Per spec, `overall_feedback` is intentionally **not** modeled as a
+criterion — it lands in `Assessment.overall_summary` (Phase 3).
+
+#### 2.3 `SimWorks/apps/assessments/services/__init__.py`
+
+```python
+from .rubric_resolution import RubricNotFoundError, resolve_rubric
+from .scoring import compute_overall_score, normalize_criterion_value
+
+__all__ = [
+    "RubricNotFoundError",
+    "compute_overall_score",
+    "normalize_criterion_value",
+    "resolve_rubric",
+]
+```
+
+#### 2.4 `SimWorks/apps/assessments/services/rubric_resolution.py`
+
+```python
+from django.db.models import Case, IntegerField, Q, When
+
+from apps.assessments.models import AssessmentRubric
+
+
+class RubricNotFoundError(LookupError):
+    """Raised when no published rubric matches the resolution criteria."""
+
+
+def resolve_rubric(*, account, lab_type: str, assessment_type: str) -> AssessmentRubric:
+    """Resolve the rubric to use for the given account / lab / assessment type.
+
+    Resolution order:
+      1. Highest-version PUBLISHED account-scoped rubric matching
+         (account, lab_type, assessment_type).
+      2. Otherwise highest-version PUBLISHED global rubric matching
+         (lab_type, assessment_type).
+
+    Raises RubricNotFoundError if no candidate is found.
+    """
+    queryset = (
+        AssessmentRubric.objects.filter(
+            status=AssessmentRubric.Status.PUBLISHED,
+            lab_type=lab_type,
+            assessment_type=assessment_type,
+        )
+        .filter(
+            Q(scope=AssessmentRubric.Scope.ACCOUNT, account=account)
+            | Q(scope=AssessmentRubric.Scope.GLOBAL, account__isnull=True)
+        )
+        .annotate(
+            scope_priority=Case(
+                When(scope=AssessmentRubric.Scope.ACCOUNT, then=0),
+                default=1,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("scope_priority", "-version", "-published_at")
+    )
+
+    rubric = queryset.first()
+    if rubric is None:
+        raise RubricNotFoundError(
+            f"No published rubric for lab_type={lab_type!r} "
+            f"assessment_type={assessment_type!r} account={account!r}."
+        )
+    return rubric
+```
+
+Notes:
+
+- A single ORM query, indexed by the existing
+  `["lab_type", "assessment_type", "status"]` index from Phase 1.
+- The `account` arg may be `None`; in that case only global rubrics qualify
+  (the `Q(scope=ACCOUNT, account=None)` branch matches nothing because
+  Phase-1 constraints forbid `scope=ACCOUNT` with `account IS NULL`).
+
+#### 2.5 `SimWorks/apps/assessments/services/scoring.py`
+
+```python
+from decimal import Decimal
+from typing import Iterable
+
+from apps.assessments.models import AssessmentCriterion, AssessmentCriterionScore
+
+
+def normalize_criterion_value(
+    criterion: AssessmentCriterion,
+    *,
+    value_bool: bool | None = None,
+    value_int: int | None = None,
+    value_decimal: Decimal | None = None,
+    value_text: str = "",
+    value_json=None,
+) -> Decimal | None:
+    """Map a typed criterion value onto a normalized 0..1 score.
+
+    - bool      -> 1 if True else 0
+    - int/decimal with both min_value and max_value set -> clamped linear
+      normalization. Returns 0 when min == max.
+    - int/decimal without bounds, enum, text, json -> None (caller may
+      attach a manually authored score).
+    """
+    vt = criterion.value_type
+
+    if vt == AssessmentCriterion.ValueType.BOOL:
+        if value_bool is None:
+            return None
+        return Decimal("1") if value_bool else Decimal("0")
+
+    if vt in {AssessmentCriterion.ValueType.INT, AssessmentCriterion.ValueType.DECIMAL}:
+        raw = value_int if vt == AssessmentCriterion.ValueType.INT else value_decimal
+        if raw is None or criterion.min_value is None or criterion.max_value is None:
+            return None
+        lo = Decimal(criterion.min_value)
+        hi = Decimal(criterion.max_value)
+        v = Decimal(raw)
+        if hi == lo:
+            return Decimal("0")
+        normalized = (v - lo) / (hi - lo)
+        if normalized < 0:
+            return Decimal("0")
+        if normalized > 1:
+            return Decimal("1")
+        # Quantize to model precision (3 decimal places).
+        return normalized.quantize(Decimal("0.001"))
+
+    return None
+
+
+def compute_overall_score(
+    criterion_scores: Iterable[AssessmentCriterionScore],
+) -> Decimal | None:
+    """Weighted mean of non-null criterion scores, weighted by criterion.weight.
+
+    Returns None if every score is None or all weights are zero.
+    """
+    total_weight = Decimal("0")
+    weighted_sum = Decimal("0")
+    for cs in criterion_scores:
+        if cs.score is None:
+            continue
+        weight = Decimal(cs.criterion.weight)
+        if weight <= 0:
+            continue
+        total_weight += weight
+        weighted_sum += weight * cs.score
+    if total_weight == 0:
+        return None
+    return (weighted_sum / total_weight).quantize(Decimal("0.001"))
+```
+
+#### 2.6 `SimWorks/apps/assessments/management/commands/sync_assessment_rubrics.py`
+
+Behavior:
+
+- Iterate `django.apps.apps.get_app_configs()`; skip third-party
+  (`orchestrai_django`, `imagekit`, `daphne`, `channels`, `allauth*`, etc.)
+  by checking `app_config.name.startswith("apps.")` — only project apps own
+  rubric YAML.
+- For each project app, look at `Path(app_config.path) / "rubrics"` and
+  glob `*.yaml`.
+- For each YAML file, parse with `yaml.safe_load`; validate required
+  top-level keys: `slug`, `name`, `lab_type`, `assessment_type`, `version`,
+  `scope`, `status`, `criteria`. Reject `scope=account` (file-seeded
+  rubrics are always global; account-scoped rubrics are admin-managed).
+- Compute `seed_checksum = sha256(canonical_yaml_bytes).hexdigest()`. Use
+  `yaml.safe_dump(parsed, sort_keys=True, default_flow_style=False)` to
+  produce stable bytes regardless of whitespace.
+- Resolve the existing rubric by
+  `(slug, version, lab_type, assessment_type, scope=GLOBAL, account=None)`.
+- Branches:
+  - **Not present** → create `AssessmentRubric` with
+    `seed_source_app=app_config.label`, `seed_source_path=relative_path`,
+    `seed_checksum=…`. If YAML `status == published`, the model's `save()`
+    will set `published_at`. Then create all criteria.
+  - **Exists, status=draft** →
+    - `seed_checksum` matches: no-op (count as `unchanged`).
+    - Differs: delete existing criteria, recreate from YAML, update rubric
+      `name`/`description`/`status`/`seed_checksum`. Phase-1 immutability
+      rules don't apply because the rubric is `DRAFT`.
+  - **Exists, status=published** →
+    - `seed_checksum` matches: no-op.
+    - Differs and `--create-draft-on-change` not set: raise
+      `CommandError("Refusing to mutate published rubric '<slug>' v<version>; "
+      "the YAML at <path> differs from the published seed_checksum. Re-run "
+      "with --create-draft-on-change to create a new draft version.")`.
+    - Differs and `--create-draft-on-change` set: create a new
+      `AssessmentRubric` row at `version=existing.version + 1`,
+      `status=DRAFT`, `based_on=existing`, copy criteria from YAML, set
+      `seed_*` fields.
+  - **Exists, status=archived** → same rule as `published` (immutable).
+
+Flags:
+
+- `--app <label>`: only scan that one app.
+- `--dry-run`: parse and validate; report intended actions; no DB writes.
+  Wraps the entire operation in `transaction.atomic` then `transaction.set_rollback(True)` at end.
+- `--create-draft-on-change`: see above.
+
+PyYAML import guard:
+
+```python
+try:
+    import yaml  # PyYAML
+except ImportError as exc:
+    raise CommandError(
+        "PyYAML is required for sync_assessment_rubrics. "
+        "Add 'pyyaml>=6.0' to pyproject.toml dependencies and run `uv sync`."
+    ) from exc
+```
+
+Output format mirrors `seed_roles.py`:
+
+- `self.stdout.write(self.style.SUCCESS(f"  + created {slug} v{version}"))`
+- `self.stdout.write(self.style.WARNING(f"  ~ updated draft {slug} v{version}"))`
+- `self.stdout.write(f"  · unchanged {slug} v{version}")`
+- Final summary: `created=X updated=Y unchanged=Z drafted=W`.
+
+#### 2.7 `tests/assessments/test_rubric_resolution.py`
+
+All `@pytest.mark.django_db`. Reuses `account`, `published_rubric`,
+`draft_rubric` fixtures from Phase 1 + a new `account_b` fixture.
+
+- `test_resolves_global_published_rubric` — single global published; resolved.
+- `test_prefers_account_scoped_over_global` — both exist for same lab/type;
+  account-scoped wins.
+- `test_falls_back_to_global_when_account_has_no_rubric` — only global
+  exists; account=`account_b` resolves global.
+- `test_higher_version_wins_among_global` — v1 + v2 both published; returns v2.
+- `test_higher_version_wins_among_account_scoped` — analogous.
+- `test_ignores_draft_rubrics` — only draft exists → `RubricNotFoundError`.
+- `test_ignores_archived_rubrics` — only archived exists → raises.
+- `test_account_scoped_for_other_account_not_returned` — account-A rubric
+  is not selected when resolving for `account_b`; falls back to global.
+- `test_lab_type_mismatch_raises` — rubric for `chatlab` not selected when
+  resolving `trainerlab`.
+- `test_assessment_type_mismatch_raises` — analogous.
+- `test_account_none_only_matches_global` — `account=None` only resolves
+  global rubrics.
+
+#### 2.8 `tests/assessments/test_scoring.py`
+
+Pure unit tests (`@pytest.mark.unit` — no DB; build criterion stubs via
+`Mock` or via lightweight in-memory factories that don't require save).
+
+Where DB is convenient (e.g., to exercise the real model `clean()` paths)
+use `@pytest.mark.integration` and `@pytest.mark.django_db`.
+
+- `test_normalize_bool_true_returns_one` / `_false_returns_zero`.
+- `test_normalize_bool_none_returns_none`.
+- `test_normalize_int_with_bounds` — value=4, min=0, max=5 → Decimal("0.800").
+- `test_normalize_int_clamped_below_min` — value=-1 → 0.
+- `test_normalize_int_clamped_above_max` — value=99 → 1.
+- `test_normalize_int_without_bounds_returns_none`.
+- `test_normalize_decimal_with_bounds`.
+- `test_normalize_min_equals_max_returns_zero`.
+- `test_normalize_text_returns_none`, `test_normalize_enum_returns_none`,
+  `test_normalize_json_returns_none`.
+- `test_compute_overall_weighted_mean` — three scores 1.0/0.0/0.8 with
+  weights 1/1/1 → 0.600. With weights 2/1/1 → (2+0+0.8)/4 = 0.700.
+- `test_compute_overall_skips_none_scores`.
+- `test_compute_overall_returns_none_when_all_none`.
+- `test_compute_overall_zero_weights_excluded`.
+
+#### 2.9 `tests/assessments/test_sync_command.py`
+
+Uses a temporary "fake" Django app pointing at `tmp_path` to drop YAML
+files into a `rubrics/` subdir, and a real run against the bundled
+`apps/chatlab/rubrics/initial_feedback_v1.yaml`. Pattern:
+
+```python
+@pytest.fixture
+def fake_app(tmp_path, monkeypatch):
+    """Patch one app config's `path` to a tmp dir with a rubrics/ subfolder."""
+    rubrics = tmp_path / "rubrics"
+    rubrics.mkdir()
+    monkeypatch.setattr(
+        "django.apps.apps.get_app_config('common').path", str(tmp_path)
+    )  # or override via a simple wrapper
+    return rubrics
+```
+
+Tests (all `@pytest.mark.django_db`, `@pytest.mark.integration`):
+
+- `test_command_creates_rubric_from_chatlab_yaml` — run command with no
+  flags; assert one published `AssessmentRubric` with slug
+  `chatlab_initial_feedback` v1 and three criteria with correct slugs,
+  `value_type`, `sort_order`, `min_value`/`max_value`.
+- `test_criteria_persisted_in_sort_order`.
+- `test_published_at_set_when_status_published`.
+- `test_seed_metadata_recorded` — `seed_source_app == "chatlab"`,
+  `seed_source_path` ends with `initial_feedback_v1.yaml`, `seed_checksum`
+  is 64-char hex.
+- `test_rerun_unchanged_is_noop` — second run reports `unchanged=1`,
+  no new rows.
+- `test_draft_yaml_change_replaces_criteria` — pre-create a `DRAFT` rubric
+  manually, write a YAML with one fewer criterion, rerun → criteria count
+  matches new YAML and checksum updated.
+- `test_published_yaml_change_fails_loudly` — pre-create a published
+  rubric with a different `seed_checksum`, write a YAML for same
+  `(slug, version)` with mutated criteria → raises `CommandError`
+  mentioning the rubric slug, version, and YAML path.
+- `test_published_change_with_create_draft_flag_creates_new_version` —
+  same setup as above + `--create-draft-on-change` → original row
+  unchanged, new row at `version=2`, `status=DRAFT`, `based_on=v1`.
+- `test_dry_run_makes_no_changes` — DB count before/after equal even when
+  YAML is new.
+- `test_app_filter_skips_other_apps` — `--app chatlab` ignores tmp fake-app
+  YAMLs.
+- `test_missing_required_field_raises` — YAML without `lab_type`
+  raises `CommandError`.
+- `test_account_scope_in_yaml_rejected` — `scope: account` raises (file
+  seeds are global only).
+- `test_pyyaml_missing_raises_clear_error` — patch `import yaml` to raise
+  `ImportError`; assert `CommandError` mentions `pyyaml>=6.0` and
+  `uv sync`.
+
+### Phase-2 verification
+
+1. `uv sync` (after editing `pyproject.toml`) — pyyaml resolves as direct dep.
+2. `uv run python SimWorks/manage.py sync_assessment_rubrics` (against the
+   already-migrated DB from Phase 1) →
+     `created=1 updated=0 unchanged=0 drafted=0`.
+3. Re-run the same command → `created=0 updated=0 unchanged=1 drafted=0`
+   (idempotent).
+4. `uv run python SimWorks/manage.py sync_assessment_rubrics --dry-run` →
+   no DB writes; reports planned actions.
+5. `uv run pytest tests/assessments -q` — all green, including the 30+ new
+   tests added in this phase.
+6. `uv run python SimWorks/manage.py shell -c "from apps.assessments.services import resolve_rubric; from apps.accounts.models import Account; r = resolve_rubric(account=None, lab_type='chatlab', assessment_type='initial_feedback'); print(r.slug, r.version, r.status)"`
+   prints `chatlab_initial_feedback 1 published`.
+
+Phase 2 still does not touch `apps.simcore`, the orca persist functions, or
+the outbox event registry. The legacy `SimulationFeedback` flow remains live.
+
+---
+
+*Phases 3–6 will be appended in subsequent passes.*
