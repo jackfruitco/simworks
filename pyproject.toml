@@ -27,6 +27,7 @@ dependencies = [
     "psycopg>=3.3.3",
     "psycopg-binary>=3.3.3",
     "pyjwt>=2.11.0",
+    "pyyaml>=6.0",
     "pydantic>=2.12.5",
     "pydantic-django>=0.1.1",
     "pytest>=9.0.2",
