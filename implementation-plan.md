@@ -831,4 +831,397 @@ the outbox event registry. The legacy `SimulationFeedback` flow remains live.
 
 ---
 
-*Phases 3–6 will be appended in subsequent passes.*
+## Phase 3 — Persistence refactor: orca → Assessment
+
+### Goal
+
+Switch the orca initial-feedback and continuation pipelines so they write to
+`Assessment` / `AssessmentCriterionScore` / `AssessmentSource` instead of
+`SimulationFeedback`, and rename the outbox event family from `feedback.*`
+to `assessment.*`. Both AI flows continue to validate the existing Pydantic
+schemas (`InitialFeedbackBlock`, `FeedbackContinuationBlock`) — only the
+persistence target moves.
+
+After this phase:
+
+- A simulation that ends triggers `GenerateInitialFeedback` → produces one
+  `Assessment` (assessment_type=`initial_feedback`) + three
+  `AssessmentCriterionScore` rows + one `AssessmentSource(role=primary,
+  source_type=simulation)`.
+- A continuation Q&A produces a **separate** `Assessment`
+  (assessment_type=`continuation_feedback`) linked back to the initial
+  assessment via `AssessmentSource(role=generated_from,
+  source_type=assessment)` and to the simulation via
+  `AssessmentSource(role=primary, source_type=simulation)`.
+- WebSocket clients receive `assessment.item.created` instead of
+  `feedback.item.created`. No legacy aliases — destructive refactor.
+- The legacy `SimulationFeedback` model is **still present** but no new
+  rows are written by the orca pipeline. (Removal happens in Phase 5.)
+
+### Files to create
+
+```
+SimWorks/apps/chatlab/rubrics/continuation_feedback_v1.yaml
+SimWorks/apps/assessments/services/persistence.py
+tests/assessments/test_persistence.py
+```
+
+### Files to modify
+
+```
+SimWorks/apps/common/outbox/event_types.py        # drop FEEDBACK_*, add ASSESSMENT_*
+SimWorks/apps/simcore/orca/schemas/feedback.py    # swap persist imports, post_persist payload, event names
+SimWorks/apps/simcore/orca/services/feedback.py   # rename any FEEDBACK_GENERATION_FAILED/UPDATED uses
+tests/chatlab/test_persist_schema.py              # assert assessment-shaped DB state
+```
+
+### Files to delete
+
+Nothing in this phase. `SimWorks/apps/simcore/orca/persist/feedback_block.py`
+is left in place but no longer referenced (Phase 5 deletes it during the
+final sweep).
+
+### Detailed work items
+
+#### 3.1 `SimWorks/apps/chatlab/rubrics/continuation_feedback_v1.yaml`
+
+A minimal rubric that lets continuation Q&A live as a first-class
+assessment. One `text` criterion captures the AI's direct answer; the same
+narrative is mirrored into `Assessment.overall_summary` for symmetry with
+the initial flow.
+
+```yaml
+slug: chatlab_continuation_feedback
+name: ChatLab Continuation Feedback
+description: >
+  Follow-up Q&A assessment generated when a learner asks a question
+  about a completed ChatLab simulation.
+scope: global
+lab_type: chatlab
+assessment_type: continuation_feedback
+version: 1
+status: published
+
+criteria:
+  - slug: direct_answer
+    label: Direct Answer
+    description: The educator's direct answer to the learner's follow-up question.
+    category: communication
+    value_type: text
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 10
+```
+
+`sync_assessment_rubrics` from Phase 2 picks this up automatically.
+
+#### 3.2 `SimWorks/apps/common/outbox/event_types.py`
+
+Edit-in-place changes:
+
+- Remove the constants `FEEDBACK_CREATED`, `FEEDBACK_GENERATION_FAILED`,
+  `FEEDBACK_GENERATION_UPDATED`.
+- Remove the three corresponding `EventTypeSpec` entries.
+- Remove `"feedback"` from `CANONICAL_DOMAINS`.
+- Add:
+
+  ```python
+  ASSESSMENT_CREATED = "assessment.item.created"
+  ASSESSMENT_GENERATION_FAILED = "assessment.generation.failed"
+  ASSESSMENT_GENERATION_UPDATED = "assessment.generation.updated"
+  ```
+
+- Add `"assessment"` to `CANONICAL_DOMAINS`.
+- Add three matching `EventTypeSpec` entries with help text matching the
+  existing style ("An assessment was created.", "Assessment generation
+  failed.", "Assessment generation produced an updated record.").
+
+After this edit, do a repo-wide grep:
+
+```
+rg "FEEDBACK_CREATED|FEEDBACK_GENERATION_FAILED|FEEDBACK_GENERATION_UPDATED|feedback\.item\.created|feedback\.generation\.failed|feedback\.generation\.updated" SimWorks tests
+```
+
+Each hit must be replaced with the assessment equivalent. Known sites
+(verified in exploration):
+
+- `apps/simcore/orca/schemas/feedback.py` — addressed in 3.4 below.
+- `apps/simcore/orca/services/feedback.py` — addressed in 3.5 below.
+- `api/v1/schemas/events.py` — docstring references; rename in this phase.
+- Test fixtures asserting outbox event shape — addressed in 3.7 / Phase 4.
+
+#### 3.3 `SimWorks/apps/assessments/services/persistence.py`
+
+Public surface (function names match the legacy module so the orca
+declarative `__persist__` dict in 3.4 can swap purely on import path):
+
+```python
+async def persist_initial_feedback_block(block, ctx) -> list:
+    ...
+
+async def persist_continuation_feedback_block(block, ctx) -> list:
+    ...
+```
+
+Implementation notes:
+
+```python
+import logging
+from decimal import Decimal
+
+from asgiref.sync import sync_to_async
+from django.db import transaction
+
+from apps.assessments.models import (
+    Assessment,
+    AssessmentCriterion,
+    AssessmentCriterionScore,
+    AssessmentSource,
+)
+from apps.assessments.services import (
+    RubricNotFoundError,
+    compute_overall_score,
+    normalize_criterion_value,
+    resolve_rubric,
+)
+
+logger = logging.getLogger(__name__)
+
+# Slug → (block attribute, AssessmentCriterion.ValueType) mapping for the
+# initial-feedback rubric. Keyed by criterion slug so adding a new criterion
+# to the YAML only requires extending this dict.
+_INITIAL_VALUE_MAP = {
+    "correct_diagnosis": ("correct_diagnosis", "value_bool"),
+    "correct_treatment_plan": ("correct_treatment_plan", "value_bool"),
+    "patient_experience": ("patient_experience", "value_int"),
+}
+```
+
+`persist_initial_feedback_block(block, ctx)`:
+
+1. `simulation_id = ctx.simulation_id`; load `Simulation` (+ `account`,
+   `user`) with `Simulation.objects.aget(pk=simulation_id)`.
+2. `service_call_attempt_id = (ctx.extra or {}).get("service_call_attempt_id")`.
+3. `rubric = await sync_to_async(resolve_rubric)(account=sim.account, lab_type="chatlab", assessment_type="initial_feedback")`.
+   On `RubricNotFoundError`, log error and return `[]`.
+4. Wrap the rest in `await sync_to_async(_write_initial)(...)` where the
+   inner sync function runs inside `transaction.atomic`:
+   - Create `Assessment(rubric=rubric, account=sim.account,
+     assessed_user=sim.user, lab_type="chatlab",
+     assessment_type="initial_feedback", overall_summary=block.overall_feedback,
+     generated_by_service="GenerateInitialFeedback",
+     source_attempt_id=service_call_attempt_id)`.
+   - For each `AssessmentCriterion` of `rubric.criteria.all().order_by("sort_order")`:
+     - If criterion slug not in `_INITIAL_VALUE_MAP`: log warning, skip
+       (lets a future YAML add criteria the AI doesn't yet emit).
+     - Otherwise read `getattr(block, attr)` typed value, build a
+       `AssessmentCriterionScore` kwargs dict with the matching
+       `value_*` field, normalize via `normalize_criterion_value(...)` for
+       the `score`, create the row.
+   - Refresh `assessment.criterion_scores` (with a single
+     `select_related("criterion")` query) and call
+     `compute_overall_score(...)` → save
+     `assessment.overall_score`.
+   - Create `AssessmentSource(assessment=assessment, source_type="simulation",
+     role="primary", simulation=sim)`.
+   - **SimulationSummary** (preserve current behavior, but with typed
+     values — no `str()` wrapping):
+     - `summary_text = block.overall_feedback`
+     - `chief_complaint = sim.chief_complaint or ""`
+     - `diagnosis = sim.diagnosis or ""`
+     - `strengths = (["Treatment plan was appropriate."] if block.correct_treatment_plan else [])`
+     - `improvement_areas = ([] if block.correct_diagnosis else ["Diagnosis was incorrect or missed."])`
+     - `learning_points = [f"Patient experience rated {block.patient_experience}/5."]`
+     - `recommended_study_topics = []`
+     - `update_or_create` keyed on `simulation`.
+5. Return `[assessment]` (the orca runtime passes this list to
+   `post_persist`).
+
+`persist_continuation_feedback_block(block, ctx)`:
+
+1. Load `Simulation` → `account`, `user`.
+2. `rubric = resolve_rubric(account=sim.account, lab_type="chatlab",
+   assessment_type="continuation_feedback")`. On miss → log warning, return `[]`.
+3. Inside `transaction.atomic`:
+   - Find the most recent `initial_feedback` Assessment for this simulation:
+
+     ```python
+     parent = (
+         Assessment.objects
+         .filter(
+             sources__simulation=sim,
+             sources__role=AssessmentSource.Role.PRIMARY,
+             assessment_type="initial_feedback",
+         )
+         .order_by("-created_at")
+         .first()
+     )
+     ```
+
+   - Create `Assessment(rubric=rubric, account=sim.account,
+     assessed_user=sim.user, lab_type="chatlab",
+     assessment_type="continuation_feedback",
+     overall_summary=block.direct_answer,
+     generated_by_service="GenerateFeedbackContinuationReply",
+     source_attempt_id=service_call_attempt_id)`.
+   - Look up the `direct_answer` criterion on `rubric` and create one
+     `AssessmentCriterionScore(value_text=block.direct_answer, score=None)`
+     (text criteria don't normalize to a numeric score).
+   - Save `assessment.overall_score = None` (already default).
+   - Create primary simulation source:
+     `AssessmentSource(source_type=simulation, role=primary, simulation=sim)`.
+   - If `parent` is not None: create
+     `AssessmentSource(source_type=assessment, role=generated_from,
+     source_assessment=parent)`.
+4. Return `[assessment]`.
+
+Concurrency note: both functions are async-callable (`sync_to_async` wrapping
+the transactional core). The legacy module currently uses
+`aupdate_or_create` directly; we centralize on a sync inner function inside
+`transaction.atomic` to keep multi-row writes atomic.
+
+#### 3.4 `SimWorks/apps/simcore/orca/schemas/feedback.py`
+
+Change-set:
+
+- Replace the `from apps.simcore.orca.persist.feedback_block import (...)`
+  import with `from apps.assessments.services.persistence import (...)`.
+  Function names are identical.
+- In both `post_persist` methods:
+  - `event_type=outbox_events.FEEDBACK_CREATED` →
+    `event_type=outbox_events.ASSESSMENT_CREATED`.
+  - Replace the lambda payload builder. The persist functions now return
+    `[Assessment]`, so the lambda must accept an Assessment:
+
+    ```python
+    payload_builder=lambda a: {
+        "assessment_id": str(a.id),
+        "rubric_slug": a.rubric.slug,
+        "rubric_version": a.rubric.version,
+        "assessment_type": a.assessment_type,
+        "lab_type": a.lab_type,
+        "overall_score": str(a.overall_score) if a.overall_score is not None else None,
+    }
+    ```
+
+  - Update the docstring's WebSocket-event-shape example accordingly.
+
+#### 3.5 `SimWorks/apps/simcore/orca/services/feedback.py`
+
+Search this file for any reference to `FEEDBACK_GENERATION_FAILED`,
+`FEEDBACK_GENERATION_UPDATED`, or string literals `"feedback.generation.*"`.
+Replace each with the `ASSESSMENT_*` equivalent. Most-likely site is the
+service's failure-broadcast path triggered when the LLM call fails (e.g.,
+inside an `on_failure` hook). If no such reference exists in this file,
+this work item is a no-op.
+
+#### 3.6 `SimWorks/api/v1/schemas/events.py`
+
+Search for `feedback.item.created`, `hotwash_*`, and any `feedback.generation.*`
+docstring text. Rewrite the canonical-event-payload docstring to describe
+`assessment.item.created` and the new payload shape from 3.4. The API
+contract details (response models, endpoints) stay until Phase 4.
+
+#### 3.7 `tests/assessments/test_persistence.py`
+
+Async tests using `pytest.mark.asyncio` and `@pytest.mark.django_db(transaction=True)`
+where async ORM is needed. Reuse Phase-2 fixtures (`account`, `user`,
+`published_rubric` for chatlab initial), and add a continuation-rubric
+fixture that runs the sync command (or constructs the rubric directly).
+
+- `test_persist_initial_creates_assessment_and_scores` — synthetic
+  `InitialFeedbackBlock(correct_diagnosis=True, correct_treatment_plan=True,
+  patient_experience=4, overall_feedback="…")` + ctx → exactly one
+  `Assessment(assessment_type="initial_feedback")`, three
+  `AssessmentCriterionScore` rows with criterion slugs
+  `{correct_diagnosis, correct_treatment_plan, patient_experience}`,
+  one `AssessmentSource(role=primary, source_type=simulation)`.
+- `test_persist_initial_preserves_typed_values` — assert
+  `value_bool is True / False` (not `"True"`), `value_int == 4` (not `"4"`).
+- `test_persist_initial_overall_score_computed` — with the values above
+  and weights all = 1, expect `Decimal("0.933")` (mean of 1.000, 1.000,
+  0.800).
+- `test_persist_initial_overall_summary_set` —
+  `assessment.overall_summary == block.overall_feedback`.
+- `test_persist_initial_simulation_summary_typed` —
+  `SimulationSummary.summary_text` set; `strengths`, `improvement_areas`,
+  `learning_points` contain typed sentences (not `"True"` / `"4"`).
+- `test_persist_initial_links_source_attempt` — `ctx.extra =
+  {"service_call_attempt_id": <real id>}` → `assessment.source_attempt_id`
+  matches.
+- `test_persist_initial_no_simulation_feedback_rows` — assert no rows in
+  `apps.simcore.models.SimulationFeedback` are created (legacy model still
+  exists in this phase but must not be written to).
+- `test_persist_initial_rubric_not_found_returns_empty` — delete the
+  rubric; call `persist_initial_feedback_block(...)` → returns `[]`, no
+  exception, log captured at WARNING.
+- `test_persist_continuation_creates_separate_assessment` — first run
+  initial persist; then run continuation persist with
+  `FeedbackContinuationBlock(direct_answer="…")` →
+  - two distinct `Assessment` rows exist;
+  - the new one has `assessment_type="continuation_feedback"`,
+    `overall_summary == block.direct_answer`,
+    `criterion_scores.count() == 1` with `value_text == block.direct_answer`,
+    `value_bool/value_int/etc. all empty/None`;
+  - two `AssessmentSource` rows on the continuation:
+    one `(role=primary, source_type=simulation)`,
+    one `(role=generated_from, source_type=assessment, source_assessment=initial)`.
+- `test_persist_continuation_without_prior_assessment_still_creates` —
+  call continuation persist without a prior initial assessment → still
+  creates the continuation Assessment with only the simulation source
+  (no `generated_from` source row).
+- `test_persist_continuation_emits_no_simulation_feedback_rows` — analogous.
+
+#### 3.8 `tests/chatlab/test_persist_schema.py`
+
+Lines 481-602 of the existing file currently assert `SimulationFeedback`
+counts and per-key values. Rewrite the `TestHotwashPersistence` class:
+
+- Replace `SimulationFeedback.objects.filter(simulation_id=...)` with
+  `Assessment.objects.filter(sources__simulation_id=...,
+  assessment_type="initial_feedback")`.
+- Replace per-key value assertions (`diag.value == "True"`) with typed
+  assertions on `AssessmentCriterionScore` rows
+  (`criterion__slug="correct_diagnosis", value_bool=True`).
+- Replace the four-row count expectation with: 1 Assessment, 3
+  CriterionScores, 1 AssessmentSource(primary), `overall_summary` non-empty.
+- Update the outbox-event broadcast test
+  (`test_creates_outbox_events_for_websocket_broadcast`) to expect a
+  single `assessment.item.created` event whose payload contains
+  `assessment_id`, `rubric_slug`, `assessment_type="initial_feedback"`,
+  `overall_score`. Drop the per-feedback-key 4-event expectation —
+  semantically one Assessment = one event now.
+- For the continuation test, expect a single new `assessment.item.created`
+  event after the second persist call.
+
+### Phase-3 verification
+
+1. `uv run python SimWorks/manage.py makemigrations` — no new app migrations
+   should be needed in Phase 3 (no schema change).
+2. `uv run python SimWorks/manage.py sync_assessment_rubrics` — now reports
+   `created=1 updated=0 unchanged=1` (continuation rubric is new; initial
+   rubric unchanged from Phase 2).
+3. `uv run python SimWorks/manage.py check` — clean.
+4. `uv run pytest tests/assessments tests/chatlab tests/simulation -q` — green.
+5. Repo-wide grep:
+   `rg "FEEDBACK_CREATED|FEEDBACK_GENERATION_FAILED|FEEDBACK_GENERATION_UPDATED|feedback\.item\.created|feedback\.generation\.failed|feedback\.generation\.updated" SimWorks tests`
+   → no hits.
+6. Manual smoke (optional, requires running services):
+   - Start a chatlab simulation, end it.
+   - In Django shell:
+     `Assessment.objects.filter(sources__simulation=sim).count() == 1`,
+     `…sources.filter(role="primary").exists()`,
+     `…criterion_scores.count() == 3`.
+   - Confirm a `assessment.item.created` outbox event exists for that
+     simulation and no `feedback.item.created` events.
+
+At end of Phase 3 the orca pipeline writes only to the assessments app and
+emits assessment events; legacy `SimulationFeedback` rows are no longer
+created. The legacy model class, the `SimulationFeedbackTool`, the API tool
+serializer, and the privacy export are still using the old shape — Phase 4
+addresses those readers, Phase 5 deletes the model.
+
+---
+
+*Phases 4–6 will be appended in subsequent passes.*
