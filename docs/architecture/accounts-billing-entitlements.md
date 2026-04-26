@@ -115,6 +115,15 @@ Customer Portal handles payment method updates, cancellations, invoices, and all
 changes. The Stripe Dashboard portal configuration must be limited to ChatLab Go,
 TrainerLab Go, and MedSim One; no organization products, quantity changes, or annual plans.
 
+Stripe Dashboard checklist:
+
+- Create monthly Checkout products/prices for `chatlab_go`, `trainerlab_go`, and `medsim_one`.
+- Configure `BILLING_STRIPE_PRICE_PLAN_MAP` with only those three monthly price IDs.
+- Configure Customer Portal to allow plan changes only among those monthly prices.
+- Disable annual prices, organization/enterprise products, quantity changes, and promo code entry.
+- Configure the promotional first-three-month discount as a coupon and expose only its coupon ID
+  through `BILLING_STRIPE_PROMO_COUPON_ID`.
+
 Webhook ingestion:
 
 1. Stripe posts a signed webhook to `/api/v1/billing/stripe/webhook/`.
@@ -205,3 +214,4 @@ Recommended support workflow for failed billing sync:
 - domain-based auto-join
 - usage overage billing
 - polished admin UX beyond Django admin
+- duplicate pending checkout-session suppression beyond the local active-subscription block

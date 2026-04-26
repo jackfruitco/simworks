@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}Billing - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+  <section class="mb-6">
+    <h1 class="text-3xl font-bold text-content">Billing</h1>
+    <p class="mt-2 max-w-2xl text-sm text-content-secondary">
+      Manage your personal MedSim subscription.
+    </p>
+  </section>
+
+  {% if active_subscription %}
+    <section class="mb-6 rounded-lg border border-border bg-surface-alt p-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-lg font-semibold text-content">Current subscription</h2>
+          <p class="mt-1 text-sm text-content-secondary">
+            Status: {{ active_subscription.status }}{% if active_subscription.current_period_end %} &middot; Renews or ends {{ active_subscription.current_period_end|date:"M j, Y" }}{% endif %}
+          </p>
+        </div>
+        {% if portal_enabled and stripe_customer_exists %}
+          <button
+            type="button"
+            class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-white hover:bg-jckfrt-olive/90"
+            data-billing-portal-button
+          >
+            <span class="iconify" data-icon="mdi:credit-card-sync-outline"></span>
+            Manage Billing
+          </button>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+    {% for product in products %}
+      <article class="rounded-lg border border-border bg-surface p-5 shadow-sm">
+        <h2 class="text-xl font-semibold text-content">{{ product.name }}</h2>
+        <p class="mt-2 min-h-10 text-sm text-content-secondary">
+          {% if product.labs|length == 2 %}
+            ChatLab and TrainerLab access.
+          {% elif 'chatlab' in product.labs %}
+            ChatLab access.
+          {% else %}
+            TrainerLab access.
+          {% endif %}
+        </p>
+        <form class="mt-5" data-checkout-form data-product-code="{{ product.code }}">
+          {% csrf_token %}
+          <button
+            type="submit"
+            class="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-white hover:bg-jckfrt-olive-hover disabled:cursor-not-allowed disabled:opacity-60"
+            {% if not checkout_enabled or active_subscription %}disabled{% endif %}
+          >
+            <span class="iconify" data-icon="mdi:cart-outline"></span>
+            Subscribe
+          </button>
+        </form>
+      </article>
+    {% endfor %}
+  </section>
+
+  <p class="mt-4 text-sm text-content-secondary" data-billing-status role="status"></p>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    (() => {
+      const statusEl = document.querySelector('[data-billing-status]');
+      const csrfToken = '{{ csrf_token }}';
+      const successUrl = '{{ success_url|escapejs }}';
+      const cancelUrl = '{{ cancel_url|escapejs }}';
+      const returnUrl = '{{ return_url|escapejs }}';
+
+      async function postJson(url, payload) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || 'Billing request failed.');
+        }
+        return data;
+      }
+
+      document.querySelectorAll('[data-checkout-form]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const button = form.querySelector('button');
+          button.disabled = true;
+          statusEl.textContent = 'Opening Stripe Checkout...';
+          try {
+            const data = await postJson('/api/v1/billing/stripe/checkout-session/', {
+              product_code: form.dataset.productCode,
+              billing_interval: 'monthly',
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+            });
+            window.location.assign(data.checkout_url);
+          } catch (error) {
+            statusEl.textContent = error.message;
+            button.disabled = false;
+          }
+        });
+      });
+
+      const portalButton = document.querySelector('[data-billing-portal-button]');
+      if (portalButton) {
+        portalButton.addEventListener('click', async () => {
+          portalButton.disabled = true;
+          statusEl.textContent = 'Opening Stripe Customer Portal...';
+          try {
+            const data = await postJson('/api/v1/billing/stripe/customer-portal-session/', {
+              return_url: returnUrl,
+            });
+            window.location.assign(data.portal_url);
+          } catch (error) {
+            statusEl.textContent = error.message;
+            portalButton.disabled = false;
+          }
+        });
+      }
+    })();
+  </script>
+{% endblock scripts %}

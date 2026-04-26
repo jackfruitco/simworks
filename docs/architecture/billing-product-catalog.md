@@ -58,6 +58,13 @@ BILLING_STRIPE_PRICE_PLAN_MAP='{
 three months. Stripe Customer Portal plan-change options must be constrained in Stripe to
 the same three monthly products.
 
+Stripe Dashboard checklist:
+
+- Create exactly one monthly price for each MVP web product in the active map.
+- Customer Portal plan changes should include only those three monthly prices.
+- Do not expose annual prices, organization/enterprise products, quantity changes, or promo
+  code entry in the MVP portal configuration.
+
 ## First-pass entitlement rules
 
 - Base product access only.

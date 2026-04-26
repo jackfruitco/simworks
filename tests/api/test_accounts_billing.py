@@ -4,6 +4,7 @@ from datetime import timedelta
 import hashlib
 import hmac
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -42,7 +43,7 @@ def auth_client_factory():
 
 
 def _stripe_signature(payload_bytes: bytes, secret: str = "test-stripe-webhook-secret") -> str:
-    timestamp = "123"
+    timestamp = str(int(time.time()))
     signature = hmac.new(
         secret.encode("utf-8"),
         f"{timestamp}.{payload_bytes.decode('utf-8')}".encode(),
@@ -339,7 +340,7 @@ def test_stripe_webhook_rejects_invalid_signature():
     client = Client()
     response = client.post(
         "/api/v1/billing/stripe/webhook/",
-        data='{"id": "evt_test", "type": "customer.subscription.created"}',
+        data='{"id": "evt_test", "object": "event", "type": "customer.subscription.created"}',
         content_type="application/json",
         HTTP_STRIPE_SIGNATURE="t=123,v1=bad",
     )
@@ -445,6 +446,46 @@ def test_stripe_checkout_creates_session_for_personal_account(owner_user, auth_c
 @pytest.mark.django_db
 @override_settings(
     BILLING_STRIPE_CHECKOUT_ENABLED=True,
+    BILLING_STRIPE_PRICE_PLAN_MAP={"chatlab_go:monthly": "price_chatlab_go_test"},
+)
+def test_stripe_checkout_metadata_uses_canonical_product_code(owner_user, auth_client_factory):
+    client = auth_client_factory(owner_user)
+
+    with (
+        patch(
+            "apps.billing.providers.stripe.stripe.Customer.create",
+            return_value=SimpleNamespace(id="cus_test"),
+        ),
+        patch(
+            "apps.billing.providers.stripe.stripe.checkout.Session.create",
+            return_value=SimpleNamespace(
+                id="cs_test",
+                url="https://checkout.stripe.com/c/cs_test",
+            ),
+        ) as session_create,
+    ):
+        response = client.post(
+            "/api/v1/billing/stripe/checkout-session/",
+            data={
+                "product_code": "chatlab",
+                "billing_interval": "monthly",
+                "success_url": "https://medsim.example/billing/success/",
+                "cancel_url": "https://medsim.example/billing/",
+            },
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    call_kwargs = session_create.call_args.kwargs
+    assert call_kwargs["metadata"]["product_code"] == ProductCode.CHATLAB_GO.value
+    assert (
+        call_kwargs["subscription_data"]["metadata"]["product_code"] == ProductCode.CHATLAB_GO.value
+    )
+
+
+@pytest.mark.django_db
+@override_settings(
+    BILLING_STRIPE_CHECKOUT_ENABLED=True,
     BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"},
 )
 def test_stripe_checkout_blocks_duplicate_active_subscription(owner_user, auth_client_factory):
@@ -522,11 +563,32 @@ def test_stripe_customer_portal_creates_session(owner_user, auth_client_factory)
 
 
 @pytest.mark.django_db
+@override_settings(
+    BILLING_STRIPE_CHECKOUT_ENABLED=True,
+    BILLING_STRIPE_PORTAL_ENABLED=True,
+)
+def test_billing_page_renders_personal_checkout_buttons(owner_user):
+    client = Client()
+    client.force_login(owner_user)
+
+    response = client.get("/billing/")
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "data-checkout-form" in content
+    assert ProductCode.CHATLAB_GO.value in content
+    assert ProductCode.TRAINERLAB_GO.value in content
+    assert ProductCode.MEDSIM_ONE.value in content
+    assert "/api/v1/billing/stripe/checkout-session/" in content
+
+
+@pytest.mark.django_db
 @override_settings(BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"})
 def test_stripe_subscription_webhook_syncs_entitlement_idempotently(owner_user):
     personal_account = get_personal_account_for_user(owner_user)
     payload = {
         "id": "evt_sub_created",
+        "object": "event",
         "type": "customer.subscription.created",
         "data": {
             "object": {
@@ -582,6 +644,7 @@ def test_checkout_session_completed_links_customer_and_processes_event(owner_use
     personal_account = get_personal_account_for_user(owner_user)
     payload = {
         "id": "evt_checkout_completed",
+        "object": "event",
         "type": "checkout.session.completed",
         "data": {
             "object": {
@@ -634,6 +697,7 @@ def test_access_snapshot_includes_web_purchased_entitlement(owner_user, auth_cli
     personal_account = get_personal_account_for_user(owner_user)
     payload = {
         "id": "evt_access_snapshot",
+        "object": "event",
         "type": "customer.subscription.updated",
         "data": {
             "object": {
@@ -658,3 +722,94 @@ def test_access_snapshot_includes_web_purchased_entitlement(owner_user, auth_cli
 
     assert response.status_code == 200
     assert response.json()["products"][ProductCode.MEDSIM_ONE.value]["enabled"] is True
+
+
+@pytest.mark.django_db
+@override_settings(BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"})
+def test_invoice_payment_failed_reconciles_entitlement_status(owner_user):
+    personal_account = get_personal_account_for_user(owner_user)
+    Subscription.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id="sub_failed",
+        plan_code="price_test",
+        status=Subscription.Status.ACTIVE,
+        current_period_end=timezone.now() - timedelta(days=1),
+    )
+    subscription = Subscription.objects.get(provider_subscription_id="sub_failed")
+    from apps.billing.services.subscriptions import reconcile_subscription_entitlements
+
+    reconcile_subscription_entitlements(subscription)
+    assert Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}").status == "expired"
+
+    Entitlement.objects.filter(source_ref=f"subscription:{subscription.pk}").update(
+        status=Entitlement.Status.ACTIVE,
+        ends_at=None,
+    )
+    payload = {
+        "id": "evt_invoice_failed",
+        "object": "event",
+        "type": "invoice.payment_failed",
+        "data": {"object": {"id": "in_failed", "subscription": "sub_failed"}},
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+
+    event = process_stripe_webhook(
+        payload_bytes=payload_bytes,
+        signature_header=_stripe_signature(payload_bytes),
+    )
+
+    subscription.refresh_from_db()
+    entitlement = Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}")
+    assert event.status == WebhookEvent.Status.PROCESSED
+    assert subscription.status == Subscription.Status.PAST_DUE
+    assert entitlement.status == Entitlement.Status.EXPIRED
+
+
+@pytest.mark.django_db
+@override_settings(BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"})
+def test_unknown_stripe_price_for_existing_subscription_fails_closed(owner_user):
+    personal_account = get_personal_account_for_user(owner_user)
+    subscription = Subscription.objects.create(
+        account=personal_account,
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id="sub_unknown_price",
+        plan_code="price_test",
+        status=Subscription.Status.ACTIVE,
+        current_period_end=timezone.now() + timedelta(days=20),
+    )
+    from apps.billing.services.subscriptions import reconcile_subscription_entitlements
+
+    reconcile_subscription_entitlements(subscription)
+    assert Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}").status == "active"
+
+    payload = {
+        "id": "evt_unknown_price",
+        "object": "event",
+        "type": "customer.subscription.updated",
+        "data": {
+            "object": {
+                "id": "sub_unknown_price",
+                "customer": "cus_unknown_price",
+                "status": "active",
+                "metadata": {"account_uuid": str(personal_account.uuid)},
+                "items": {"data": [{"price": {"id": "price_unknown"}}]},
+                "start_date": 1_700_000_000,
+                "current_period_start": 1_700_000_000,
+                "current_period_end": 1_800_000_000,
+            }
+        },
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+
+    event = process_stripe_webhook(
+        payload_bytes=payload_bytes,
+        signature_header=_stripe_signature(payload_bytes),
+    )
+
+    subscription.refresh_from_db()
+    entitlement = Entitlement.objects.get(source_ref=f"subscription:{subscription.pk}")
+    assert event.status == WebhookEvent.Status.FAILED
+    assert event.processing_error == "Unknown Stripe price id"
+    assert subscription.status == Subscription.Status.EXPIRED
+    assert entitlement.status == Entitlement.Status.EXPIRED

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-import hashlib
-import hmac
 import json
 from typing import Any
 from urllib.parse import urlparse
@@ -14,12 +12,20 @@ import stripe
 from apps.accounts.models import Account
 from apps.accounts.services import get_personal_account_for_user
 from apps.billing.catalog import (
+    canonicalize_product_code,
     product_code_from_stripe_plan_code,
     resolve_stripe_price_id,
 )
-from apps.billing.models import BillingAccount, ProviderType, Subscription, WebhookEvent
+from apps.billing.models import (
+    BillingAccount,
+    Entitlement,
+    ProviderType,
+    Subscription,
+    WebhookEvent,
+)
 from apps.billing.services.subscriptions import (
     get_active_personal_subscription,
+    reconcile_subscription_entitlements,
     record_webhook_event,
     sync_stripe_subscription,
     upsert_billing_account,
@@ -36,6 +42,10 @@ class ActivePersonalSubscriptionError(ValueError):
 
 
 class StripeBillingConfigurationError(ValueError):
+    pass
+
+
+class UnknownStripePriceError(ValueError):
     pass
 
 
@@ -74,7 +84,8 @@ def _safe_metadata(*, account, user, product_code: str = "", billing_interval: s
         "account_type": "personal",
     }
     if product_code:
-        metadata["product_code"] = product_code
+        canonical_product_code = canonicalize_product_code(product_code)
+        metadata["product_code"] = canonical_product_code or product_code
     if billing_interval:
         metadata["billing_interval"] = billing_interval
     environment = getattr(settings, "EMAIL_ENVIRONMENT_NAME", "") or ""
@@ -159,7 +170,8 @@ def create_personal_checkout_session(
 
     success_url = _validate_return_url(success_url, field_name="success_url")
     cancel_url = _validate_return_url(cancel_url, field_name="cancel_url")
-    price_id = resolve_stripe_price_id(product_code, billing_interval)
+    canonical_product_code = canonicalize_product_code(product_code)
+    price_id = resolve_stripe_price_id(canonical_product_code, billing_interval)
     billing_account = get_or_create_stripe_customer_for_personal_account(
         user=user,
         account=account,
@@ -168,7 +180,7 @@ def create_personal_checkout_session(
     metadata = _safe_metadata(
         account=account,
         user=user,
-        product_code=product_code,
+        product_code=canonical_product_code,
         billing_interval=billing_interval,
     )
     session_params = {
@@ -223,22 +235,30 @@ def create_customer_portal_session(*, user, return_url: str) -> dict[str, str]:
     return {"portal_url": portal_url, "session_id": session_id}
 
 
+def _construct_stripe_event(payload_bytes: bytes, signature_header: str) -> dict:
+    secret = getattr(settings, "BILLING_STRIPE_WEBHOOK_SECRET", "")
+    if not secret:
+        raise StripeBillingConfigurationError("Stripe webhook secret is not configured.")
+    event = stripe.Webhook.construct_event(
+        payload=payload_bytes,
+        sig_header=signature_header,
+        secret=secret,
+        tolerance=stripe.Webhook.DEFAULT_TOLERANCE,
+    )
+    return _stripe_object_to_dict(event)
+
+
 def verify_stripe_signature(payload: bytes, signature_header: str, secret: str) -> bool:
-    if not signature_header or not secret:
+    try:
+        stripe.Webhook.construct_event(
+            payload=payload,
+            sig_header=signature_header,
+            secret=secret,
+            tolerance=stripe.Webhook.DEFAULT_TOLERANCE,
+        )
+    except (ValueError, stripe.SignatureVerificationError):
         return False
-    timestamp = None
-    signatures = []
-    for part in signature_header.split(","):
-        key, _, value = part.partition("=")
-        if key == "t":
-            timestamp = value
-        elif key == "v1":
-            signatures.append(value)
-    if not timestamp or not signatures:
-        return False
-    signed_payload = f"{timestamp}.{payload.decode('utf-8')}".encode()
-    expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-    return any(hmac.compare_digest(expected, signature) for signature in signatures)
+    return True
 
 
 def _resolve_account_from_payload(payload: dict):
@@ -315,12 +335,47 @@ def _sync_subscription_from_payload(*, account, subscription: Any):
     price_id = _stripe_subscription_price_id(subscription_payload)
     product_code = product_code_from_stripe_plan_code(price_id)
     if not product_code:
-        raise ValueError("Unknown Stripe price id")
+        _fail_closed_existing_subscription(subscription_payload)
+        raise UnknownStripePriceError("Unknown Stripe price id")
     return sync_stripe_subscription(
         account=account,
         payload=subscription_payload,
         plan_code=price_id,
     )
+
+
+def _revoke_subscription_entitlements(subscription: Subscription):
+    now = timezone.now()
+    Entitlement.objects.filter(
+        source_type=Entitlement.SourceType.SUBSCRIPTION,
+        source_ref=f"subscription:{subscription.pk}",
+    ).update(status=Entitlement.Status.EXPIRED, ends_at=now)
+
+
+def _expire_and_reconcile_subscription(subscription: Subscription):
+    now = timezone.now()
+    subscription.status = Subscription.Status.EXPIRED
+    subscription.ended_at = subscription.ended_at or now
+    subscription.current_period_end = now
+    subscription.save(update_fields=["status", "ended_at", "current_period_end"])
+    try:
+        reconcile_subscription_entitlements(subscription)
+    except ValueError:
+        _revoke_subscription_entitlements(subscription)
+
+
+def _fail_closed_existing_subscription(subscription_payload: dict) -> bool:
+    provider_subscription_id = subscription_payload.get("id") or ""
+    if not provider_subscription_id:
+        return False
+    subscription = Subscription.objects.filter(
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id=provider_subscription_id,
+    ).first()
+    if subscription is None:
+        return False
+    _expire_and_reconcile_subscription(subscription)
+    return True
 
 
 def _handle_checkout_session_completed(obj: dict):
@@ -357,22 +412,36 @@ def _handle_checkout_session_completed(obj: dict):
 
 def _handle_invoice_subscription_status(obj: dict, *, status: str | None = None):
     provider_subscription_id = obj.get("subscription") or ""
-    if not provider_subscription_id:
+    if not provider_subscription_id or not status:
         return
-    if status:
-        Subscription.objects.filter(
-            provider_type=ProviderType.STRIPE,
-            provider_subscription_id=provider_subscription_id,
-        ).update(status=status)
+    subscription = Subscription.objects.filter(
+        provider_type=ProviderType.STRIPE,
+        provider_subscription_id=provider_subscription_id,
+    ).first()
+    if subscription is None:
+        return
+    subscription.status = status
+    subscription.save(update_fields=["status"])
+    try:
+        reconcile_subscription_entitlements(subscription)
+    except ValueError:
+        _revoke_subscription_entitlements(subscription)
 
 
-def process_stripe_webhook(*, payload_bytes: bytes, signature_header: str):
-
-    secret = getattr(settings, "BILLING_STRIPE_WEBHOOK_SECRET", "")
-    if not verify_stripe_signature(payload_bytes, signature_header, secret):
-        raise ValueError("Invalid Stripe signature")
-
-    payload = json.loads(payload_bytes.decode("utf-8"))
+def process_stripe_webhook(
+    *,
+    payload_bytes: bytes,
+    signature_header: str,
+    verify_signature: bool = True,
+):
+    try:
+        payload = (
+            _construct_stripe_event(payload_bytes, signature_header)
+            if verify_signature
+            else json.loads(payload_bytes.decode("utf-8"))
+        )
+    except (ValueError, stripe.SignatureVerificationError) as exc:
+        raise ValueError("Invalid Stripe signature") from exc
     event_id = payload.get("id") or ""
     event_type = payload.get("type") or ""
     event = record_webhook_event(
