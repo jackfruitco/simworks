@@ -1833,4 +1833,304 @@ sign-off.
 
 ---
 
-*Phase 6 will be appended in the next pass.*
+## Phase 6 — End-to-end verification & PR sign-off
+
+### Goal
+
+Treat the merged Phase 1–5 work as a release candidate: run a clean-room
+verification on a wiped database, exercise the full simulation → feedback
+loop end-to-end (orca → DB → outbox → WebSocket → UI), confirm linters and
+the test suite are green, and assemble the PR summary that explicitly
+calls out the destructive removals and architectural intent.
+
+No application code changes in this phase. Anything found here that needs
+a code fix loops back to the appropriate earlier phase.
+
+### Files to modify
+
+```
+(none — Phase 6 is verification only)
+```
+
+Optional, only if local docs need a one-line update:
+
+```
+docs/agents/domain-simulation-rules.md   # update wording referring to "feedback" persistence
+docs/index.md                            # cross-link assessments app if a docs page is added
+```
+
+These doc edits are out of scope for the refactor itself; flag any
+inaccuracies but defer to the docs owner unless the user asks for them in
+this PR.
+
+### Detailed work items
+
+#### 6.1 Clean-room reset
+
+```
+docker compose down -v          # wipe Postgres volume
+docker compose up -d postgres redis
+uv sync
+uv run python SimWorks/manage.py migrate
+uv run python SimWorks/manage.py sync_assessment_rubrics
+uv run python SimWorks/manage.py seed_roles
+uv run python SimWorks/manage.py create_dev_user   # if local dev workflow uses it
+```
+
+Expected:
+
+- `migrate` applies one initial migration per project app plus all
+  third-party migrations; no errors.
+- `sync_assessment_rubrics` reports
+  `created=2 updated=0 unchanged=0 drafted=0`.
+- Re-running `sync_assessment_rubrics` reports
+  `created=0 updated=0 unchanged=2 drafted=0`.
+
+#### 6.2 Static checks
+
+```
+uv run ruff check SimWorks tests packages
+uv run ruff format --check SimWorks tests packages
+uv run python SimWorks/manage.py check
+uv run python SimWorks/manage.py makemigrations --check --dry-run
+```
+
+The last command must report no pending model changes after
+`reset_migrations`. If any app reports pending migrations, the Phase-1
+model definitions and the Phase-5 reset are out of sync — fix and re-run
+Phase 5.
+
+#### 6.3 Full test suite
+
+```
+uv run pytest -q
+uv run pytest tests/assessments tests/chatlab tests/simulation tests/api -q  # focused rerun
+```
+
+All markers/lanes pass, including `unit`, `integration`, and `contract`.
+No `xfail`s introduced by this refactor.
+
+#### 6.4 Final stale-reference grep
+
+```
+rg "SimulationFeedback"        SimWorks tests packages
+rg "hotwash_"                  SimWorks tests packages
+rg "feedback_block"            SimWorks tests packages
+rg "simulation_feedback"       SimWorks tests
+rg "FEEDBACK_CREATED|FEEDBACK_GENERATION_(FAILED|UPDATED)" SimWorks tests
+rg "feedback\.item\.created|feedback\.generation\.(failed|updated)" SimWorks tests
+```
+
+Acceptable hits:
+
+- `implementation-plan.md` (this file).
+- Historical changelog or release-notes files explaining the removal.
+
+Anything else is a regression — fix before merging.
+
+#### 6.5 Manual end-to-end smoke (chatlab initial feedback)
+
+Prerequisites: app + worker + WebSocket layer running locally against the
+fresh DB from 6.1.
+
+1. Sign in as the dev user; create a new ChatLab simulation.
+2. Send 4–6 messages so there's a real transcript.
+3. Click "End simulation" (or hit `POST /api/v1/simulations/<id>/end/`).
+4. Wait for the feedback worker to settle.
+5. Open Django shell:
+
+   ```python
+   from apps.simcore.models import Simulation
+   from apps.assessments.models import Assessment, AssessmentSource
+
+   sim = Simulation.objects.latest("created_at")
+   a = Assessment.objects.get(
+       sources__simulation=sim,
+       sources__role=AssessmentSource.Role.PRIMARY,
+       assessment_type="initial_feedback",
+   )
+   print(a.id, a.rubric.slug, a.rubric.version, a.overall_score)
+   for cs in a.criterion_scores.select_related("criterion"):
+       print(" ", cs.criterion.slug, cs.value_bool, cs.value_int, cs.score)
+   print("sources:", list(a.sources.values("source_type", "role", "simulation_id")))
+   ```
+
+   Expected: one assessment, three criterion scores with typed values
+   (`value_bool` and `value_int` populated, never strings), one primary
+   simulation source, `overall_score` between 0 and 1.
+
+6. In a second shell, watch the outbox:
+
+   ```python
+   from apps.common.models import OutboxEvent
+   for e in OutboxEvent.objects.filter(event_type="assessment.item.created").order_by("-created_at")[:3]:
+       print(e.id, e.event_type, e.payload)
+   ```
+
+   Expected: at least one row with payload keys
+   `assessment_id`, `rubric_slug`, `rubric_version`, `assessment_type`,
+   `lab_type`, `overall_score`. No `feedback.item.created` events.
+
+7. Confirm `SimulationFeedback` table is gone:
+
+   ```
+   uv run python SimWorks/manage.py dbshell -- -c "\d simcore_simulationfeedback"
+   ```
+
+   Expected: `Did not find any relation named "simcore_simulationfeedback"`.
+
+8. UI check: refresh the chatlab post-session page → assessment panel
+   renders with rubric name + version, overall score, and the three
+   criteria grouped by category (`clinical_reasoning`, `treatment`,
+   `communication`). Booleans render as Yes/No, integers as numbers.
+
+#### 6.6 Manual end-to-end smoke (continuation Q&A)
+
+1. On the same completed simulation, ask a follow-up question.
+2. Wait for the continuation worker.
+3. Django shell:
+
+   ```python
+   continuation = Assessment.objects.filter(
+       sources__simulation=sim, assessment_type="continuation_feedback",
+   ).order_by("-created_at").first()
+   print(continuation.id, continuation.overall_summary[:80])
+   print(list(continuation.sources.values("source_type", "role", "simulation_id", "source_assessment_id")))
+   ```
+
+   Expected: a separate Assessment with `assessment_type="continuation_feedback"`,
+   `overall_summary` set to the AI's direct answer, and **two**
+   AssessmentSource rows — one
+   `(source_type=simulation, role=primary, simulation=<sim id>)` and one
+   `(source_type=assessment, role=generated_from, source_assessment=<initial id>)`.
+
+4. Outbox watcher: another `assessment.item.created` event lands with the
+   continuation assessment's id.
+
+#### 6.7 Negative path: missing rubric
+
+1. In Django shell, archive the chatlab initial rubric:
+
+   ```python
+   from apps.assessments.models import AssessmentRubric
+   AssessmentRubric.objects.filter(slug="chatlab_initial_feedback").update(status="archived")
+   ```
+
+2. End a new simulation. Check logs: `persist_initial_feedback_block`
+   emits a single warning (`Rubric not found for ...`) and returns
+   gracefully — the simulation does **not** crash and the API still
+   responds. No partial Assessment is created.
+3. Restore: `update(status="published")`.
+
+#### 6.8 Performance sanity (light)
+
+`Assessment.objects.filter(...).count()` for a few hundred rows must hit
+the indexes added in Phase 1. Quick check:
+
+```
+EXPLAIN SELECT * FROM assessments_assessment
+  WHERE account_id = '...' AND lab_type = 'chatlab' AND assessment_type = 'initial_feedback'
+  ORDER BY created_at DESC LIMIT 1;
+```
+
+Expect an `Index Scan` on
+`assessments_assessment_account_lab_type_assessment_type_idx`. If the
+planner picks a sequential scan on a small dev DB, that's fine; on
+production-sized data the index must be used.
+
+#### 6.9 PR summary draft
+
+Suggested PR description (refine for tone before submitting):
+
+> ## Replace `SimulationFeedback` with first-class `assessments` app
+>
+> This is an approved destructive refactor of post-simulation feedback.
+>
+> **What changed**
+> - New `apps.assessments` Django app with five models:
+>   `AssessmentRubric`, `AssessmentCriterion`, `Assessment`,
+>   `AssessmentCriterionScore`, `AssessmentSource`.
+> - Rubrics are seeded from per-lab YAML files
+>   (`apps/<lab>/rubrics/*.yaml`) via the new
+>   `sync_assessment_rubrics` management command. After import the
+>   database is the source of truth — published rubrics are immutable
+>   at the model layer.
+> - The orca initial-feedback and continuation pipelines now write
+>   typed values into `Assessment` / `AssessmentCriterionScore` /
+>   `AssessmentSource` instead of stringified `SimulationFeedback`
+>   metadata rows.
+> - The simulation-tools API and ChatLab UI render an
+>   assessment-shaped payload (`kind="simulation_assessment"`) grouped
+>   by criterion category, with overall score and per-criterion
+>   rationale + evidence.
+> - Outbox event `feedback.item.created` is renamed to
+>   `assessment.item.created` (no legacy alias).
+>
+> **What was removed**
+> - `class SimulationFeedback` (polymorphic `SimulationMetadata`
+>   subclass) and the four `hotwash_*` metadata keys.
+> - `apps/simcore/orca/persist/feedback_block.py` and
+>   `apps/simcore/tools/builtins/feedback.py`.
+> - `SimulationFeedbackItem` from the v1 API tools schema.
+> - `FEEDBACK_CREATED` / `FEEDBACK_GENERATION_FAILED` /
+>   `FEEDBACK_GENERATION_UPDATED` outbox event constants.
+>
+> **Why**
+> - Rubrics + per-criterion typed values + normalized 0–1 scores +
+>   evidence give us a real assessment system: account-scoped
+>   customization, versioning, immutable published rubrics, and
+>   future support for assessments that span multiple simulations.
+> - YAML is intentionally seed-only. Future staff/enterprise admin
+>   editing happens through DB/UI; YAML never re-mutates a published
+>   rubric.
+>
+> **Migrations**
+> Project-app migrations were reset to fresh `0001_initial.py` per
+> app (third-party migrations under `packages/orchestrai_django/` are
+> untouched). The database must be wiped and re-migrated:
+> `uv run python SimWorks/manage.py migrate`
+> followed by
+> `uv run python SimWorks/manage.py sync_assessment_rubrics`.
+
+#### 6.10 Sign-off checklist
+
+```
+[ ] Fresh DB migrate completes without errors
+[ ] sync_assessment_rubrics reports created=2 on a fresh DB
+[ ] Re-running sync_assessment_rubrics is idempotent (unchanged=2)
+[ ] uv run ruff check && uv run ruff format --check pass
+[ ] uv run python SimWorks/manage.py check passes
+[ ] uv run python SimWorks/manage.py makemigrations --check --dry-run reports no changes
+[ ] uv run pytest -q passes (all lanes)
+[ ] Repo grep for SimulationFeedback / hotwash_ / feedback_block / FEEDBACK_*
+    returns no live-code hits
+[ ] Manual chatlab initial-feedback smoke produces 1 Assessment + 3
+    CriterionScores + 1 AssessmentSource(primary, simulation)
+[ ] Manual continuation Q&A smoke produces a separate Assessment with 2
+    AssessmentSource rows (simulation/primary + assessment/generated_from)
+[ ] WebSocket clients receive assessment.item.created (no
+    feedback.item.created)
+[ ] Negative path: archived rubric → graceful no-op, simulation does not
+    crash
+[ ] PR summary explicitly calls out the destructive removals and the
+    seed-only YAML model
+[ ] openapi.json regenerated and committed
+```
+
+### Phase-6 verification
+
+Phase 6 *is* the verification phase. The exit criterion is the entire
+sign-off checklist in 6.10 ticked off and the PR summary populated. If
+any item fails, the failure routes back to its originating phase (e.g.,
+typed-value regression → Phase 3; tool API drift → Phase 4; lingering
+`SimulationFeedback` reference → Phase 5).
+
+---
+
+## Plan complete
+
+All six phases are documented above. Implementation should proceed
+phase-by-phase with green tests at each phase boundary. Each phase has
+explicit file lists (create / modify / delete), code-level specifications,
+and a verification step. After Phase 6 the refactor is ready for review,
+merge, and release.
