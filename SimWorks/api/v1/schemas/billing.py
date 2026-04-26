@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -65,11 +65,21 @@ class AppleTransactionIn(BaseModel):
 
 
 class CheckoutSessionIn(BaseModel):
-    plan_code: str
+    product_code: str
+    billing_interval: Literal["monthly"] = "monthly"
     success_url: str
     cancel_url: str
 
 
 class CheckoutSessionOut(BaseModel):
-    enabled: bool
-    detail: str
+    checkout_url: str
+    session_id: str
+
+
+class CustomerPortalSessionIn(BaseModel):
+    return_url: str
+
+
+class CustomerPortalSessionOut(BaseModel):
+    portal_url: str
+    session_id: str
