@@ -41,6 +41,6 @@ def list_modifier_groups(
     try:
         groups = get_modifier_groups(lab_type)
     except ImproperlyConfigured as exc:
-        raise HttpError(400, str(exc))
+        raise HttpError(400, str(exc)) from exc
 
     return [ModifierGroupOut(**g) for g in groups]

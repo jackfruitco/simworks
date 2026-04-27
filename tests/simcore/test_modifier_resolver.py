@@ -13,7 +13,7 @@ from apps.simcore.modifiers import (
 )
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def seed_chatlab(db):
     from apps.simcore.modifiers.syncer import sync_lab_modifiers
 
@@ -21,6 +21,7 @@ def seed_chatlab(db):
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("seed_chatlab")
 class TestGetActiveModifierCatalog:
     def test_raises_if_no_catalog_in_db(self):
         from django.core.exceptions import ImproperlyConfigured
@@ -44,6 +45,7 @@ class TestGetActiveModifierCatalog:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("seed_chatlab")
 class TestGetModifierGroups:
     def test_returns_list_of_dicts(self):
         groups = get_modifier_groups("chatlab")
@@ -98,6 +100,7 @@ class TestGetModifierGroups:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("seed_chatlab")
 class TestGetModifier:
     def test_returns_definition_for_known_key(self):
         mod = get_modifier("chatlab", "musculoskeletal")
@@ -118,6 +121,7 @@ class TestGetModifier:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("seed_chatlab")
 class TestResolveModifiers:
     def test_resolves_valid_keys(self):
         resolved = resolve_modifiers("chatlab", ["musculoskeletal"])
@@ -153,6 +157,7 @@ class TestResolveModifiers:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("seed_chatlab")
 class TestRenderModifierPrompt:
     def test_renders_prompt_fragment_for_single_key(self):
         prompt = render_modifier_prompt("chatlab", ["musculoskeletal"])
