@@ -311,7 +311,9 @@ export interface TrainerLabCauseFields {
     display_name?: string;
     description?: string;
     anatomical_location?: string;
+    anatomical_location_label?: string;
     laterality?: string;
+    laterality_label?: string;
     injury_location?: string;
     injury_kind?: string;
     injury_location_label?: string;
@@ -407,7 +409,9 @@ export interface TrainerLabProblemFields {
     march_category?: string;
     march_category_label?: string;
     anatomical_location?: string;
+    anatomical_location_label?: string;
     laterality?: string;
+    laterality_label?: string;
     status: 'active' | 'treated' | 'controlled' | 'resolved';
     previous_status?: string;
     treated_at?: string | null;
@@ -486,7 +490,9 @@ export interface TrainerLabAssessmentFindingFields {
     severity?: 'low' | 'moderate' | 'high' | 'critical';
     target_problem_id?: number | null;
     anatomical_location?: string;
+    anatomical_location_label?: string;
     laterality?: string;
+    laterality_label?: string;
     metadata?: Record<string, unknown>;
 }
 
