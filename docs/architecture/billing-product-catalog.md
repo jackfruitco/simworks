@@ -28,6 +28,18 @@ These codes live in [catalog.py](../../SimWorks/apps/billing/catalog.py).
 
 - Apple product IDs map to canonical internal products in `apps.billing.catalog`.
 - Stripe plan or price codes map to canonical internal products in `apps.billing.catalog`.
+- Stripe Checkout price and promo coupon settings use `{product_code}:{interval}` keys, for
+  example:
+
+  ```bash
+  BILLING_STRIPE_PRICE_PLAN_MAP='{"medsim_one:monthly":"price_...", "chatlab_go:monthly":"price_..."}'
+  BILLING_STRIPE_PROMO_COUPON_MAP='{"medsim_one:monthly":"coupon_...", "chatlab_go:monthly":"coupon_..."}'
+  ```
+
+  Fixed-amount Stripe coupons must be configured per MVP product because one global fixed
+  discount can be incorrect across differently priced products. `BILLING_STRIPE_PROMO_COUPON_ID`
+  is supported only as a legacy/global fallback when a product-specific coupon map entry is
+  missing.
 - Product-to-lab capability rules also live in the catalog. Use helpers such as
   `product_includes_lab(...)` or `product_codes_for_lab(...)` instead of hardcoding
   product lists in lab-specific access code.

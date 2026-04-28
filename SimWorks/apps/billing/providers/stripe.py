@@ -8,8 +8,13 @@ import json
 from django.utils import timezone
 
 from apps.accounts.models import Account
-from apps.billing.catalog import product_code_from_stripe_plan_code
-from apps.billing.models import ProviderType, Subscription, WebhookEvent
+from apps.billing.catalog import (
+    canonicalize_product_code,
+    product_code_from_stripe_plan_code,
+    resolve_stripe_price_id,
+    resolve_stripe_promo_coupon_id,
+)
+from apps.billing.models import BillingAccount, ProviderType, Subscription, WebhookEvent
 from apps.billing.services.subscriptions import record_webhook_event, sync_stripe_subscription
 
 
@@ -58,6 +63,90 @@ def _timestamp_to_datetime(value):
     if not value:
         return None
     return datetime.fromtimestamp(value, tz=UTC)
+
+
+def _get_stripe_checkout_session_api():
+    import stripe
+
+    return stripe.checkout.Session
+
+
+def _stripe_session_value(session, key: str) -> str:
+    if isinstance(session, dict):
+        return str(session.get(key) or "")
+    return str(getattr(session, key, "") or "")
+
+
+def create_personal_checkout_session(
+    *,
+    account,
+    product_code: str,
+    billing_interval: str = "monthly",
+    success_url: str,
+    cancel_url: str,
+) -> dict[str, str]:
+    from django.conf import settings
+
+    secret_key = getattr(settings, "BILLING_STRIPE_SECRET_KEY", "")
+    if not secret_key:
+        raise ValueError("Stripe secret key is not configured")
+
+    canonical_product_code = canonicalize_product_code(product_code)
+    if not canonical_product_code:
+        raise ValueError("Unknown product code")
+
+    interval = (billing_interval or "monthly").strip() or "monthly"
+    price_id = resolve_stripe_price_id(canonical_product_code, interval)
+    if not price_id:
+        raise ValueError("Stripe price is not configured for this product")
+
+    session_params = {
+        "mode": "subscription",
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "client_reference_id": str(account.uuid),
+        "metadata": {
+            "account_uuid": str(account.uuid),
+            "product_code": canonical_product_code,
+            "billing_interval": interval,
+        },
+        "subscription_data": {
+            "metadata": {
+                "account_uuid": str(account.uuid),
+                "product_code": canonical_product_code,
+                "billing_interval": interval,
+            },
+        },
+    }
+
+    billing_account = (
+        BillingAccount.objects.filter(
+            account=account,
+            provider_type=ProviderType.STRIPE,
+            provider_customer_id__gt="",
+            is_active=True,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if billing_account:
+        session_params["customer"] = billing_account.provider_customer_id
+    elif account.owner_user_id and account.owner_user.email:
+        session_params["customer_email"] = account.owner_user.email
+
+    coupon_id = resolve_stripe_promo_coupon_id(canonical_product_code, interval)
+    if coupon_id:
+        session_params["discounts"] = [{"coupon": coupon_id}]
+
+    checkout_session = _get_stripe_checkout_session_api().create(
+        api_key=secret_key,
+        **session_params,
+    )
+    return {
+        "session_id": _stripe_session_value(checkout_session, "id"),
+        "url": _stripe_session_value(checkout_session, "url"),
+    }
 
 
 def process_stripe_webhook(*, payload_bytes: bytes, signature_header: str):

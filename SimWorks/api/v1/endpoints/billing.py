@@ -14,7 +14,7 @@ from api.v1.schemas.billing import (
 )
 from apps.accounts.services import get_personal_account_for_user
 from apps.billing.providers.apple import sync_apple_transaction_event
-from apps.billing.providers.stripe import process_stripe_webhook
+from apps.billing.providers.stripe import create_personal_checkout_session, process_stripe_webhook
 
 router = Router(tags=["billing"], auth=DualAuth())
 
@@ -58,7 +58,18 @@ def apple_sync(request: HttpRequest, body: AppleTransactionIn) -> StripeWebhookR
 def create_checkout_session(request: HttpRequest, body: CheckoutSessionIn) -> CheckoutSessionOut:
     if not getattr(settings, "BILLING_STRIPE_CHECKOUT_ENABLED", False):
         raise HttpError(404, "Stripe checkout is not enabled")
-    raise HttpError(
-        501,
-        "Stripe checkout session creation is scaffolded but not yet configured in this environment",
+    account = get_personal_account_for_user(request.auth)
+    try:
+        session = create_personal_checkout_session(
+            account=account,
+            product_code=body.product_code,
+            billing_interval=body.billing_interval,
+            success_url=body.success_url,
+            cancel_url=body.cancel_url,
+        )
+    except ValueError as exc:
+        raise HttpError(400, str(exc)) from None
+    return CheckoutSessionOut(
+        session_id=session["session_id"],
+        url=session["url"],
     )

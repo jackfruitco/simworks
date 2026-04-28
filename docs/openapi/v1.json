@@ -4907,26 +4907,31 @@
       },
       "CheckoutSessionOut": {
         "properties": {
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
           },
-          "detail": {
-            "title": "Detail",
+          "url": {
+            "title": "Url",
             "type": "string"
           }
         },
         "required": [
-          "enabled",
-          "detail"
+          "session_id",
+          "url"
         ],
         "title": "CheckoutSessionOut",
         "type": "object"
       },
       "CheckoutSessionIn": {
         "properties": {
-          "plan_code": {
-            "title": "Plan Code",
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "billing_interval": {
+            "default": "monthly",
+            "title": "Billing Interval",
             "type": "string"
           },
           "success_url": {
@@ -4939,7 +4944,7 @@
           }
         },
         "required": [
-          "plan_code",
+          "product_code",
           "success_url",
           "cancel_url"
         ],

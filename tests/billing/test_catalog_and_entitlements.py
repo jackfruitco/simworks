@@ -13,6 +13,7 @@ from apps.billing.catalog import (
     product_code_from_stripe_plan_code,
     product_codes_for_lab,
     product_includes_lab,
+    resolve_stripe_promo_coupon_id,
 )
 from apps.billing.forms import EntitlementAdminForm
 from apps.billing.models import Entitlement, SeatAllocation, SeatAssignment
@@ -56,6 +57,45 @@ def test_provider_catalog_maps_to_internal_product_codes():
         product_code_from_stripe_plan_code("price_trainerlab_plus_monthly")
         == ProductCode.TRAINERLAB_PLUS.value
     )
+
+
+def test_stripe_promo_coupon_resolution_uses_product_interval_map(settings):
+    settings.BILLING_STRIPE_PROMO_COUPON_MAP = {
+        "medsim_one:monthly": "coupon_medsim_one",
+        "chatlab_go:monthly": "coupon_chatlab_go",
+    }
+    settings.BILLING_STRIPE_PROMO_COUPON_ID = "coupon_global"
+
+    assert (
+        resolve_stripe_promo_coupon_id(ProductCode.MEDSIM_ONE.value)
+        == "coupon_medsim_one"
+    )
+    assert (
+        resolve_stripe_promo_coupon_id(ProductCode.CHATLAB_GO.value)
+        == "coupon_chatlab_go"
+    )
+    assert resolve_stripe_promo_coupon_id("chatlab") == "coupon_chatlab_go"
+
+
+def test_stripe_promo_coupon_resolution_falls_back_only_when_map_entry_missing(settings):
+    settings.BILLING_STRIPE_PROMO_COUPON_MAP = {
+        "medsim_one:monthly": "",
+    }
+    settings.BILLING_STRIPE_PROMO_COUPON_ID = "coupon_global"
+
+    assert resolve_stripe_promo_coupon_id(ProductCode.MEDSIM_ONE.value) == ""
+    assert (
+        resolve_stripe_promo_coupon_id(ProductCode.TRAINERLAB_GO.value)
+        == "coupon_global"
+    )
+
+
+def test_stripe_promo_coupon_resolution_returns_empty_without_config(settings):
+    settings.BILLING_STRIPE_PROMO_COUPON_MAP = {}
+    settings.BILLING_STRIPE_PROMO_COUPON_ID = ""
+
+    assert resolve_stripe_promo_coupon_id(ProductCode.MEDSIM_ONE.value) == ""
+    assert resolve_stripe_promo_coupon_id("unknown") == ""
 
 
 @pytest.mark.django_db

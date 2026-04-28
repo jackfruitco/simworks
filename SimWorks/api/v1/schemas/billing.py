@@ -65,11 +65,12 @@ class AppleTransactionIn(BaseModel):
 
 
 class CheckoutSessionIn(BaseModel):
-    plan_code: str
+    product_code: str
+    billing_interval: str = "monthly"
     success_url: str
     cancel_url: str
 
 
 class CheckoutSessionOut(BaseModel):
-    enabled: bool
-    detail: str
+    session_id: str
+    url: str

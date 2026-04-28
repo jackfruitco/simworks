@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from django.conf import settings
+
 
 class ProductCode(StrEnum):
     CHATLAB_GO = "chatlab_go"
@@ -122,7 +124,44 @@ def product_code_from_apple_product_id(product_id: str | None) -> str:
 
 
 def product_code_from_stripe_plan_code(plan_code: str | None) -> str:
-    return STRIPE_PLAN_CODE_TO_PRODUCT_CODE.get((plan_code or "").strip(), "")
+    normalized_plan_code = (plan_code or "").strip()
+    product_code = STRIPE_PLAN_CODE_TO_PRODUCT_CODE.get(normalized_plan_code, "")
+    if product_code:
+        return product_code
+    for key, mapped_plan_code in (
+        getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}) or {}
+    ).items():
+        if str(mapped_plan_code or "") == normalized_plan_code:
+            return canonicalize_product_code(str(key).partition(":")[0])
+    return ""
+
+
+def _billing_plan_key(product_code: str | None, interval: str | None = "monthly") -> str:
+    canonical_product_code = canonicalize_product_code(product_code)
+    normalized_interval = (interval or "monthly").strip() or "monthly"
+    if not canonical_product_code:
+        return ""
+    return f"{canonical_product_code}:{normalized_interval}"
+
+
+def resolve_stripe_price_id(product_code: str | None, interval: str | None = "monthly") -> str:
+    key = _billing_plan_key(product_code, interval)
+    if not key:
+        return ""
+    return str((getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}) or {}).get(key) or "")
+
+
+def resolve_stripe_promo_coupon_id(
+    product_code: str | None, interval: str | None = "monthly"
+) -> str:
+    key = _billing_plan_key(product_code, interval)
+    if not key:
+        return ""
+
+    coupon_map = getattr(settings, "BILLING_STRIPE_PROMO_COUPON_MAP", {}) or {}
+    if key in coupon_map:
+        return str(coupon_map.get(key) or "")
+    return str(getattr(settings, "BILLING_STRIPE_PROMO_COUPON_ID", "") or "")
 
 
 def product_includes_lab(product_code: str | None, lab_slug: str | None) -> bool:
