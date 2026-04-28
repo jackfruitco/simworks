@@ -50,7 +50,7 @@ class EventEnvelope(BaseModel):
     Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.
     Domains are limited to ``simulation``, ``patient``, ``message``,
-    ``feedback``, and ``guard``.
+    ``assessment``, and ``guard``.
     Canonical API output emits only those registry-defined names.
 
     **Supported Event Types**:
@@ -58,8 +58,8 @@ class EventEnvelope(BaseModel):
     - ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)
     - ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)
     - ``patient.results.updated`` - Patient results panel content refreshed
-    - ``feedback.item.created`` - Simulation feedback/hotwash item created
-    - ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events
+    - ``assessment.item.created`` - A rubric-backed assessment was created
+    - ``assessment.generation.failed`` / ``assessment.generation.updated`` - Assessment generation lifecycle events
     - ``simulation.status.updated`` - Simulation status changed
     - ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed
     - ``patient.*`` - Patient domain object lifecycle events
@@ -82,10 +82,13 @@ class EventEnvelope(BaseModel):
     - ``key`` (str): Metadata key
     - ``value`` (str): Metadata value
 
-    ``feedback.item.created``:
-    - ``feedback_id`` (int): Feedback database ID
-    - ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)
-    - ``value`` (str): Feedback value
+    ``assessment.item.created``:
+    - ``assessment_id`` (str): Assessment UUID (string form)
+    - ``rubric_slug`` (str): Slug of the rubric used (e.g., chatlab_initial_feedback)
+    - ``rubric_version`` (int): Rubric version
+    - ``assessment_type`` (str): e.g. ``initial_feedback`` or ``continuation_feedback``
+    - ``lab_type`` (str): e.g. ``chatlab``
+    - ``overall_score`` (float | None): Normalized 0..1 overall score, if computed
     """
 
     event_id: str = Field(

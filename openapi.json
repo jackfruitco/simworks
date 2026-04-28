@@ -537,6 +537,66 @@
         ]
       }
     },
+    "/api/v1/billing/stripe/customer-portal-session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_create_portal_session",
+        "summary": "Create a Stripe customer portal session for a personal account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPortalSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPortalSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/build-info/": {
+      "get": {
+        "operationId": "api_v1_endpoints_build_info_build_info",
+        "summary": "Get build metadata",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildInfoOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns best-effort backend build metadata for app startup and debug screens.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/api/v1/simulations/": {
       "get": {
         "operationId": "api_v1_endpoints_simulations_list_simulations",
@@ -2294,6 +2354,16 @@
               "title": "Status"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -2308,6 +2378,7 @@
             }
           }
         },
+        "description": "Authoritative polling fallback for the TrainerLab session hub.",
         "tags": [
           "trainerlab"
         ],
@@ -2382,6 +2453,7 @@
             }
           }
         },
+        "description": "Authoritative polling fallback for a single TrainerLab runtime screen.",
         "tags": [
           "trainerlab"
         ],
@@ -3188,6 +3260,78 @@
         ]
       }
     },
+    "/api/v1/trainerlab/events/stream/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_stream_trainer_hub_events",
+        "summary": "SSE stream for TrainerLab hub events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "replay",
+            "schema": {
+              "default": false,
+              "description": "Replay visible events from the beginning",
+              "title": "Replay",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "Replay visible events from the beginning"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Streams durable row-level TrainerLab events for all sessions visible in\nthe authenticated request/account scope.\n\n**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\ncreated after the connection opens.\n\n**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\nbeginning of the visible hub event space.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent. The client must re-bootstrap from\n``GET /trainerlab/simulations/`` before opening a new stream.\n\nDelivery semantics are **at-least-once**. Clients must deduplicate by\n``event_id``.",
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_list_trainer_events",
@@ -3334,6 +3478,18 @@
             },
             "required": false,
             "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "replay",
+            "schema": {
+              "default": false,
+              "description": "Replay events from the beginning",
+              "title": "Replay",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "Replay events from the beginning"
           }
         ],
         "responses": {
@@ -3361,7 +3517,7 @@
             }
           }
         },
-        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
+        "description": "Streams outbox events for a TrainerLab simulation session.\n\n**Tail-only:** Omit ``cursor`` and ``replay`` to receive only events\ncreated after the connection opens.\n\n**Replay:** Pass ``replay=true`` without ``cursor`` to stream from the\nbeginning of this simulation's event space.\n\n**Resume:** Pass ``cursor=<event_id>`` to stream events strictly after\nthat checkpoint.\n\n**Stale cursor:** A stale or pruned cursor returns HTTP **410 Gone**\nbefore any stream bytes are sent.  The client must re-bootstrap by\nloading ``GET /trainerlab/simulations/{id}/state/`` and using the\n``latest_event_cursor`` from that response.\n\nDelivery semantics are **at-least-once**.  Clients must deduplicate by\n``event_id``.",
         "tags": [
           "trainerlab"
         ],
@@ -3636,6 +3792,419 @@
         "security": [
           {
             "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/": {
+      "post": {
+        "operationId": "api_v1_endpoints_feedback_create_feedback",
+        "summary": "Submit feedback",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a user feedback entry. Server populates status, source, and all request metadata automatically. If simulation_id is provided, the user must have access to that simulation. If conversation_id is provided, access is validated via the conversation's simulation.",
+        "tags": [
+          "feedback"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/categories/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_list_categories",
+        "summary": "List feedback categories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeedbackCategoryOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the allowed feedback category choices.",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
+    "/api/v1/feedback/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_my_feedback",
+        "summary": "My feedback submissions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the authenticated user's recent feedback submissions, newest first.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/staff/unreviewed-count/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_staff_unreviewed_count",
+        "summary": "[Staff] Unreviewed feedback count",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackUnreviewedCountOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Staff-only badge/toast count for unreviewed, unarchived feedback.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/feedback/staff/": {
+      "get": {
+        "operationId": "api_v1_endpoints_feedback_staff_list_feedback",
+        "summary": "[Staff] List all feedback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "reviewed",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "reviewed or unreviewed",
+              "title": "Reviewed"
+            },
+            "required": false,
+            "description": "reviewed or unreviewed"
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "archived or unarchived",
+              "title": "Archived"
+            },
+            "required": false,
+            "description": "archived or unarchived"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status",
+              "title": "Status"
+            },
+            "required": false,
+            "description": "Filter by status"
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category",
+              "title": "Category"
+            },
+            "required": false,
+            "description": "Filter by category"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by source",
+              "title": "Source"
+            },
+            "required": false,
+            "description": "Filter by source"
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by severity",
+              "title": "Severity"
+            },
+            "required": false,
+            "description": "Filter by severity"
+          },
+          {
+            "in": "query",
+            "name": "client_platform",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by client platform",
+              "title": "Client Platform"
+            },
+            "required": false,
+            "description": "Filter by client platform"
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by user ID",
+              "title": "User Id"
+            },
+            "required": false,
+            "description": "Filter by user ID"
+          },
+          {
+            "in": "query",
+            "name": "simulation_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by simulation ID",
+              "title": "Simulation Id"
+            },
+            "required": false,
+            "description": "Filter by simulation ID"
+          },
+          {
+            "in": "query",
+            "name": "lab_type",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by lab type",
+              "title": "Lab Type"
+            },
+            "required": false,
+            "description": "Filter by lab type"
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601 start datetime (inclusive)",
+              "title": "Date From"
+            },
+            "required": false,
+            "description": "ISO 8601 start datetime (inclusive)"
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 8601 end datetime (inclusive)",
+              "title": "Date To"
+            },
+            "required": false,
+            "description": "ISO 8601 end datetime (inclusive)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackStaffListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Staff-only endpoint. Returns all feedback with full metadata. Supports filtering by reviewed, archived, status, category, source, severity, user_id, simulation_id, lab_type, and ISO 8601 date range.",
+        "tags": [
+          "feedback"
+        ],
+        "security": [
+          {
+            "DualAuth": []
           }
         ]
       }
@@ -4375,18 +4944,18 @@
       },
       "CheckoutSessionOut": {
         "properties": {
-          "session_id": {
-            "title": "Session Id",
+          "checkout_url": {
+            "title": "Checkout Url",
             "type": "string"
           },
-          "url": {
-            "title": "Url",
+          "session_id": {
+            "title": "Session Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id",
-          "url"
+          "checkout_url",
+          "session_id"
         ],
         "title": "CheckoutSessionOut",
         "type": "object"
@@ -4398,6 +4967,7 @@
             "type": "string"
           },
           "billing_interval": {
+            "const": "monthly",
             "default": "monthly",
             "title": "Billing Interval",
             "type": "string"
@@ -4417,6 +4987,116 @@
           "cancel_url"
         ],
         "title": "CheckoutSessionIn",
+        "type": "object"
+      },
+      "CustomerPortalSessionOut": {
+        "properties": {
+          "portal_url": {
+            "title": "Portal Url",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portal_url",
+          "session_id"
+        ],
+        "title": "CustomerPortalSessionOut",
+        "type": "object"
+      },
+      "CustomerPortalSessionIn": {
+        "properties": {
+          "return_url": {
+            "title": "Return Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_url"
+        ],
+        "title": "CustomerPortalSessionIn",
+        "type": "object"
+      },
+      "BackendBuildInfoOut": {
+        "description": "Backend artifact metadata for startup display.",
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Installed backend package version",
+            "title": "Version"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Injected backend source commit SHA",
+            "title": "Commit"
+          },
+          "build_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Backend artifact build timestamp in UTC when supplied by the build pipeline",
+            "title": "Build Time"
+          }
+        },
+        "title": "BackendBuildInfoOut",
+        "type": "object"
+      },
+      "BuildInfoOut": {
+        "description": "Best-effort build metadata for the mobile splash screen.",
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/BackendBuildInfoOut"
+          },
+          "orchestrai": {
+            "$ref": "#/components/schemas/OrchestraiBuildInfoOut"
+          }
+        },
+        "required": [
+          "backend",
+          "orchestrai"
+        ],
+        "title": "BuildInfoOut",
+        "type": "object"
+      },
+      "OrchestraiBuildInfoOut": {
+        "description": "OrchestrAI package metadata for startup display.",
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Installed OrchestrAI package version",
+            "title": "Version"
+          }
+        },
+        "title": "OrchestraiBuildInfoOut",
         "type": "object"
       },
       "PaginatedResponse_SimulationOut_": {
@@ -4593,7 +5273,7 @@
                 "type": "null"
               }
             ],
-            "description": "Event ID (UUID) of the most recent durable outbox event for this simulation. Pass this value as ``last_event_id`` in the ChatLab ``session.hello`` or ``session.resume`` payload so the server can replay durable events strictly after this point. ``null`` when no durable events exist yet.",
+            "description": "Event ID (UUID) of the most recent replayable ChatLab durable event for this simulation. Pass this value as ``last_event_id`` in the ChatLab ``session.hello`` or ``session.resume`` payload so the server can replay durable events strictly after this point. ``null`` when no durable events exist yet.",
             "title": "Latest Event Id"
           }
         },
@@ -5087,7 +5767,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``)\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab clients pass ``latest_event_cursor`` to the SSE stream.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -6465,6 +7145,40 @@
               }
             ],
             "title": "Retryable"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived Reason"
+          },
+          "archived_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By Id"
           }
         },
         "required": [
@@ -7690,9 +8404,15 @@
             "type": "string"
           },
           "previous_status": {
-            "default": "",
-            "title": "Previous Status",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Status"
           },
           "treated_at": {
             "anyOf": [
@@ -9988,6 +10708,568 @@
           }
         },
         "title": "ScenarioBriefUpdateIn",
+        "type": "object"
+      },
+      "FeedbackOut": {
+        "description": "Output schema for a user feedback submission (user-facing).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "lab_type": {
+            "default": "",
+            "title": "Lab Type",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "client_platform": {
+            "default": "unknown",
+            "title": "Client Platform",
+            "type": "string"
+          },
+          "client_version": {
+            "default": "",
+            "title": "Client Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "category",
+          "source",
+          "status",
+          "body"
+        ],
+        "title": "FeedbackOut",
+        "type": "object"
+      },
+      "FeedbackCreate": {
+        "description": "Input schema for creating a feedback submission.",
+        "properties": {
+          "category": {
+            "description": "Feedback category",
+            "enum": [
+              "bug_report",
+              "ux_issue",
+              "simulation_content",
+              "feature_request",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "body": {
+            "description": "Full feedback text",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short summary (optional)",
+            "title": "Title"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Simulation this feedback is scoped to (optional)",
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation within the simulation (optional)",
+            "title": "Conversation Id"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional 1-5 rating",
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "description": "Whether the user consents to follow-up contact",
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional client-provided metadata dict (max ~10 KB serialised)",
+            "title": "Context"
+          }
+        },
+        "required": [
+          "category",
+          "body"
+        ],
+        "title": "FeedbackCreate",
+        "type": "object"
+      },
+      "FeedbackCategoryOut": {
+        "description": "A single feedback category choice.",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "FeedbackCategoryOut",
+        "type": "object"
+      },
+      "FeedbackListResponse": {
+        "description": "Paginated list of feedback submissions.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total"
+        ],
+        "title": "FeedbackListResponse",
+        "type": "object"
+      },
+      "FeedbackUnreviewedCountOut": {
+        "description": "Staff unreviewed feedback badge count.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "label",
+          "url"
+        ],
+        "title": "FeedbackUnreviewedCountOut",
+        "type": "object"
+      },
+      "FeedbackStaffListResponse": {
+        "description": "Paginated staff list of feedback submissions.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackStaffOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total"
+        ],
+        "title": "FeedbackStaffListResponse",
+        "type": "object"
+      },
+      "FeedbackStaffOut": {
+        "description": "Output schema for staff \u2014 extends FeedbackOut with internal fields.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulation Id"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "lab_type": {
+            "default": "",
+            "title": "Lab Type",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "allow_follow_up": {
+            "default": true,
+            "title": "Allow Follow Up",
+            "type": "boolean"
+          },
+          "client_platform": {
+            "default": "unknown",
+            "title": "Client Platform",
+            "type": "string"
+          },
+          "client_version": {
+            "default": "",
+            "title": "Client Version",
+            "type": "string"
+          },
+          "email": {
+            "default": "",
+            "title": "Email",
+            "type": "string"
+          },
+          "is_reviewed": {
+            "default": false,
+            "title": "Is Reviewed",
+            "type": "boolean"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "reviewed_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By Id"
+          },
+          "is_archived": {
+            "default": false,
+            "title": "Is Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By Id"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "session_identifier": {
+            "default": "",
+            "title": "Session Identifier",
+            "type": "string"
+          },
+          "os_version": {
+            "default": "",
+            "title": "Os Version",
+            "type": "string"
+          },
+          "device_model": {
+            "default": "",
+            "title": "Device Model",
+            "type": "string"
+          },
+          "context_json": {
+            "additionalProperties": true,
+            "title": "Context Json",
+            "type": "object"
+          },
+          "attachments_json": {
+            "items": {},
+            "title": "Attachments Json",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "category",
+          "source",
+          "status",
+          "body"
+        ],
+        "title": "FeedbackStaffOut",
         "type": "object"
       }
     },

@@ -12,6 +12,7 @@ _KNOWN_CATEGORY_ALIASES: dict[str, str] = {"PFC": "PC"}
 __all__ = [
     "build_injury_codebook_instruction",
     "get_injury_dictionary_choices",
+    "get_injury_location_label",
     "get_injury_mapping_warnings",
     "normalize_injury_category",
     "normalize_injury_kind",
@@ -179,6 +180,11 @@ def normalize_injury_location(value: Any) -> str:
 
 def normalize_injury_kind(value: Any) -> str:
     return _resolve_choice(_build_bundle().kind, value)
+
+
+def get_injury_location_label(value: Any) -> str:
+    code = normalize_injury_location(value)
+    return _build_bundle().location.code_to_label[code]
 
 
 def get_injury_dictionary_choices() -> dict[str, list[tuple[str, str]]]:

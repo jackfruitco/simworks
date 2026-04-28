@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     "apps.common",
     "apps.simcore",
+    "apps.assessments",
     "apps.guards",
     "apps.chatlab",
     "apps.privacy",
@@ -121,6 +122,9 @@ BILLING_APPLE_PRODUCT_PLAN_MAP = {}
 BILLING_STRIPE_WEBHOOK_SECRET = "test-stripe-webhook-secret"
 BILLING_STRIPE_SECRET_KEY = "test-stripe-secret"
 BILLING_STRIPE_CHECKOUT_ENABLED = False
+BILLING_STRIPE_PORTAL_ENABLED = False
+BILLING_STRIPE_TRIAL_DAYS = 14
+BILLING_STRIPE_RETURN_BASE_URL = ""
 
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 DEFAULT_FROM_EMAIL = "MedSim by Jackfruit <noreply@jackfruitco.com>"

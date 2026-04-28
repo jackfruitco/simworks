@@ -24,8 +24,8 @@
                 {% partial tool_patient_history %}
             {% elif tool.name == "patient_results" %}
                 {% partial tool_patient_results %}
-            {% elif tool.name == "simulation_feedback" %}
-                {% partial tool_simulation_feedback %}
+            {% elif tool.name == "simulation_assessment" %}
+                {% partial tool_simulation_assessment %}
             {% elif tool.is_generic %}
                 {% partial tool_generic %}
             {% else %}
@@ -54,7 +54,7 @@
     <div class="tool-panel-title">
         <div class="tool-panel-icon">
             <span class="iconify"
-                  data-icon="{% if tool.name|lower == 'patient_history' %}mdi:history{% elif tool.name|lower == 'patient_results' %}mdi:flask{% elif tool.name|lower == 'simulation_feedback' %}mdi:comment-text{% else %}mdi:information{% endif %}"
+                  data-icon="{% if tool.name|lower == 'patient_history' %}mdi:history{% elif tool.name|lower == 'patient_results' %}mdi:flask{% elif tool.name|lower == 'simulation_assessment' %}mdi:clipboard-check-outline{% else %}mdi:information{% endif %}"
                   data-inline="true"></span>
         </div>
         <span>{{ tool.display_name }}</span>
@@ -73,7 +73,7 @@
     </div>
 
     <div class="tool-panel-actions">
-        {% if tool.name|lower == "simulation_feedback" %}
+        {% if tool.name|lower == "simulation_assessment" %}
         <button type="button"
                 x-show="{{ simulation_locked|default_if_none:False|yesno:'true,false' }}"
                 x-cloak
@@ -258,91 +258,71 @@
 {% include "simcore/partials/order-request-form.html" %}
 
 {# ============================================================================
-   TOOL SIMULATION_FEEDBACK - Feedback display with categorized sections
+   TOOL SIMULATION_ASSESSMENT - Rubric-backed assessment display
    ============================================================================ #}
-{% partialdef tool_simulation_feedback %}
+{% partialdef tool_simulation_assessment %}
 {% if tool.data %}
-    <div class="space-y-3" x-data="feedbackExpander()">
-        {% for metafield in tool.data %}
-            {% if metafield.key|lower == "overall_feedback" %}
-                <div class="feedback-card success">
-                    <div class="feedback-card-header">
-                        <span class="feedback-card-icon">
-                            <span class="iconify" data-icon="mdi:comment-check" data-inline="true"></span>
-                        </span>
-                        <h5 class="feedback-card-title">Overall Feedback</h5>
-                    </div>
-                    <div class="feedback-card-content">
-                        {{ metafield.value }}
-                    </div>
-                </div>
-
-            {% elif metafield.key|lower == "topics" %}
-                <div class="feedback-card warning">
-                    <div class="feedback-card-header">
-                        <span class="feedback-card-icon">
-                            <span class="iconify" data-icon="mdi:lightbulb-on" data-inline="true"></span>
-                        </span>
-                        <h5 class="feedback-card-title">Topics to Research</h5>
-                    </div>
-                    <div class="feedback-card-content">
-                        <ul class="ml-4 space-y-2 list-disc list-inside">
-                            {% for topic in metafield.value|as_list %}
-                                <li class="text-content">{{ topic }}</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-
-            {% elif metafield.key|lower == "strengths" %}
-                <div class="feedback-card success">
-                    <div class="feedback-card-header">
-                        <span class="feedback-card-icon">
-                            <span class="iconify" data-icon="mdi:check-circle" data-inline="true"></span>
-                        </span>
-                        <h5 class="feedback-card-title">Strengths</h5>
-                    </div>
-                    <div class="feedback-card-content">
-                        {{ metafield.value|feedback }}
-                    </div>
-                </div>
-
-            {% elif metafield.key|lower == "areas_for_improvement" or metafield.key|lower == "improvements" %}
-                <div class="feedback-card warning">
-                    <div class="feedback-card-header">
-                        <span class="feedback-card-icon">
-                            <span class="iconify" data-icon="mdi:alert-circle" data-inline="true"></span>
-                        </span>
-                        <h5 class="feedback-card-title">Areas for Improvement</h5>
-                    </div>
-                    <div class="feedback-card-content">
-                        {{ metafield.value|feedback }}
-                    </div>
-                </div>
-
-            {% else %}
-                <div class="feedback-card">
-                    <div class="feedback-card-header">
-                        <span class="feedback-card-icon">
-                            <span class="iconify" data-icon="mdi:information" data-inline="true"></span>
-                        </span>
-                        <h5 class="feedback-card-title">{{ metafield.key|title }}</h5>
-                    </div>
-                    <div class="feedback-card-content">
-                        {{ metafield.value|feedback }}
-                    </div>
+    {% with item=tool.data.0 %}
+    <div class="space-y-3" x-data="feedbackExpander()" data-rubric="{{ item.rubric.slug }}">
+        <div class="feedback-card success">
+            <div class="feedback-card-header">
+                <span class="feedback-card-icon">
+                    <span class="iconify" data-icon="mdi:clipboard-check" data-inline="true"></span>
+                </span>
+                <h5 class="feedback-card-title">
+                    {{ item.rubric.name }}
+                    <span class="rubric-version">v{{ item.rubric.version }}</span>
+                </h5>
+                {% if item.overall_score is not None %}
+                    <span class="overall-score">Score: {{ item.overall_score|floatformat:2 }}</span>
+                {% endif %}
+            </div>
+            {% if item.overall_summary %}
+                <div class="feedback-card-content">
+                    {{ item.overall_summary|linebreaksbr }}
                 </div>
             {% endif %}
+        </div>
+
+        {% for group in item.groups %}
+            <div class="feedback-card">
+                <div class="feedback-card-header">
+                    <span class="feedback-card-icon">
+                        <span class="iconify" data-icon="mdi:format-list-checks" data-inline="true"></span>
+                    </span>
+                    <h5 class="feedback-card-title">{{ group.category|default:"General"|title }}</h5>
+                </div>
+                <div class="feedback-card-content">
+                    <ul class="ml-4 space-y-2 list-disc list-inside">
+                        {% for criterion in group.criteria %}
+                            <li class="text-content">
+                                <strong>{{ criterion.label }}:</strong>
+                                {% if criterion.value is True %}Yes
+                                {% elif criterion.value is False %}No
+                                {% elif criterion.value is None %}—
+                                {% else %}{{ criterion.value }}{% endif %}
+                                {% if criterion.score is not None %}
+                                    <span class="criterion-score">({{ criterion.score|floatformat:2 }})</span>
+                                {% endif %}
+                                {% if criterion.rationale %}
+                                    <p class="rationale text-sm text-muted">{{ criterion.rationale }}</p>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
         {% endfor %}
     </div>
+    {% endwith %}
 {% else %}
     <div class="tool-empty-state">
         <div class="tool-empty-icon">
-            <span class="iconify" data-icon="mdi:comment-outline" style="font-size: 4rem;"></span>
+            <span class="iconify" data-icon="mdi:clipboard-outline" style="font-size: 4rem;"></span>
         </div>
-        <h4 class="tool-empty-title">No feedback yet</h4>
+        <h4 class="tool-empty-title">No assessment yet</h4>
         <p class="tool-empty-description">
-            Feedback will appear here after your conversation progresses and the simulation is complete.
+            The assessment will appear here after the simulation ends.
         </p>
     </div>
 {% endif %}

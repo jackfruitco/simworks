@@ -10,10 +10,10 @@ Usage:
 
     async def post_persist(self, results, context: PersistContext):
         await broadcast_domain_objects(
-            event_type="feedback.item.created",
+            event_type="assessment.item.created",
             objects=results.get("metadata", []),
             context=context,
-            payload_builder=lambda obj: {"id": obj.id, "key": obj.key},
+            payload_builder=lambda obj: {"id": str(obj.id)},
         )
 """
 
@@ -47,7 +47,7 @@ async def broadcast_domain_objects(
     - Consistent event structure across all AI responses
 
     Args:
-        event_type: WebSocket event type (e.g., 'feedback.item.created', 'patient.metadata.created')
+        event_type: WebSocket event type (e.g., 'assessment.item.created', 'patient.metadata.created')
         objects: List of persisted domain objects to broadcast
         context: PersistContext with simulation_id, correlation_id, etc. (from orchestrai_django.persistence)
         payload_builder: Function that takes a domain object and returns
@@ -58,13 +58,12 @@ async def broadcast_domain_objects(
 
     Example:
         >>> await broadcast_domain_objects(
-        ...     event_type="feedback.item.created",
-        ...     objects=[feedback1, feedback2],
+        ...     event_type="assessment.item.created",
+        ...     objects=[assessment],
         ...     context=persist_context,
-        ...     payload_builder=lambda fb: {
-        ...         "feedback_id": fb.id,
-        ...         "key": fb.key,
-        ...         "value": fb.value,
+        ...     payload_builder=lambda a: {
+        ...         "assessment_id": str(a.id),
+        ...         "rubric_slug": a.rubric.slug,
         ...     },
         ... )
 

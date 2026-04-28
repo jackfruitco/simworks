@@ -9,11 +9,11 @@ Make sure the MedSim iOS app is set to the Staging environment before
 you sign in, or your account will not be found.
 
 How to switch environments:
-  1. Open the MedSim iOS app.
-  2. Go to Settings.
-  3. Open Environment.
-  4. Select Staging.
-  5. Sign in with your new account.
+    1. Open the MedSim iOS app.
+    2. Long press "Env" on the Sign In screen.
+    3. Open Environment.
+    4. Select Staging.
+    5. Return to Sign In and use the account you just created.
 
 If the app is set to Production, this account will not be found.
 ========================================

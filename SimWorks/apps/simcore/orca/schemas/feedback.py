@@ -1,33 +1,56 @@
 # simcore/orca/schemas/feedback.py
 """
-Feedback schemas for Pydantic AI.
+Feedback (initial + continuation) schemas for Pydantic AI.
 
-These are plain Pydantic models used as result_type for Pydantic AI agents.
-Pydantic AI handles validation natively - no @schema decorator needed.
+These are plain Pydantic models used as ``result_type`` for Pydantic AI
+agents. Persistence writes to the ``apps.assessments`` app via the
+declarative ``__persist__`` dict; ``post_persist`` broadcasts a single
+``assessment.item.created`` event per produced :class:`Assessment`.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.common.outbox import event_types as outbox_events
-from apps.simcore.orca.persist.feedback_block import (
+from apps.assessments.services.persistence import (
     persist_continuation_feedback_block,
     persist_initial_feedback_block,
 )
+from apps.common.outbox import event_types as outbox_events
 
 from .output_items import InitialFeedbackBlock, LLMConditionsCheckItem
 
 
+def _assessment_payload(assessment) -> dict:
+    """Build the WebSocket payload for an ``assessment.item.created`` event.
+
+    Returns minimal, JSON-friendly fields. Clients can fetch the full
+    assessment via the simulation tools API for richer rendering.
+    """
+    return {
+        "assessment_id": str(assessment.id),
+        "rubric_slug": assessment.rubric.slug,
+        "rubric_version": assessment.rubric.version,
+        "assessment_type": assessment.assessment_type,
+        "lab_type": assessment.lab_type,
+        "overall_score": (
+            float(assessment.overall_score) if assessment.overall_score is not None else None
+        ),
+    }
+
+
 class GenerateInitialSimulationFeedback(BaseModel):
-    """Initial user feedback (hotwash) schema.
+    """Initial post-simulation assessment schema.
 
     **Persistence** (declarative):
-    - metadata → multiple SimulationFeedback records via ``persist_feedback_block``
-    - llm_conditions_check → NOT PERSISTED
+    - ``metadata`` → one :class:`Assessment` (assessment_type=
+      ``initial_feedback``) plus three :class:`AssessmentCriterionScore`
+      rows plus one :class:`AssessmentSource` (role=``primary``,
+      source_type=``simulation``) via ``persist_initial_feedback_block``.
+    - ``llm_conditions_check`` → not persisted.
 
-    **WebSocket Broadcasting**:
-    - Broadcasts ``feedback.item.created`` events via outbox pattern in ``post_persist``
-    - Event payload includes feedback_id, key, value for each feedback item
-    - Enables real-time UI updates when feedback is generated
+    **WebSocket broadcasting**:
+    - One ``assessment.item.created`` event per produced Assessment.
+    - Payload: ``assessment_id``, ``rubric_slug``, ``rubric_version``,
+      ``assessment_type``, ``lab_type``, ``overall_score``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -41,46 +64,14 @@ class GenerateInitialSimulationFeedback(BaseModel):
     __persist_primary__ = "metadata"
 
     async def post_persist(self, results, context):
-        """Broadcast feedback creation to WebSocket clients.
-
-        Creates outbox events for each SimulationFeedback object that was
-        persisted, allowing connected clients to receive real-time notifications
-        when feedback is generated.
-
-        The events are delivered via the outbox pattern for reliability:
-        1. Events created atomically with domain changes
-        2. Drain worker delivers to WebSocket channel layer
-        3. Clients receive standardized envelope with event_id for deduplication
-
-        Args:
-            results: Dict of persisted objects from __persist__ declarations
-            context: PersistContext with simulation_id, correlation_id, etc.
-
-        WebSocket Event Structure:
-            {
-                "event_id": "uuid",
-                "event_type": "feedback.item.created",
-                "created_at": "2026-02-22T...",
-                "simulation_id": "123",
-                "correlation_id": "abc-xyz",
-                "payload": {
-                    "feedback_id": 456,
-                    "key": "hotwash_correct_diagnosis",
-                    "value": "true"
-                }
-            }
-        """
+        """Broadcast assessment creation to WebSocket clients."""
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         await broadcast_domain_objects(
-            event_type=outbox_events.FEEDBACK_CREATED,
+            event_type=outbox_events.ASSESSMENT_CREATED,
             objects=results.get("metadata", []),
             context=context,
-            payload_builder=lambda fb: {
-                "feedback_id": fb.id,
-                "key": fb.key,
-                "value": fb.value,
-            },
+            payload_builder=_assessment_payload,
         )
 
 
@@ -97,7 +88,13 @@ class FeedbackContinuationBlock(BaseModel):
 
 
 class GenerateFeedbackContinuationResponse(BaseModel):
-    """Structured continuation feedback response schema."""
+    """Structured continuation feedback response schema.
+
+    Persistence creates a *separate* :class:`Assessment` of
+    ``assessment_type="continuation_feedback"`` linked back to the
+    initial assessment via an :class:`AssessmentSource` row with
+    ``role=generated_from``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -114,16 +111,12 @@ class GenerateFeedbackContinuationResponse(BaseModel):
     __persist_primary__ = "metadata"
 
     async def post_persist(self, results, context):
-        """Broadcast continuation feedback updates to clients."""
+        """Broadcast assessment creation for the continuation row."""
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         await broadcast_domain_objects(
-            event_type=outbox_events.FEEDBACK_CREATED,
+            event_type=outbox_events.ASSESSMENT_CREATED,
             objects=results.get("metadata", []),
             context=context,
-            payload_builder=lambda fb: {
-                "feedback_id": fb.id,
-                "key": fb.key,
-                "value": fb.value,
-            },
+            payload_builder=_assessment_payload,
         )

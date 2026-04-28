@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-
-from django.conf import settings
+from typing import Literal
 
 
 class ProductCode(StrEnum):
@@ -96,6 +95,14 @@ STRIPE_PLAN_CODE_TO_PRODUCT_CODE = {
     for plan_code in product.stripe_plan_codes
 }
 
+WEB_PERSONAL_PRODUCT_CODES = (
+    ProductCode.CHATLAB_GO.value,
+    ProductCode.TRAINERLAB_GO.value,
+    ProductCode.MEDSIM_ONE.value,
+)
+
+BillingInterval = Literal["monthly"]
+
 
 def all_product_codes() -> tuple[str, ...]:
     return tuple(PRODUCTS.keys())
@@ -124,44 +131,89 @@ def product_code_from_apple_product_id(product_id: str | None) -> str:
 
 
 def product_code_from_stripe_plan_code(plan_code: str | None) -> str:
-    normalized_plan_code = (plan_code or "").strip()
-    product_code = STRIPE_PLAN_CODE_TO_PRODUCT_CODE.get(normalized_plan_code, "")
+    normalized = (plan_code or "").strip()
+    product_code = STRIPE_PLAN_CODE_TO_PRODUCT_CODE.get(normalized, "")
     if product_code:
         return product_code
-    for key, mapped_plan_code in (
-        getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}) or {}
-    ).items():
-        if str(mapped_plan_code or "") == normalized_plan_code:
-            return canonicalize_product_code(str(key).partition(":")[0])
-    return ""
+    return stripe_product_code_from_price_id(normalized)
 
 
-def _billing_plan_key(product_code: str | None, interval: str | None = "monthly") -> str:
+def _stripe_price_plan_map() -> dict[str, str]:
+    from django.conf import settings
+
+    value = getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}) or {}
+    if not isinstance(value, dict):
+        raise ValueError("BILLING_STRIPE_PRICE_PLAN_MAP must be a JSON object.")
+    normalized: dict[str, str] = {}
+    for key, price_id in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("BILLING_STRIPE_PRICE_PLAN_MAP keys must be non-empty strings.")
+        if not isinstance(price_id, str) or not price_id.strip():
+            raise ValueError("BILLING_STRIPE_PRICE_PLAN_MAP values must be non-empty strings.")
+        normalized[key.strip()] = price_id.strip()
+    return normalized
+
+
+def resolve_stripe_price_id(
+    product_code: str | None,
+    interval: BillingInterval = "monthly",
+) -> str:
     canonical_product_code = canonicalize_product_code(product_code)
-    normalized_interval = (interval or "monthly").strip() or "monthly"
-    if not canonical_product_code:
-        return ""
-    return f"{canonical_product_code}:{normalized_interval}"
+    if canonical_product_code not in WEB_PERSONAL_PRODUCT_CODES:
+        raise ValueError(f"Unsupported web personal product_code: {product_code}")
+    if interval != "monthly":
+        raise ValueError("Only monthly billing_interval is supported.")
+    lookup_key = f"{canonical_product_code}:{interval}"
+    price_id = _stripe_price_plan_map().get(lookup_key, "")
+    if not price_id:
+        raise ValueError(f"Missing Stripe price mapping for {lookup_key}.")
+    return price_id
 
 
-def resolve_stripe_price_id(product_code: str | None, interval: str | None = "monthly") -> str:
-    key = _billing_plan_key(product_code, interval)
-    if not key:
-        return ""
-    return str((getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}) or {}).get(key) or "")
+def _stripe_promo_coupon_map() -> dict[str, str]:
+    from django.conf import settings
+
+    value = getattr(settings, "BILLING_STRIPE_PROMO_COUPON_MAP", {}) or {}
+    if not isinstance(value, dict):
+        raise ValueError("BILLING_STRIPE_PROMO_COUPON_MAP must be a JSON object.")
+    normalized: dict[str, str] = {}
+    for key, coupon_id in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("BILLING_STRIPE_PROMO_COUPON_MAP keys must be non-empty strings.")
+        normalized[key.strip()] = str(coupon_id or "").strip()
+    return normalized
 
 
 def resolve_stripe_promo_coupon_id(
-    product_code: str | None, interval: str | None = "monthly"
+    product_code: str | None,
+    interval: BillingInterval = "monthly",
 ) -> str:
-    key = _billing_plan_key(product_code, interval)
-    if not key:
-        return ""
+    from django.conf import settings
 
-    coupon_map = getattr(settings, "BILLING_STRIPE_PROMO_COUPON_MAP", {}) or {}
-    if key in coupon_map:
-        return str(coupon_map.get(key) or "")
-    return str(getattr(settings, "BILLING_STRIPE_PROMO_COUPON_ID", "") or "")
+    canonical_product_code = canonicalize_product_code(product_code)
+    if not canonical_product_code:
+        return ""
+    lookup_key = f"{canonical_product_code}:{interval}"
+    coupon_map = _stripe_promo_coupon_map()
+    if lookup_key in coupon_map:
+        return coupon_map[lookup_key]
+    return (getattr(settings, "BILLING_STRIPE_PROMO_COUPON_ID", "") or "").strip()
+
+
+def stripe_product_code_from_price_id(price_id: str | None) -> str:
+    normalized_price_id = (price_id or "").strip()
+    if not normalized_price_id:
+        return ""
+    for key, mapped_price_id in _stripe_price_plan_map().items():
+        if mapped_price_id != normalized_price_id:
+            continue
+        product_code, _, interval = key.partition(":")
+        if interval != "monthly":
+            continue
+        canonical_product_code = canonicalize_product_code(product_code)
+        if canonical_product_code in WEB_PERSONAL_PRODUCT_CODES:
+            return canonical_product_code
+    return ""
 
 
 def product_includes_lab(product_code: str | None, lab_slug: str | None) -> bool:

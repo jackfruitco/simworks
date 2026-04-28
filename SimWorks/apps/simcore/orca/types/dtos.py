@@ -2,7 +2,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from orchestrai_django.types import Boolish, StrictBaseModel
+from orchestrai_django.types import StrictBaseModel
 
 
 # ---------- Metadata (DTO) ---------------------------------------------------------
@@ -62,34 +62,6 @@ class ScenarioMetafield(BaseMetafield):
     value: str
 
 
-class FeedbackMetafieldBase(BaseMetafield):
-    kind: Literal["simulation_feedback"]
-
-
-class CorrectDiagnosisFeedback(FeedbackMetafieldBase):
-    kind: Literal["correct_diagnosis"]
-    key: Literal["correct_diagnosis"]
-    value: Boolish = Field(..., max_length=5)
-
-
-class CorrectTreatmentPlanFeedback(FeedbackMetafieldBase):
-    kind: Literal["correct_treatment_plan"]
-    key: Literal["correct_treatment_plan"]
-    value: Boolish = Field(..., max_length=5)
-
-
-class PatientExperienceFeedback(FeedbackMetafieldBase):
-    kind: Literal["patient_experience"]
-    key: Literal["patient_experience"]
-    value: Annotated[int, Field(ge=0, le=5)] = Field(...)
-
-
-class OverallFeedbackMetafield(FeedbackMetafieldBase):
-    kind: Literal["overall_feedback"]
-    key: Literal["overall_feedback"]
-    value: str = Field(...)  # , max_length=1250)
-
-
 type MetafieldItem = Annotated[
     GenericMetafield
     | LabResultMetafield
@@ -97,10 +69,6 @@ type MetafieldItem = Annotated[
     | PatientHistoryMetafield
     | PatientDemographicsMetafield
     | SimulationMetafield
-    | ScenarioMetafield
-    | CorrectDiagnosisFeedback
-    | CorrectTreatmentPlanFeedback
-    | PatientExperienceFeedback
-    | OverallFeedbackMetafield,
+    | ScenarioMetafield,
     Field(discriminator="kind"),
 ]

@@ -25,7 +25,9 @@ class InitialFeedbackBlock(BaseModel):
     Initial (post-session) feedback block.
 
     **Usage**: Embedded in GenerateInitialSimulationFeedback as the `metadata` field.
-    Contains structured feedback data that gets persisted to SimulationFeedback.
+    Persisted by ``apps.assessments.services.persistence.persist_initial_feedback_block``
+    into one Assessment + per-criterion AssessmentCriterionScore rows + an
+    AssessmentSource(role=primary) linking to the simulation.
 
     **Fields**:
     - `correct_diagnosis`: bool - Learner diagnostic accuracy

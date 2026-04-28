@@ -1,8 +1,25 @@
 from django.db.models import Q
 
 from apps.accounts.services import get_personal_account_for_user
+from apps.assessments.models import Assessment
 from apps.chatlab.models import Message
-from apps.simcore.models import Simulation, SimulationFeedback, SimulationSummary
+from apps.simcore.models import Simulation, SimulationSummary
+
+
+def _typed_score_value(score):
+    """Surface the typed value of an AssessmentCriterionScore for export."""
+    vt = score.criterion.value_type
+    if vt == "bool":
+        return score.value_bool
+    if vt == "int":
+        return score.value_int
+    if vt == "decimal":
+        return float(score.value_decimal) if score.value_decimal is not None else None
+    if vt in {"text", "enum"}:
+        return score.value_text or None
+    if vt == "json":
+        return score.value_json
+    return None
 
 
 def build_user_export_payload(user) -> dict:
@@ -16,7 +33,12 @@ def build_user_export_payload(user) -> dict:
     sims = Simulation.objects.filter(simulation_filter).order_by("id")
     messages = Message.objects.filter(related_filter).order_by("id")
     summaries = SimulationSummary.objects.filter(related_filter).order_by("id")
-    feedback = SimulationFeedback.objects.filter(related_filter).order_by("id")
+    assessments = (
+        Assessment.objects.filter(assessed_user=user)
+        .select_related("rubric")
+        .prefetch_related("criterion_scores__criterion", "sources")
+        .order_by("created_at")
+    )
 
     return {
         "account": {
@@ -71,12 +93,44 @@ def build_user_export_payload(user) -> dict:
             }
             for summary in summaries
         ],
-        "simulation_feedback": [
+        "assessments": [
             {
-                "simulation_id": item.simulation_id,
-                "key": item.key,
-                "value": item.value,
+                "id": str(assessment.id),
+                "assessment_type": assessment.assessment_type,
+                "lab_type": assessment.lab_type,
+                "rubric": {
+                    "slug": assessment.rubric.slug,
+                    "version": assessment.rubric.version,
+                    "name": assessment.rubric.name,
+                },
+                "overall_summary": assessment.overall_summary,
+                "overall_score": (
+                    float(assessment.overall_score)
+                    if assessment.overall_score is not None
+                    else None
+                ),
+                "created_at": assessment.created_at.isoformat(),
+                "criterion_scores": [
+                    {
+                        "criterion_slug": cs.criterion.slug,
+                        "value": _typed_score_value(cs),
+                        "score": float(cs.score) if cs.score is not None else None,
+                        "rationale": cs.rationale,
+                    }
+                    for cs in assessment.criterion_scores.all()
+                ],
+                "sources": [
+                    {
+                        "source_type": src.source_type,
+                        "role": src.role,
+                        "simulation_id": src.simulation_id,
+                        "source_assessment_id": (
+                            str(src.source_assessment_id) if src.source_assessment_id else None
+                        ),
+                    }
+                    for src in assessment.sources.all()
+                ],
             }
-            for item in feedback
+            for assessment in assessments
         ],
     }
