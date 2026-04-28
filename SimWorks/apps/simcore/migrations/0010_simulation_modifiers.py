@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("simcore", "0009_simulation_archival"),
+        ("simcore", "0002_seed_conversation_types"),
     ]
 
     operations = [
