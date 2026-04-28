@@ -1,0 +1,21 @@
+slug: chatlab_continuation_feedback
+name: ChatLab Continuation Feedback
+description: >
+  Follow-up Q&A assessment generated when a learner asks a question
+  about a completed ChatLab simulation.
+scope: global
+lab_type: chatlab
+assessment_type: continuation_feedback
+version: 1
+status: published
+
+criteria:
+  - slug: direct_answer
+    label: Direct Answer
+    description: The educator's direct answer to the learner's follow-up question.
+    category: communication
+    value_type: text
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 10

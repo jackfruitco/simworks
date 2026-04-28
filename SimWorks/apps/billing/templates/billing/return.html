@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Billing - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+  <section class="rounded-lg border border-border bg-surface p-6 shadow-sm">
+    <h1 class="text-3xl font-bold text-content">Back to billing</h1>
+    <p class="mt-3 text-sm text-content-secondary">
+      You can choose a subscription or manage billing whenever you are ready.
+    </p>
+    <div class="mt-6">
+      <a class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-white hover:bg-jckfrt-olive/90" href="{% url 'billing:home' %}">
+        <span class="iconify" data-icon="mdi:credit-card-outline"></span>
+        Billing
+      </a>
+    </div>
+  </section>
+</div>
+{% endblock content %}

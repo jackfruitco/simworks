@@ -1,0 +1,47 @@
+slug: chatlab_initial_feedback
+name: ChatLab Initial Feedback
+description: Initial post-simulation assessment for ChatLab sessions.
+scope: global
+lab_type: chatlab
+assessment_type: initial_feedback
+version: 1
+status: published
+
+criteria:
+  - slug: correct_diagnosis
+    label: Correct Diagnosis
+    description: >
+      Whether the learner identified the expected diagnosis or a
+      sufficiently close working diagnosis during the simulation.
+    category: clinical_reasoning
+    value_type: bool
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 10
+
+  - slug: correct_treatment_plan
+    label: Correct Treatment Plan
+    description: >
+      Whether the learner recommended an appropriate treatment plan
+      for the scenario.
+    category: treatment
+    value_type: bool
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 20
+
+  - slug: patient_experience
+    label: Patient Experience
+    description: >
+      Communication quality, empathy, clarity, and patient-centeredness
+      across the encounter.
+    category: communication
+    value_type: int
+    min_value: 0
+    max_value: 5
+    weight: 1
+    required: true
+    include_in_user_summary: true
+    sort_order: 30

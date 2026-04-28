@@ -37,9 +37,9 @@ class TestToolPartials:
         template = get_template("simcore/tools.html#tool_patient_results")
         assert template is not None
 
-    def test_tool_simulation_feedback_partial_exists(self):
-        """Verify tool_simulation_feedback partial can be loaded."""
-        template = get_template("simcore/tools.html#tool_simulation_feedback")
+    def test_tool_simulation_assessment_partial_exists(self):
+        """Verify tool_simulation_assessment partial can be loaded."""
+        template = get_template("simcore/tools.html#tool_simulation_assessment")
         assert template is not None
 
     def test_tool_fallback_partial_exists(self):

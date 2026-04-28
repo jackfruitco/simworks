@@ -1,7 +1,6 @@
 from typing import ClassVar
 
 from django.contrib import admin
-from django.utils.html import format_html
 
 from apps.chatlab.models import Message, MessageMediaLink
 
@@ -61,48 +60,10 @@ class SimulationAdmin(admin.ModelAdmin):
     def is_complete_display(self, obj):
         return obj.is_complete
 
-    @admin.display(description="Correct Diagnosis")
-    def correct_diagnosis(self, obj):
-        if obj.is_in_progress:
-            return format_html(
-                '<img src="/static/admin/img/icon-in-progress.svg" alt="In Progress">'
-            )
-
-        val = obj.metadata.filter(key="correct diagnosis").values_list("value", flat=True).first()
-        if val == "true":
-            return format_html('<img src="/static/admin/img/icon-yes.svg" alt="True">')
-        elif val == "false":
-            return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
-        elif val == "partial":
-            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
-        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
-
-    @admin.display(description="Correct Treatment Plan")
-    def correct_treatment_plan(self, obj):
-        if obj.is_in_progress:
-            return format_html(
-                '<img src="/static/admin/img/icon-in-progress.svg" alt="In Progress">'
-            )
-
-        val = (
-            obj.metadata.filter(key="correct treatment plan")
-            .values_list("value", flat=True)
-            .first()
-        )
-        if val == "true":
-            return format_html('<img src="/static/admin/img/icon-yes.svg" alt="True">')
-        elif val == "false":
-            return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
-        elif val == "partial":
-            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
-        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
-
     list_display = (
         "id",
         "user",
         "is_complete_display",
-        "correct_diagnosis",
-        "correct_treatment_plan",
         "start_timestamp",
     )
     fieldsets: ClassVar[tuple[tuple[str | None, dict[str, object]], ...]] = (
@@ -120,10 +81,7 @@ class SimulationAdmin(admin.ModelAdmin):
             "SCENARIO ATTRIBUTES",
             {
                 "classes": ("collapse",),
-                "fields": (
-                    ("diagnosis", "chief_complaint"),
-                    ("correct_diagnosis", "correct_treatment_plan"),
-                ),
+                "fields": (("diagnosis", "chief_complaint"),),
             },
         ),
     )

@@ -20,8 +20,12 @@ from .auth_settings import (
 from .billing_settings import (
     BILLING_APPLE_PRODUCT_PLAN_MAP,
     BILLING_STRIPE_CHECKOUT_ENABLED,
+    BILLING_STRIPE_PORTAL_ENABLED,
     BILLING_STRIPE_PRICE_PLAN_MAP,
+    BILLING_STRIPE_PROMO_COUPON_ID,
+    BILLING_STRIPE_RETURN_BASE_URL,
     BILLING_STRIPE_SECRET_KEY,
+    BILLING_STRIPE_TRIAL_DAYS,
     BILLING_STRIPE_WEBHOOK_SECRET,
 )
 from .email_settings import (
@@ -132,6 +136,7 @@ INSTALLED_APPS = [
     "django_htmx",
     "apps.common",
     "apps.simcore",
+    "apps.assessments",
     "apps.guards",
     "apps.chatlab",
     "apps.privacy",

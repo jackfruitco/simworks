@@ -537,6 +537,43 @@
         ]
       }
     },
+    "/api/v1/billing/stripe/customer-portal-session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_billing_create_portal_session",
+        "summary": "Create a Stripe customer portal session for a personal account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPortalSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPortalSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/build-info/": {
       "get": {
         "operationId": "api_v1_endpoints_build_info_build_info",
@@ -4905,26 +4942,32 @@
       },
       "CheckoutSessionOut": {
         "properties": {
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+          "checkout_url": {
+            "title": "Checkout Url",
+            "type": "string"
           },
-          "detail": {
-            "title": "Detail",
+          "session_id": {
+            "title": "Session Id",
             "type": "string"
           }
         },
         "required": [
-          "enabled",
-          "detail"
+          "checkout_url",
+          "session_id"
         ],
         "title": "CheckoutSessionOut",
         "type": "object"
       },
       "CheckoutSessionIn": {
         "properties": {
-          "plan_code": {
-            "title": "Plan Code",
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "billing_interval": {
+            "const": "monthly",
+            "default": "monthly",
+            "title": "Billing Interval",
             "type": "string"
           },
           "success_url": {
@@ -4937,11 +4980,42 @@
           }
         },
         "required": [
-          "plan_code",
+          "product_code",
           "success_url",
           "cancel_url"
         ],
         "title": "CheckoutSessionIn",
+        "type": "object"
+      },
+      "CustomerPortalSessionOut": {
+        "properties": {
+          "portal_url": {
+            "title": "Portal Url",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portal_url",
+          "session_id"
+        ],
+        "title": "CustomerPortalSessionOut",
+        "type": "object"
+      },
+      "CustomerPortalSessionIn": {
+        "properties": {
+          "return_url": {
+            "title": "Return Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_url"
+        ],
+        "title": "CustomerPortalSessionIn",
         "type": "object"
       },
       "BackendBuildInfoOut": {
@@ -5691,7 +5765,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``feedback``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``feedback.item.created`` - Simulation feedback/hotwash item created\n- ``feedback.generation.failed`` / ``feedback.generation.updated`` - Feedback generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.item.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``assessment``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``assessment.item.created`` - A rubric-backed assessment was created\n- ``assessment.generation.failed`` / ``assessment.generation.updated`` - Assessment generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``assessment.item.created``:\n- ``assessment_id`` (str): Assessment UUID (string form)\n- ``rubric_slug`` (str): Slug of the rubric used (e.g., chatlab_initial_feedback)\n- ``rubric_version`` (int): Rubric version\n- ``assessment_type`` (str): e.g. ``initial_feedback`` or ``continuation_feedback``\n- ``lab_type`` (str): e.g. ``chatlab``\n- ``overall_score`` (float | None): Normalized 0..1 overall score, if computed",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -5702,15 +5776,15 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
+            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, assessment.item.created, assessment.generation.failed, assessment.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
             "examples": [
               "message.item.created",
               "message.delivery.updated",
               "patient.metadata.created",
               "patient.results.updated",
-              "feedback.item.created",
-              "feedback.generation.failed",
-              "feedback.generation.updated",
+              "assessment.item.created",
+              "assessment.generation.failed",
+              "assessment.generation.updated",
               "simulation.status.updated",
               "simulation.brief.created",
               "simulation.brief.updated"
@@ -5792,6 +5866,199 @@
           "has_more"
         ],
         "title": "EventReplayResponse",
+        "type": "object"
+      },
+      "AssessmentCriterionGroupItem": {
+        "description": "Criteria grouped by their ``category`` (empty string for ungrouped).",
+        "properties": {
+          "category": {
+            "description": "Criterion category (empty string allowed).",
+            "title": "Category",
+            "type": "string"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/AssessmentCriterionScoreItem"
+            },
+            "title": "Criteria",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "criteria"
+        ],
+        "title": "AssessmentCriterionGroupItem",
+        "type": "object"
+      },
+      "AssessmentCriterionScoreItem": {
+        "description": "One criterion result within an assessment tool payload.",
+        "properties": {
+          "slug": {
+            "description": "Criterion slug",
+            "title": "Slug",
+            "type": "string"
+          },
+          "label": {
+            "description": "Human-readable criterion label",
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Typed criterion value (bool / int / decimal / text / enum / json). May be null when the criterion did not produce a typed value.",
+            "title": "Value"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Normalized 0..1 score, if computed.",
+            "title": "Score"
+          },
+          "rationale": {
+            "default": "",
+            "description": "Optional rationale text.",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "evidence": {
+            "description": "Evidence references; see assessments.AssessmentCriterionScore.evidence help_text.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "label",
+          "value"
+        ],
+        "title": "AssessmentCriterionScoreItem",
+        "type": "object"
+      },
+      "AssessmentRubricRefItem": {
+        "description": "Compact rubric reference embedded in :class:`AssessmentToolItem`.",
+        "properties": {
+          "slug": {
+            "description": "Rubric slug",
+            "title": "Slug",
+            "type": "string"
+          },
+          "version": {
+            "description": "Rubric version",
+            "title": "Version",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable rubric name",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "version",
+          "name"
+        ],
+        "title": "AssessmentRubricRefItem",
+        "type": "object"
+      },
+      "AssessmentToolItem": {
+        "properties": {
+          "kind": {
+            "const": "simulation_assessment",
+            "default": "simulation_assessment",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "assessment_id": {
+            "description": "Assessment UUID as a string",
+            "title": "Assessment Id",
+            "type": "string"
+          },
+          "assessment_type": {
+            "description": "e.g. 'initial_feedback'",
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "lab_type": {
+            "description": "e.g. 'chatlab'",
+            "title": "Lab Type",
+            "type": "string"
+          },
+          "rubric": {
+            "$ref": "#/components/schemas/AssessmentRubricRefItem"
+          },
+          "overall_summary": {
+            "default": "",
+            "title": "Overall Summary",
+            "type": "string"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Normalized 0..1 overall score, if computed.",
+            "title": "Overall Score"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AssessmentCriterionGroupItem"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "assessment_id",
+          "assessment_type",
+          "lab_type",
+          "rubric",
+          "groups"
+        ],
+        "title": "AssessmentToolItem",
         "type": "object"
       },
       "LabResultItem": {
@@ -5966,61 +6233,6 @@
         "title": "PatientHistoryItem",
         "type": "object"
       },
-      "SimulationFeedbackItem": {
-        "properties": {
-          "kind": {
-            "const": "simulation_feedback",
-            "default": "simulation_feedback",
-            "title": "Kind",
-            "type": "string"
-          },
-          "db_pk": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Primary key of the backing metadata row",
-            "title": "Db Pk"
-          },
-          "key": {
-            "description": "Feedback key",
-            "enum": [
-              "hotwash_correct_diagnosis",
-              "hotwash_correct_treatment_plan",
-              "hotwash_patient_experience",
-              "hotwash_overall_feedback",
-              "hotwash_continuation_direct_answer"
-            ],
-            "title": "Key",
-            "type": "string"
-          },
-          "value": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "description": "Typed feedback value",
-            "title": "Value"
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ],
-        "title": "SimulationFeedbackItem",
-        "type": "object"
-      },
       "SimulationMetadataItem": {
         "properties": {
           "kind": {
@@ -6065,7 +6277,7 @@
             "$ref": "#/components/schemas/SimulationMetadataItem"
           },
           {
-            "$ref": "#/components/schemas/SimulationFeedbackItem"
+            "$ref": "#/components/schemas/AssessmentToolItem"
           },
           {
             "$ref": "#/components/schemas/PatientHistoryItem"

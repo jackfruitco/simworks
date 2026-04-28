@@ -1004,15 +1004,6 @@ class PatientHistory(SimulationMetadata):
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
 
 
-class SimulationFeedback(SimulationMetadata):
-    @property
-    def attribute(self) -> str:
-        return self.__class__.__name__
-
-    def __str__(self) -> str:
-        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
-
-
 class SimulationSummary(models.Model):
     simulation = models.OneToOneField(
         Simulation,

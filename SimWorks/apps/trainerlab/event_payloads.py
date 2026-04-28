@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC
 from functools import lru_cache
+import re
 from typing import Any
 
 from django.core.exceptions import SynchronousOnlyOperation
 
-from .injury_dictionary import get_injury_dictionary_choices
+from .injury_dictionary import get_injury_dictionary_choices, get_injury_location_label
 from .intervention_dictionary import get_intervention_label, get_intervention_site_label
 from .models import (
     ETCO2,
@@ -54,6 +55,46 @@ def _injury_label_maps() -> dict[str, dict[str, str]]:
         "injury_location": dict(choices["regions"]),
         "injury_kind": dict(choices["kinds"]),
     }
+
+
+def _humanize_code(value: str) -> str:
+    normalized = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", value)
+    normalized = normalized.replace("_", " ").replace("-", " ").strip()
+    if not normalized:
+        return ""
+    return " ".join(normalized.split()).title()
+
+
+def _anatomical_location_label(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+
+    try:
+        return get_injury_location_label(value)
+    except ValueError:
+        return _humanize_code(value)
+
+
+def _laterality_label(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    key = value.strip().lower()
+    return {
+        "left": "Left",
+        "right": "Right",
+        "bilateral": "Bilateral",
+        "midline": "Midline",
+        "none": "None",
+    }.get(key, _humanize_code(value))
+
+
+def _enrich_anatomical_labels(payload: dict[str, Any]) -> None:
+    if "anatomical_location" in payload:
+        payload["anatomical_location_label"] = _anatomical_location_label(
+            payload.get("anatomical_location")
+        )
+    if "laterality" in payload:
+        payload["laterality_label"] = _laterality_label(payload.get("laterality"))
 
 
 def _event_timestamp_iso(obj: Any) -> str | None:
@@ -106,6 +147,7 @@ def _enrich_structured_intervention(payload: dict[str, Any]) -> bool:
 def enrich_trainer_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     enriched = dict(payload or {})
     _enrich_injury_labels(enriched)
+    _enrich_anatomical_labels(enriched)
     _enrich_structured_intervention(enriched)
     return enriched
 

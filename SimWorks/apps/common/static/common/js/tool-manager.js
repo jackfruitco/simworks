@@ -23,8 +23,8 @@
  *           refreshOn: ['message.item.created'],
  *           refreshMode: 'checksum',  // or 'always' or 'html_inject'
  *       },
- *       'simulation_feedback': {
- *           refreshOn: ['feedback.item.created'],
+ *       'simulation_assessment': {
+ *           refreshOn: ['assessment.item.created'],
  *           refreshMode: 'html_inject',
  *       },
  *   });

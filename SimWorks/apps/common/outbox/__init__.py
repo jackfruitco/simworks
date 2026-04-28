@@ -36,10 +36,10 @@ Usage:
 
     async def post_persist(self, results, context):
         await broadcast_domain_objects(
-            event_type="feedback.item.created",
+            event_type="assessment.item.created",
             objects=results.get("metadata", []),
             context=context,
-            payload_builder=lambda obj: {"id": obj.id},
+            payload_builder=lambda obj: {"id": str(obj.id)},
         )
 """
 

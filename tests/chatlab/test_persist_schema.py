@@ -22,7 +22,7 @@ from apps.chatlab.orca.schemas import (
     PatientResultsOutputSchema,
 )
 from apps.common.outbox.event_types import (
-    FEEDBACK_CREATED,
+    ASSESSMENT_CREATED,
     MESSAGE_CREATED,
     PATIENT_METADATA_CREATED,
 )
@@ -478,11 +478,90 @@ class TestPatientResultsPersistence:
         assert "value" in meta_event.payload
 
 
+def _seed_chatlab_initial_rubric():
+    """Two-phase seed: create as DRAFT, attach criteria, promote to PUBLISHED."""
+    from apps.assessments.models import AssessmentCriterion, AssessmentRubric
+
+    rubric = AssessmentRubric.objects.create(
+        slug="chatlab_initial_feedback",
+        name="ChatLab Initial Feedback",
+        scope=AssessmentRubric.Scope.GLOBAL,
+        lab_type="chatlab",
+        assessment_type="initial_feedback",
+        version=1,
+        status=AssessmentRubric.Status.DRAFT,
+    )
+    AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="correct_diagnosis",
+        label="Correct Diagnosis",
+        category="clinical_reasoning",
+        value_type=AssessmentCriterion.ValueType.BOOL,
+        sort_order=10,
+    )
+    AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="correct_treatment_plan",
+        label="Correct Treatment Plan",
+        category="treatment",
+        value_type=AssessmentCriterion.ValueType.BOOL,
+        sort_order=20,
+    )
+    AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="patient_experience",
+        label="Patient Experience",
+        category="communication",
+        value_type=AssessmentCriterion.ValueType.INT,
+        min_value=0,
+        max_value=5,
+        sort_order=30,
+    )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
+    return rubric
+
+
+def _seed_chatlab_continuation_rubric():
+    from apps.assessments.models import AssessmentCriterion, AssessmentRubric
+
+    rubric = AssessmentRubric.objects.create(
+        slug="chatlab_continuation_feedback",
+        name="ChatLab Continuation Feedback",
+        scope=AssessmentRubric.Scope.GLOBAL,
+        lab_type="chatlab",
+        assessment_type="continuation_feedback",
+        version=1,
+        status=AssessmentRubric.Status.DRAFT,
+    )
+    AssessmentCriterion.objects.create(
+        rubric=rubric,
+        slug="direct_answer",
+        label="Direct Answer",
+        category="communication",
+        value_type=AssessmentCriterion.ValueType.TEXT,
+        sort_order=10,
+    )
+    rubric.status = AssessmentRubric.Status.PUBLISHED
+    rubric.save()
+    return rubric
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-class TestHotwashPersistence:
-    async def test_creates_feedback_records(self, context):
-        """GenerateInitialSimulationFeedback should create multiple SimulationFeedback records."""
+class TestInitialAssessmentPersistence:
+    async def test_creates_assessment_with_typed_scores(self, context):
+        """GenerateInitialSimulationFeedback writes one Assessment + 3 scores + 1 source."""
+        from asgiref.sync import sync_to_async
+
+        from apps.assessments.models import (
+            Assessment,
+            AssessmentCriterionScore,
+            AssessmentSource,
+        )
+
+        await sync_to_async(_seed_chatlab_initial_rubric)()
+
         schema = GenerateInitialSimulationFeedback.model_validate(
             {
                 "llm_conditions_check": [],
@@ -497,111 +576,177 @@ class TestHotwashPersistence:
 
         await persist_schema(schema, context)
 
-        from apps.simcore.models import SimulationFeedback
-
-        feedback_count = await SimulationFeedback.objects.filter(
-            simulation_id=context.simulation_id
-        ).acount()
-        assert feedback_count == 4
-
-        # Check specific values
-        diag = await SimulationFeedback.objects.aget(
-            simulation_id=context.simulation_id,
-            key="hotwash_correct_diagnosis",
+        assessments = Assessment.objects.filter(
+            sources__simulation_id=context.simulation_id,
+            assessment_type="initial_feedback",
         )
-        assert diag.value == "True"
+        assert await assessments.acount() == 1
+        assessment = await assessments.afirst()
 
-        overall = await SimulationFeedback.objects.aget(
-            simulation_id=context.simulation_id,
-            key="hotwash_overall_feedback",
+        # Three typed criterion scores, no SimulationFeedback rows.
+        scores = AssessmentCriterionScore.objects.filter(assessment=assessment)
+        assert await scores.acount() == 3
+
+        diag = await scores.aget(criterion__slug="correct_diagnosis")
+        assert diag.value_bool is True
+        assert diag.value_int is None
+
+        plan = await scores.aget(criterion__slug="correct_treatment_plan")
+        assert plan.value_bool is False
+
+        exp = await scores.aget(criterion__slug="patient_experience")
+        assert exp.value_int == 4
+        assert exp.value_bool is None
+
+        # Overall summary is captured on the assessment, not as a criterion.
+        assert assessment.overall_summary == "Good job overall!"
+
+        # Exactly one primary simulation source.
+        primary_sources = AssessmentSource.objects.filter(
+            assessment=assessment,
+            role=AssessmentSource.Role.PRIMARY,
+            source_type=AssessmentSource.SourceType.SIMULATION,
         )
-        assert overall.value == "Good job overall!"
+        assert await primary_sources.acount() == 1
 
-    async def test_creates_outbox_events_for_websocket_broadcast(self, context):
-        """GenerateInitialSimulationFeedback should create outbox events for WebSocket delivery."""
-        schema = GenerateInitialSimulationFeedback.model_validate(
-            {
-                "llm_conditions_check": [],
-                "metadata": {
-                    "correct_diagnosis": True,
-                    "correct_treatment_plan": False,
-                    "patient_experience": 4,
-                    "overall_feedback": "Good job overall!",
-                },
-            }
-        )
+    async def test_legacy_simulation_feedback_class_is_gone(self, context):
+        """Phase 5 removed the SimulationFeedback polymorphic subclass."""
+        import apps.simcore.models as simcore_models
 
-        await persist_schema(schema, context)
+        assert not hasattr(simcore_models, "SimulationFeedback")
 
-        # Check that outbox events were created
+    async def test_creates_outbox_event_for_websocket_broadcast(self, context):
+        """GenerateInitialSimulationFeedback emits one assessment.item.created event."""
+        from asgiref.sync import sync_to_async
+
         from apps.common.models import OutboxEvent
+
+        await sync_to_async(_seed_chatlab_initial_rubric)()
+
+        schema = GenerateInitialSimulationFeedback.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "correct_diagnosis": True,
+                    "correct_treatment_plan": False,
+                    "patient_experience": 4,
+                    "overall_feedback": "Good job overall!",
+                },
+            }
+        )
+        await persist_schema(schema, context)
 
         events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type=FEEDBACK_CREATED,
+            event_type=ASSESSMENT_CREATED,
         )
-        event_count = await events.acount()
+        # One Assessment → one event (in contrast to the 4-row legacy shape).
+        assert await events.acount() == 1
 
-        # Should have 4 events (one per feedback item)
-        assert event_count == 4
-
-        # Check event structure
         event = await events.afirst()
-        assert event.event_type == FEEDBACK_CREATED
         assert event.correlation_id == context.correlation_id
-        assert "feedback_id" in event.payload
-        assert "key" in event.payload
-        assert "value" in event.payload
-
-        # Check idempotency keys are unique
-        idempotency_keys = [e.idempotency_key async for e in events]
-        assert len(idempotency_keys) == len(set(idempotency_keys)), (
-            "Idempotency keys should be unique"
-        )
-
-        # Check all idempotency keys start with event type
-        for key in idempotency_keys:
-            assert key.startswith(f"{FEEDBACK_CREATED}:"), (
-                f"Idempotency key should start with event type: {key}"
-            )
+        assert "assessment_id" in event.payload
+        assert event.payload["rubric_slug"] == "chatlab_initial_feedback"
+        assert event.payload["assessment_type"] == "initial_feedback"
+        assert event.payload["lab_type"] == "chatlab"
+        assert "overall_score" in event.payload
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-class TestFeedbackContinuationPersistence:
-    async def test_continuation_feedback_upserts_single_key(self, context):
-        """Continuation feedback should upsert direct-answer key."""
-        from apps.simcore.models import SimulationFeedback
+class TestContinuationAssessmentPersistence:
+    async def test_creates_separate_continuation_assessment(self, context):
+        """Continuation Q&A produces a new Assessment linked via generated_from."""
+        from asgiref.sync import sync_to_async
 
-        first = GenerateFeedbackContinuationResponse.model_validate(
-            {
-                "llm_conditions_check": [],
-                "metadata": {"direct_answer": "Start with a concise summary of your differential."},
-            }
-        )
-        await persist_schema(first, context)
+        from apps.assessments.models import Assessment, AssessmentSource
 
-        second = GenerateFeedbackContinuationResponse.model_validate(
+        await sync_to_async(_seed_chatlab_initial_rubric)()
+        await sync_to_async(_seed_chatlab_continuation_rubric)()
+
+        # First create the parent (initial) assessment.
+        initial = GenerateInitialSimulationFeedback.model_validate(
             {
                 "llm_conditions_check": [],
                 "metadata": {
-                    "direct_answer": "Prioritize time-course and red-flag questions first."
+                    "correct_diagnosis": True,
+                    "correct_treatment_plan": True,
+                    "patient_experience": 5,
+                    "overall_feedback": "Excellent.",
                 },
             }
         )
-        await persist_schema(second, context)
+        await persist_schema(initial, context)
 
-        count = await SimulationFeedback.objects.filter(
-            simulation_id=context.simulation_id,
-            key="hotwash_continuation_direct_answer",
-        ).acount()
-        assert count == 1
-
-        row = await SimulationFeedback.objects.aget(
-            simulation_id=context.simulation_id,
-            key="hotwash_continuation_direct_answer",
+        # Now run the continuation.
+        followup = GenerateFeedbackContinuationResponse.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "direct_answer": "Prioritize time-course and red-flag questions first.",
+                },
+            }
         )
-        assert row.value == "Prioritize time-course and red-flag questions first."
+        await persist_schema(followup, context)
+
+        # Two assessments now exist for this simulation: initial + continuation.
+        all_for_sim = Assessment.objects.filter(
+            sources__simulation_id=context.simulation_id
+        ).distinct()
+        assert await all_for_sim.acount() == 2
+
+        continuation = await Assessment.objects.aget(
+            sources__simulation_id=context.simulation_id,
+            assessment_type="continuation_feedback",
+        )
+        assert (
+            continuation.overall_summary == "Prioritize time-course and red-flag questions first."
+        )
+
+        # Continuation has TWO sources: simulation/primary + assessment/generated_from.
+        sources = AssessmentSource.objects.filter(assessment=continuation)
+        assert await sources.acount() == 2
+
+        primary = await sources.aget(role=AssessmentSource.Role.PRIMARY)
+        assert primary.source_type == AssessmentSource.SourceType.SIMULATION
+        assert primary.simulation_id == context.simulation_id
+
+        generated_from = await sources.aget(role=AssessmentSource.Role.GENERATED_FROM)
+        assert generated_from.source_type == AssessmentSource.SourceType.ASSESSMENT
+        initial_assessment = await Assessment.objects.aget(
+            sources__simulation_id=context.simulation_id,
+            assessment_type="initial_feedback",
+        )
+        assert generated_from.source_assessment_id == initial_assessment.id
+
+    async def test_continuation_without_prior_initial_still_creates(self, context):
+        """If no initial assessment exists, continuation still creates an Assessment."""
+        from asgiref.sync import sync_to_async
+
+        from apps.assessments.models import Assessment, AssessmentSource
+
+        await sync_to_async(_seed_chatlab_continuation_rubric)()
+
+        followup = GenerateFeedbackContinuationResponse.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "direct_answer": "Run targeted bedside tests first.",
+                },
+            }
+        )
+        await persist_schema(followup, context)
+
+        assessment = await Assessment.objects.aget(
+            sources__simulation_id=context.simulation_id,
+            assessment_type="continuation_feedback",
+        )
+        # Only the simulation source — no generated_from source.
+        sources = AssessmentSource.objects.filter(assessment=assessment)
+        assert await sources.acount() == 1
+        only = await sources.afirst()
+        assert only.role == AssessmentSource.Role.PRIMARY
+        assert only.source_type == AssessmentSource.SourceType.SIMULATION
 
 
 class TestMROMerging:

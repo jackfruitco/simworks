@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
 
@@ -63,11 +66,32 @@ def _subscription_scope(subscription):
 
 
 def _subscription_is_active(subscription) -> bool:
-    if subscription.status not in ACTIVE_SUBSCRIPTION_STATUSES:
-        return False
-    return not (
-        subscription.current_period_end and subscription.current_period_end < timezone.now()
-    )
+    now = timezone.now()
+    if subscription.status in {
+        Subscription.Status.TRIALING,
+        Subscription.Status.ACTIVE,
+        Subscription.Status.GRACE_PERIOD,
+    }:
+        return not (subscription.current_period_end and subscription.current_period_end < now)
+    if subscription.status == Subscription.Status.PAST_DUE:
+        return not (subscription.current_period_end and subscription.current_period_end < now)
+    if subscription.status == Subscription.Status.CANCELED:
+        return bool(subscription.current_period_end and subscription.current_period_end >= now)
+    return False
+
+
+def get_active_personal_subscription(account):
+    if not getattr(account, "is_personal", False):
+        return None
+    subscriptions = Subscription.objects.filter(account=account).select_related("account")
+    for subscription in subscriptions:
+        if _subscription_is_active(subscription):
+            return subscription
+    return None
+
+
+def has_active_personal_subscription(account) -> bool:
+    return get_active_personal_subscription(account) is not None
 
 
 def _subscription_product_code(subscription: Subscription) -> str:
@@ -142,12 +166,17 @@ def _stripe_status(value: str | None) -> str:
         "trialing": Subscription.Status.TRIALING,
         "active": Subscription.Status.ACTIVE,
         "past_due": Subscription.Status.PAST_DUE,
-        "unpaid": Subscription.Status.PAST_DUE,
+        "unpaid": Subscription.Status.EXPIRED,
         "canceled": Subscription.Status.CANCELED,
+        "incomplete": Subscription.Status.EXPIRED,
         "incomplete_expired": Subscription.Status.EXPIRED,
         "paused": Subscription.Status.PAUSED,
     }
     return mapping.get(value or "", Subscription.Status.EXPIRED)
+
+
+def _json_safe_payload(payload: dict) -> dict:
+    return json.loads(json.dumps(payload, cls=DjangoJSONEncoder))
 
 
 @transaction.atomic
@@ -174,7 +203,7 @@ def sync_stripe_subscription(*, account, payload: dict, plan_code: str, actor_us
             "current_period_end": payload.get("current_period_end"),
             "cancel_at_period_end": bool(payload.get("cancel_at_period_end")),
             "ended_at": payload.get("ended_at"),
-            "provider_payload": payload,
+            "provider_payload": _json_safe_payload(payload),
         },
     )
     reconcile_subscription_entitlements(subscription, actor_user=actor_user)
@@ -203,7 +232,7 @@ def sync_apple_subscription(*, account, payload: dict, plan_code: str, actor_use
             "current_period_end": payload.get("expires_date"),
             "cancel_at_period_end": bool(payload.get("cancel_at_period_end")),
             "ended_at": payload.get("ended_at"),
-            "provider_payload": payload,
+            "provider_payload": _json_safe_payload(payload),
         },
     )
     reconcile_subscription_entitlements(subscription, actor_user=actor_user)

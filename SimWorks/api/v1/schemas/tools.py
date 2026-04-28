@@ -20,16 +20,57 @@ class SimulationMetadataItem(ToolDataItemBase):
     value: str = Field(..., description="Metadata field value")
 
 
-class SimulationFeedbackItem(ToolDataItemBase):
-    kind: Literal["simulation_feedback"] = "simulation_feedback"
-    key: Literal[
-        "hotwash_correct_diagnosis",
-        "hotwash_correct_treatment_plan",
-        "hotwash_patient_experience",
-        "hotwash_overall_feedback",
-        "hotwash_continuation_direct_answer",
-    ] = Field(..., description="Feedback key")
-    value: bool | int | str = Field(..., description="Typed feedback value")
+class AssessmentRubricRefItem(BaseModel):
+    """Compact rubric reference embedded in :class:`AssessmentToolItem`."""
+
+    slug: str = Field(..., description="Rubric slug")
+    version: int = Field(..., description="Rubric version")
+    name: str = Field(..., description="Human-readable rubric name")
+
+
+class AssessmentCriterionScoreItem(BaseModel):
+    """One criterion result within an assessment tool payload."""
+
+    slug: str = Field(..., description="Criterion slug")
+    label: str = Field(..., description="Human-readable criterion label")
+    value: bool | int | float | str | None = Field(
+        ...,
+        description=(
+            "Typed criterion value (bool / int / decimal / text / enum / json). "
+            "May be null when the criterion did not produce a typed value."
+        ),
+    )
+    score: float | None = Field(
+        default=None,
+        description="Normalized 0..1 score, if computed.",
+    )
+    rationale: str = Field(default="", description="Optional rationale text.")
+    evidence: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Evidence references; see assessments.AssessmentCriterionScore.evidence help_text."
+        ),
+    )
+
+
+class AssessmentCriterionGroupItem(BaseModel):
+    """Criteria grouped by their ``category`` (empty string for ungrouped)."""
+
+    category: str = Field(..., description="Criterion category (empty string allowed).")
+    criteria: list[AssessmentCriterionScoreItem]
+
+
+class AssessmentToolItem(ToolDataItemBase):
+    kind: Literal["simulation_assessment"] = "simulation_assessment"
+    assessment_id: str = Field(..., description="Assessment UUID as a string")
+    assessment_type: str = Field(..., description="e.g. 'initial_feedback'")
+    lab_type: str = Field(..., description="e.g. 'chatlab'")
+    rubric: AssessmentRubricRefItem
+    overall_summary: str = Field(default="")
+    overall_score: float | None = Field(
+        default=None, description="Normalized 0..1 overall score, if computed."
+    )
+    groups: list[AssessmentCriterionGroupItem]
 
 
 class PatientHistoryItem(ToolDataItemBase):
@@ -56,9 +97,7 @@ class LabResultItem(ToolDataItemBase):
     type: str = Field(..., description="Result type")
 
 
-type ToolDataItem = (
-    SimulationMetadataItem | SimulationFeedbackItem | PatientHistoryItem | LabResultItem
-)
+type ToolDataItem = SimulationMetadataItem | AssessmentToolItem | PatientHistoryItem | LabResultItem
 
 
 class ToolOut(BaseModel):

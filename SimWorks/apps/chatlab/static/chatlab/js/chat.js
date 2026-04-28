@@ -371,8 +371,8 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             this.eventBus.on('connected', () => this.handleSocketConnected());
             this.eventBus.on('disconnected', () => this.handleSocketDisconnected());
             this.eventBus.on('simulation.status.updated', (data) => this.handleSimulationStateChanged(data));
-            this.eventBus.on('feedback.generation.failed', (data) => this.handleFeedbackFailed(data));
-            this.eventBus.on('feedback.generation.updated', (data) => this.handleFeedbackRetrying(data));
+            this.eventBus.on('assessment.generation.failed', (data) => this.handleFeedbackFailed(data));
+            this.eventBus.on('assessment.generation.updated', (data) => this.handleFeedbackRetrying(data));
         },
 
         /**
@@ -391,8 +391,8 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                     refreshOn: ['message.item.created'],
                     refreshMode: 'checksum',
                 },
-                'simulation_feedback': {
-                    refreshOn: ['feedback.item.created'],
+                'simulation_assessment': {
+                    refreshOn: ['assessment.item.created'],
                     refreshMode: 'html_inject',
                 },
                 'patient_results': {
