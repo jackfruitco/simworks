@@ -62,7 +62,9 @@ class PatientModifierInstruction(BaseInstruction):
             simulation_id = self.context.get("simulation_id")
             if simulation_id:
                 try:
-                    simulation = await Simulation.objects.aget(pk=simulation_id)
+                    simulation = await Simulation.objects.select_related("user").aget(
+                        pk=simulation_id
+                    )
                     self.context["simulation"] = simulation
                 except (TypeError, ValueError, ObjectDoesNotExist):
                     return ""
@@ -107,6 +109,18 @@ class PatientRecentScenarioHistoryInstruction(BaseInstruction):
     async def render_instruction(self) -> str:
         context = self.context
         user = context.get("user")
+
+        if user is None:
+            # Resolve via user_id primitive first to avoid lazy FK access on a cached simulation.
+            user_id = context.get("user_id")
+            if user_id:
+                from django.contrib.auth import get_user_model
+
+                try:
+                    user = await get_user_model().objects.aget(pk=user_id)
+                    context["user"] = user
+                except Exception:
+                    user = None
 
         if user is None:
             simulation = context.get("simulation")
