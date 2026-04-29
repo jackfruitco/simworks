@@ -139,6 +139,38 @@ class TestResolveModifiers:
         resolved = resolve_modifiers("chatlab", [])
         assert resolved == []
 
+    def test_raises_when_required_group_has_no_selection_for_empty_keys(self):
+        from apps.simcore.models import ModifierGroup
+
+        ModifierGroup.objects.filter(key="clinical_scenario").update(required=True)
+
+        with pytest.raises(
+            SelectionConstraintError,
+            match="Group 'clinical_scenario' is required but no modifier was selected",
+        ):
+            resolve_modifiers("chatlab", [])
+
+    def test_raises_when_required_group_omitted(self):
+        from apps.simcore.models import ModifierGroup
+
+        ModifierGroup.objects.filter(key="clinical_scenario").update(required=True)
+
+        with pytest.raises(
+            SelectionConstraintError,
+            match="Group 'clinical_scenario' is required but no modifier was selected",
+        ):
+            resolve_modifiers("chatlab", ["acute"])
+
+    def test_ignores_inactive_required_group(self):
+        from apps.simcore.models import ModifierGroup
+
+        ModifierGroup.objects.filter(key="clinical_scenario").update(
+            required=True, is_active=False
+        )
+
+        resolved = resolve_modifiers("chatlab", [])
+        assert resolved == []
+
     def test_raises_for_unknown_key(self):
         with pytest.raises(UnknownModifierError, match="nonexistent"):
             resolve_modifiers("chatlab", ["nonexistent_xyz"])

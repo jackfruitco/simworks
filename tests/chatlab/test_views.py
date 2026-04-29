@@ -329,3 +329,5 @@ class TestCreateSimulationModifierValidation:
         ):
             response = client.get("/chatlab/simulation/create/?modifier=nonexistent_key_xyz")
         assert response.status_code == 400
+        assert response.content == b"Invalid modifier selection."
+        assert b"nonexistent_key_xyz" not in response.content

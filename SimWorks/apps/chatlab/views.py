@@ -100,7 +100,8 @@ async def create_simulation(request):
             account=account,
         )
     except (UnknownModifierError, SelectionConstraintError) as exc:
-        return HttpResponse(str(exc), status=400)
+        logger.warning("Rejected simulation create request with invalid modifier selection: %s", exc)
+        return HttpResponse("Invalid modifier selection.", status=400)
     return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 

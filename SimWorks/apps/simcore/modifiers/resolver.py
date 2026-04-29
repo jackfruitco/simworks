@@ -76,18 +76,19 @@ def get_modifier(lab_type: str, key: str) -> ModifierDefinitionSchema | None:
 
 
 def resolve_modifiers(lab_type: str, keys: list[str]) -> list[ResolvedModifier]:
-    if not keys:
-        return []
-
     from apps.simcore.models import ModifierDefinition, ModifierGroup
 
     catalog = _get_active_catalog(lab_type)
-    mods = ModifierDefinition.objects.filter(
-        group__catalog=catalog,
-        group__is_active=True,
-        is_active=True,
-        key__in=keys,
-    ).select_related("group")
+    mods = (
+        ModifierDefinition.objects.filter(
+            group__catalog=catalog,
+            group__is_active=True,
+            is_active=True,
+            key__in=keys,
+        ).select_related("group")
+        if keys
+        else []
+    )
     found_keys = {m.key: m for m in mods}
 
     unknown = [k for k in keys if k not in found_keys]
@@ -113,18 +114,16 @@ def resolve_modifiers(lab_type: str, keys: list[str]) -> list[ResolvedModifier]:
             )
         )
 
-    groups_qs = ModifierGroup.objects.filter(
-        catalog=catalog, is_active=True, key__in=group_selections
-    )
+    groups_qs = ModifierGroup.objects.filter(catalog=catalog, is_active=True)
     for group in groups_qs:
         selected = group_selections.get(group.key, [])
+        if group.required and not selected:
+            raise SelectionConstraintError(
+                f"Group {group.key!r} is required but no modifier was selected."
+            )
         if group.selection_mode == "single" and len(selected) > 1:
             raise SelectionConstraintError(
                 f"Group {group.key!r} is single-select but got keys: {selected!r}"
-            )
-        if group.required and group.key not in group_selections:
-            raise SelectionConstraintError(
-                f"Group {group.key!r} is required but no modifier was selected."
             )
 
     return resolved
