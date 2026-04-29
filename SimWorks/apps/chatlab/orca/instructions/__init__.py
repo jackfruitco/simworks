@@ -9,7 +9,11 @@ from .lab_orders import (
     LabOrderSchemaContractInstruction,
     LabOrderTestListInstruction,
 )
-from .patient import PatientNameInstruction, PatientRecentScenarioHistoryInstruction
+from .patient import (
+    PatientModifierInstruction,
+    PatientNameInstruction,
+    PatientRecentScenarioHistoryInstruction,
+)
 from .stitch import (
     StitchConversationContextInstruction,
     StitchDebriefInstruction,
@@ -27,6 +31,7 @@ __all__ = [
     "LabOrderResultDetailInstruction",
     "LabOrderSchemaContractInstruction",
     "LabOrderTestListInstruction",
+    "PatientModifierInstruction",
     "PatientNameInstruction",
     "PatientRecentScenarioHistoryInstruction",
     "StitchConversationContextInstruction",

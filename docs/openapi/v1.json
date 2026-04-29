@@ -1649,17 +1649,15 @@
         "parameters": [
           {
             "in": "query",
-            "name": "groups",
+            "name": "lab_type",
             "schema": {
-              "description": "Filter by group names",
-              "items": {
-                "type": "string"
-              },
-              "title": "Groups",
-              "type": "array"
+              "default": "chatlab",
+              "description": "Lab type identifier",
+              "title": "Lab Type",
+              "type": "string"
             },
             "required": false,
-            "description": "Filter by group names"
+            "description": "Lab type identifier"
           }
         ],
         "responses": {
@@ -1678,7 +1676,7 @@
             }
           }
         },
-        "description": "Returns available simulation modifier groups. Optionally filter by group names.",
+        "description": "Returns available simulation modifier groups for the specified lab type.",
         "tags": [
           "modifiers"
         ]
@@ -6428,17 +6426,25 @@
         "type": "object"
       },
       "ModifierGroupOut": {
-        "description": "Group of related modifiers.",
         "properties": {
-          "group": {
-            "description": "Group name",
-            "title": "Group",
+          "key": {
+            "description": "Group key",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Display label",
+            "title": "Label",
             "type": "string"
           },
           "description": {
             "description": "Group description",
             "title": "Description",
             "type": "string"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/SelectionConfigOut",
+            "description": "Selection constraints"
           },
           "modifiers": {
             "description": "Available modifiers in this group",
@@ -6450,19 +6456,25 @@
           }
         },
         "required": [
-          "group",
+          "key",
+          "label",
           "description",
+          "selection",
           "modifiers"
         ],
         "title": "ModifierGroupOut",
         "type": "object"
       },
       "ModifierOut": {
-        "description": "Individual modifier option.",
         "properties": {
           "key": {
             "description": "Unique modifier key",
             "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Display label",
+            "title": "Label",
             "type": "string"
           },
           "description": {
@@ -6473,9 +6485,30 @@
         },
         "required": [
           "key",
+          "label",
           "description"
         ],
         "title": "ModifierOut",
+        "type": "object"
+      },
+      "SelectionConfigOut": {
+        "properties": {
+          "mode": {
+            "description": "Selection mode: single or multiple",
+            "title": "Mode",
+            "type": "string"
+          },
+          "required": {
+            "description": "Whether a selection is required",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "required"
+        ],
+        "title": "SelectionConfigOut",
         "type": "object"
       },
       "GuardSignalOut": {

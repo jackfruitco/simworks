@@ -16,6 +16,7 @@ class GenerateInitialResponse(DjangoBaseService):
 
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.patient.PatientNameInstruction",
+        "chatlab.patient.PatientModifierInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
         "chatlab.patient.PatientInformationDisclosureInstruction",

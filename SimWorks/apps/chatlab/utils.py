@@ -51,6 +51,26 @@ async def create_new_simulation(
 
     sim_patient_full_name = await generate_fake_name()
 
+    from apps.simcore.modifiers import resolve_modifiers
+
+    validated_keys: list[str] = []
+    modifier_snapshot: list[dict] = []
+
+    if modifiers:
+        # Raises UnknownModifierError or SelectionConstraintError — caller handles
+        resolved = await sync_to_async(resolve_modifiers)("chatlab", modifiers)
+        validated_keys = [r.key for r in resolved]
+        modifier_snapshot = [
+            {
+                "key": r.key,
+                "group_key": r.group_key,
+                "label": r.definition.label,
+                "description": r.definition.description,
+                "prompt_fragment": r.definition.prompt_fragment or "",
+            }
+            for r in resolved
+        ]
+
     simulation = None
     try:
         # Create base Simulation
@@ -59,7 +79,8 @@ async def create_new_simulation(
             account=account,
             app_=APP_NAME,
             sim_patient_full_name=sim_patient_full_name,
-            modifiers=modifiers,
+            modifiers=validated_keys,
+            modifier_snapshot=modifier_snapshot,
         )
         logger.debug(f"simulation #{simulation.id} created")
 

@@ -1,0 +1,47 @@
+lab: chatlab
+version: 1
+
+groups:
+  - key: clinical_scenario
+    label: Clinical Scenario
+    description: Type of clinical encounter
+    selection:
+      mode: single
+      required: false
+    modifiers:
+      - key: musculoskeletal
+        label: Musculoskeletal
+        description: Musculoskeletal injury or issue scenario
+        prompt_fragment: "Prefer a musculoskeletal complaint or injury."
+
+      - key: respiratory
+        label: Respiratory
+        description: Respiratory issue
+        prompt_fragment: "Prefer a respiratory complaint."
+
+      - key: dermatologic
+        label: Dermatologic
+        description: Dermatology issue/illness
+        prompt_fragment: "Prefer a dermatologic complaint or condition."
+
+  - key: clinical_duration
+    label: Clinical Duration
+    description: Simulation time constraints
+    selection:
+      mode: single
+      required: false
+    modifiers:
+      - key: acute
+        label: Acute
+        description: New concerns beginning within last 4 weeks
+        prompt_fragment: "The patient's presenting complaint has been occurring for less than 4 weeks (acute)."
+
+      - key: subacute
+        label: Subacute
+        description: Concerns within the last 4-8 weeks
+        prompt_fragment: "The patient's presenting complaint has been occurring for 4-8 weeks (subacute)."
+
+      - key: chronic
+        label: Chronic
+        description: Concerns beginning over 8 weeks ago
+        prompt_fragment: "The patient's presenting complaint has been occurring for more than 8 weeks (chronic)."

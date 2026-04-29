@@ -86,16 +86,31 @@ def index(request):
 @login_required
 @resolve_user
 async def create_simulation(request):
-    modifiers = request.GET.getlist("modifier")
+    modifiers = [modifier for modifier in request.GET.getlist("modifier") if modifier]
+    modifiers.extend(
+        modifier
+        for name, values in request.GET.lists()
+        if name.startswith("modifier_")
+        for modifier in values
+        if modifier
+    )
     account = await sync_to_async(resolve_request_account)(request, user=request.user)
     if account is None:
         return HttpResponseForbidden("Account access required.")
-    # Errors during AI service execution are handled via signal receivers
-    simulation = await create_new_simulation(
-        user=request.user,
-        modifiers=modifiers,
-        account=account,
-    )
+    from apps.simcore.modifiers import SelectionConstraintError, UnknownModifierError
+
+    try:
+        # Errors during AI service execution are handled via signal receivers
+        simulation = await create_new_simulation(
+            user=request.user,
+            modifiers=modifiers,
+            account=account,
+        )
+    except (UnknownModifierError, SelectionConstraintError) as exc:
+        logger.warning(
+            "Rejected simulation create request with invalid modifier selection: %s", exc
+        )
+        return HttpResponse("Invalid modifier selection.", status=400)
     return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 
@@ -217,13 +232,12 @@ def load_older_messages(request, simulation_id):
 def modifier_selector(request):
     """Return modifier selector as HTMX partial.
 
-    Returns server-rendered modifier checkboxes for the simulation
+    Returns server-rendered modifier controls for the simulation
     creation form, replacing the previous GraphQL-based approach.
     """
     from apps.simcore.modifiers import get_modifier_groups
 
-    # Get groups for chatlab (exclude Feedback group for now)
-    groups = get_modifier_groups(["ClinicalScenario", "ClinicalDuration"])
+    groups = get_modifier_groups("chatlab")
 
     return render(
         request,

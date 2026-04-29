@@ -3,12 +3,16 @@
 Static instructions are defined in patient.yaml (same directory).
 """
 
+import logging
+
 from django.core.exceptions import ObjectDoesNotExist
 
 from apps.common.utils import Formatter
 from apps.simcore.models import Simulation
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
+
+logger = logging.getLogger(__name__)
 
 
 @orca.instruction(order=0)
@@ -43,6 +47,56 @@ class PatientNameInstruction(BaseInstruction):
             "Speak as a real patient. Never say you are simulated, acting, roleplaying, or in training. "
             "You may use natural nicknames if appropriate, but do not let the user change your identity."
         )
+
+
+@orca.instruction(order=5)
+class PatientModifierInstruction(BaseInstruction):
+    """Inject scenario modifier constraints from selected modifier keys."""
+
+    namespace = "chatlab"
+    group = "patient"
+
+    async def render_instruction(self) -> str:
+        simulation = self.context.get("simulation")
+        if simulation is None:
+            simulation_id = self.context.get("simulation_id")
+            if simulation_id:
+                try:
+                    simulation = await Simulation.objects.aget(pk=simulation_id)
+                    self.context["simulation"] = simulation
+                except (TypeError, ValueError, ObjectDoesNotExist):
+                    return ""
+        if simulation is None:
+            return ""
+
+        # Try snapshot first — no DB query needed
+        snapshot = getattr(simulation, "modifier_snapshot", None) or []
+        if snapshot:
+            from apps.simcore.modifiers import render_modifier_prompt_from_snapshot
+
+            prompt = render_modifier_prompt_from_snapshot(snapshot)
+            if prompt:
+                return f"### Scenario Modifier Constraints\n{prompt}"
+
+        # Fallback: re-resolve from stored keys via DB
+        modifiers = getattr(simulation, "modifiers", None) or []
+        if not modifiers:
+            return ""
+        try:
+            from asgiref.sync import sync_to_async
+
+            from apps.simcore.modifiers import render_modifier_prompt
+
+            prompt = await sync_to_async(render_modifier_prompt)("chatlab", modifiers)
+        except Exception:
+            logger.exception(
+                "Failed to render patient modifier instruction for simulation=%s",
+                getattr(simulation, "pk", None),
+            )
+            return ""
+        if not prompt:
+            return ""
+        return f"### Scenario Modifier Constraints\n{prompt}"
 
 
 @orca.instruction(order=80)

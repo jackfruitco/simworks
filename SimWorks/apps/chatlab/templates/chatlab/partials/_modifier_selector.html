@@ -1,14 +1,24 @@
 {% for group in modifier_groups %}
 <fieldset class="mb-4 rounded-lg border border-border bg-surface-alt p-3 last:mb-0">
-    <legend class="px-1 text-xs font-semibold uppercase tracking-wide text-content-secondary">{{ group.group }}</legend>
+    <legend class="px-1 text-xs font-semibold uppercase tracking-wide text-content-secondary">{{ group.label }}</legend>
     <div class="mt-2 space-y-2">
+        {% if group.selection.mode == "single" and not group.selection.required %}
+        <label class="flex cursor-pointer items-start gap-2 text-sm text-content">
+            <input type="radio"
+                   name="modifier_{{ group.key }}"
+                   value=""
+                   checked
+                   class="mt-0.5 h-4 w-4 border-border text-jckfrt-olive focus:ring-jckfrt-olive">
+            <span>No preference</span>
+        </label>
+        {% endif %}
         {% for mod in group.modifiers %}
         <label class="flex cursor-pointer items-start gap-2 text-sm text-content">
-            <input type="checkbox"
-                   name="modifier"
+            <input type="{% if group.selection.mode == 'single' %}radio{% else %}checkbox{% endif %}"
+                   name="{% if group.selection.mode == 'single' %}modifier_{{ group.key }}{% else %}modifier{% endif %}"
                    value="{{ mod.key }}"
                    class="mt-0.5 h-4 w-4 rounded border-border text-jckfrt-olive focus:ring-jckfrt-olive">
-            <span>{{ mod.description }}</span>
+            <span>{{ mod.label }}</span>
         </label>
         {% endfor %}
     </div>

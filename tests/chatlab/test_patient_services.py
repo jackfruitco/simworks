@@ -35,6 +35,7 @@ STATIC_PATIENT_INSTRUCTION_NAMES = (
 
 EXPECTED_INITIAL_INSTRUCTION_NAMES = (
     "PatientNameInstruction",
+    "PatientModifierInstruction",
     "PatientSafetyBoundariesInstruction",
     "PatientConversationBehaviorInstruction",
     "PatientInformationDisclosureInstruction",

@@ -303,3 +303,69 @@ class TestGetSingleMessage:
 
         # Should return 404 because message doesn't belong to this simulation
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestModifierSelector:
+    @pytest.fixture(autouse=True)
+    def seed_chatlab(self, db):
+        from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+        sync_lab_modifiers("chatlab")
+
+    def test_renders_radio_inputs_for_single_select_groups(self, client: Client, user):
+        client.force_login(user)
+
+        response = client.get("/chatlab/api/modifier-selector/")
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert 'type="radio"' in content
+        assert 'name="modifier_clinical_scenario"' in content
+        assert 'name="modifier_clinical_duration"' in content
+        assert "No preference" in content
+        assert 'type="checkbox"' not in content
+
+
+@pytest.mark.django_db
+class TestCreateSimulationModifierValidation:
+    """Tests that create_simulation returns 400 on invalid modifier keys."""
+
+    @pytest.fixture(autouse=True)
+    def seed_chatlab(self, db):
+        from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+        sync_lab_modifiers("chatlab")
+
+    def test_unknown_modifier_returns_400(self, client: Client, user):
+        from unittest.mock import AsyncMock, patch
+
+        from apps.simcore.modifiers import UnknownModifierError
+
+        client.force_login(user)
+        with patch(
+            "apps.chatlab.views.create_new_simulation",
+            new=AsyncMock(
+                side_effect=UnknownModifierError("Unknown modifier keys: ['nonexistent_key_xyz']")
+            ),
+        ):
+            response = client.get("/chatlab/simulation/create/?modifier=nonexistent_key_xyz")
+        assert response.status_code == 400
+        assert response.content == b"Invalid modifier selection."
+        assert b"nonexistent_key_xyz" not in response.content
+
+    def test_create_simulation_ignores_empty_modifier_values(self, client: Client, user):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        client.force_login(user)
+        mock_create = AsyncMock(return_value=SimpleNamespace(id=123))
+
+        with patch("apps.chatlab.views.create_new_simulation", new=mock_create):
+            response = client.get(
+                "/chatlab/simulation/create/"
+                "?modifier=&modifier_clinical_scenario=&modifier_clinical_duration=acute"
+            )
+
+        assert response.status_code == 302
+        assert mock_create.await_args.kwargs["modifiers"] == ["acute"]
