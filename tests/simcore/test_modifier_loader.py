@@ -113,3 +113,44 @@ class TestLoadLabModifierCatalog:
                 load_lab_modifier_catalog("chatlab")
         finally:
             app_config.path = original_path
+
+    def test_raises_on_unexpected_yaml_field(self, tmp_path):
+        from django.apps import apps as django_apps
+
+        from apps.simcore.modifiers.loader import load_lab_modifier_catalog
+
+        app_config = django_apps.get_app_config("chatlab")
+        original_path = app_config.path
+        extra_field_yaml = tmp_path / "modifiers.yaml"
+        extra_field_yaml.write_text(
+            yaml.dump(
+                {
+                    "lab": "chatlab",
+                    "version": 1,
+                    "unexpected": "typo",
+                    "groups": [
+                        {
+                            "key": "clinical_scenario",
+                            "label": "Clinical Scenario",
+                            "description": "",
+                            "selection": {"mode": "single", "required": False},
+                            "modifiers": [
+                                {
+                                    "key": "musculoskeletal",
+                                    "label": "Musculoskeletal",
+                                    "description": "",
+                                    "prompt_fragment": "Prefer musculoskeletal.",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        try:
+            app_config.path = str(tmp_path)
+            with pytest.raises(ImproperlyConfigured, match="Invalid modifier catalog schema"):
+                load_lab_modifier_catalog("chatlab")
+        finally:
+            app_config.path = original_path

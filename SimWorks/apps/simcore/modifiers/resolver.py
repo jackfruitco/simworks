@@ -26,12 +26,22 @@ def _get_active_catalog(lab_type: str):
 
 
 def get_modifier_groups(lab_type: str) -> list[dict]:
-    from apps.simcore.models import ModifierGroup
+    from django.db.models import Prefetch
+
+    from apps.simcore.models import ModifierDefinition, ModifierGroup
 
     catalog = _get_active_catalog(lab_type)
     groups = (
         ModifierGroup.objects.filter(catalog=catalog, is_active=True)
-        .prefetch_related("modifiers")
+        .prefetch_related(
+            Prefetch(
+                "modifiers",
+                queryset=ModifierDefinition.objects.filter(is_active=True).order_by(
+                    "sort_order", "key"
+                ),
+                to_attr="active_modifiers",
+            )
+        )
         .order_by("sort_order", "key")
     )
     return [
@@ -47,7 +57,7 @@ def get_modifier_groups(lab_type: str) -> list[dict]:
                     "description": m.description,
                     "prompt_fragment": m.prompt_fragment or None,
                 }
-                for m in g.modifiers.filter(is_active=True).order_by("sort_order", "key")
+                for m in g.active_modifiers
             ],
         }
         for g in groups

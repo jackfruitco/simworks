@@ -3,12 +3,16 @@
 Static instructions are defined in patient.yaml (same directory).
 """
 
+import logging
+
 from django.core.exceptions import ObjectDoesNotExist
 
 from apps.common.utils import Formatter
 from apps.simcore.models import Simulation
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
+
+logger = logging.getLogger(__name__)
 
 
 @orca.instruction(order=0)
@@ -85,6 +89,10 @@ class PatientModifierInstruction(BaseInstruction):
 
             prompt = await sync_to_async(render_modifier_prompt)("chatlab", modifiers)
         except Exception:
+            logger.exception(
+                "Failed to render patient modifier instruction for simulation=%s",
+                getattr(simulation, "pk", None),
+            )
             return ""
         if not prompt:
             return ""

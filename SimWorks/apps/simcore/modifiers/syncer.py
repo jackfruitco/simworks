@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from django.db import transaction
+
 from .loader import load_lab_modifier_catalog
 
 
@@ -102,100 +104,101 @@ def sync_lab_modifiers(lab_type: str, *, force: bool = False, dry_run: bool = Fa
 
     # --- Live write path ---
 
-    catalog_obj, cat_created = ModifierCatalog.objects.update_or_create(
-        lab_type=lab_type,
-        defaults={
-            "version": catalog_schema.version,
-            "is_active": True,
-            "source": "yaml",
-        },
-    )
-    summary["catalog"] = "created" if cat_created else "updated"
-
-    yaml_group_keys = {g.key for g in catalog_schema.groups}
-
-    for idx, group_schema in enumerate(catalog_schema.groups):
-        group_obj, g_created = ModifierGroup.objects.get_or_create(
-            catalog=catalog_obj,
-            key=group_schema.key,
+    with transaction.atomic():
+        catalog_obj, cat_created = ModifierCatalog.objects.update_or_create(
+            lab_type=lab_type,
             defaults={
-                "label": group_schema.label,
-                "description": group_schema.description,
-                "selection_mode": group_schema.selection.mode,
-                "required": group_schema.selection.required,
-                "sort_order": idx,
+                "version": catalog_schema.version,
                 "is_active": True,
+                "source": "yaml",
             },
         )
-        if g_created:
-            summary["groups_created"] += 1
-        else:
-            updated_fields = []
-            for field, val in [
-                ("label", group_schema.label),
-                ("description", group_schema.description),
-                ("selection_mode", group_schema.selection.mode),
-                ("required", group_schema.selection.required),
-                ("sort_order", idx),
-                ("is_active", True),
-            ]:
-                if getattr(group_obj, field) != val:
-                    setattr(group_obj, field, val)
-                    updated_fields.append(field)
-            if updated_fields:
-                group_obj.save(update_fields=updated_fields)
-                summary["groups_updated"] += 1
+        summary["catalog"] = "created" if cat_created else "updated"
 
-        yaml_mod_keys = {m.key for m in group_schema.modifiers}
+        yaml_group_keys = {g.key for g in catalog_schema.groups}
 
-        for midx, mod_schema in enumerate(group_schema.modifiers):
-            mod_obj, m_created = ModifierDefinition.objects.get_or_create(
-                group=group_obj,
-                key=mod_schema.key,
+        for idx, group_schema in enumerate(catalog_schema.groups):
+            group_obj, g_created = ModifierGroup.objects.get_or_create(
+                catalog=catalog_obj,
+                key=group_schema.key,
                 defaults={
-                    "label": mod_schema.label,
-                    "description": mod_schema.description,
-                    "prompt_fragment": mod_schema.prompt_fragment or "",
-                    "sort_order": midx,
+                    "label": group_schema.label,
+                    "description": group_schema.description,
+                    "selection_mode": group_schema.selection.mode,
+                    "required": group_schema.selection.required,
+                    "sort_order": idx,
                     "is_active": True,
-                    "manually_edited": False,
                 },
             )
-            if m_created:
-                summary["defs_created"] += 1
+            if g_created:
+                summary["groups_created"] += 1
             else:
-                if mod_obj.manually_edited and not force:
-                    summary["defs_skipped"] += 1
-                    continue
                 updated_fields = []
                 for field, val in [
-                    ("label", mod_schema.label),
-                    ("description", mod_schema.description),
-                    ("prompt_fragment", mod_schema.prompt_fragment or ""),
-                    ("sort_order", midx),
+                    ("label", group_schema.label),
+                    ("description", group_schema.description),
+                    ("selection_mode", group_schema.selection.mode),
+                    ("required", group_schema.selection.required),
+                    ("sort_order", idx),
                     ("is_active", True),
                 ]:
-                    if getattr(mod_obj, field) != val:
-                        setattr(mod_obj, field, val)
+                    if getattr(group_obj, field) != val:
+                        setattr(group_obj, field, val)
                         updated_fields.append(field)
                 if updated_fields:
-                    mod_obj.save(update_fields=updated_fields)
-                    summary["defs_updated"] += 1
+                    group_obj.save(update_fields=updated_fields)
+                    summary["groups_updated"] += 1
 
-        # Deactivate modifiers removed from YAML (never delete)
-        deactivated = (
-            ModifierDefinition.objects.filter(group=group_obj, is_active=True)
-            .exclude(key__in=yaml_mod_keys)
+            yaml_mod_keys = {m.key for m in group_schema.modifiers}
+
+            for midx, mod_schema in enumerate(group_schema.modifiers):
+                mod_obj, m_created = ModifierDefinition.objects.get_or_create(
+                    group=group_obj,
+                    key=mod_schema.key,
+                    defaults={
+                        "label": mod_schema.label,
+                        "description": mod_schema.description,
+                        "prompt_fragment": mod_schema.prompt_fragment or "",
+                        "sort_order": midx,
+                        "is_active": True,
+                        "manually_edited": False,
+                    },
+                )
+                if m_created:
+                    summary["defs_created"] += 1
+                else:
+                    if mod_obj.manually_edited and not force:
+                        summary["defs_skipped"] += 1
+                        continue
+                    updated_fields = []
+                    for field, val in [
+                        ("label", mod_schema.label),
+                        ("description", mod_schema.description),
+                        ("prompt_fragment", mod_schema.prompt_fragment or ""),
+                        ("sort_order", midx),
+                        ("is_active", True),
+                    ]:
+                        if getattr(mod_obj, field) != val:
+                            setattr(mod_obj, field, val)
+                            updated_fields.append(field)
+                    if updated_fields:
+                        mod_obj.save(update_fields=updated_fields)
+                        summary["defs_updated"] += 1
+
+            # Deactivate modifiers removed from YAML (never delete)
+            deactivated = (
+                ModifierDefinition.objects.filter(group=group_obj, is_active=True)
+                .exclude(key__in=yaml_mod_keys)
+                .update(is_active=False)
+            )
+            summary["defs_deactivated"] += deactivated
+
+        # Deactivate groups removed from YAML (never delete)
+        deactivated_groups = (
+            ModifierGroup.objects.filter(catalog=catalog_obj, is_active=True)
+            .exclude(key__in=yaml_group_keys)
             .update(is_active=False)
         )
-        summary["defs_deactivated"] += deactivated
-
-    # Deactivate groups removed from YAML (never delete)
-    deactivated_groups = (
-        ModifierGroup.objects.filter(catalog=catalog_obj, is_active=True)
-        .exclude(key__in=yaml_group_keys)
-        .update(is_active=False)
-    )
-    summary["groups_deactivated"] += deactivated_groups
+        summary["groups_deactivated"] += deactivated_groups
 
     return summary

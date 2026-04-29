@@ -1,5 +1,7 @@
 # chatlab/checks.py
 
+from collections import defaultdict
+
 from django.core.checks import Error, Warning, register
 
 
@@ -40,6 +42,24 @@ def check_chatlab_modifier_catalog(app_configs, **kwargs):
                     f"Modifier group {group.key!r} has duplicate modifier keys.",
                     hint=f"Modifier keys found: {mod_keys!r}",
                     id="chatlab.E003",
+                )
+            )
+
+    modifier_key_groups = defaultdict(list)
+    for group in catalog.groups:
+        for modifier in group.modifiers:
+            modifier_key_groups[modifier.key].append(group.key)
+
+    for modifier_key, group_keys in modifier_key_groups.items():
+        if len(group_keys) > 1:
+            errors.append(
+                Error(
+                    f"ChatLab modifier catalog has duplicate modifier key {modifier_key!r} across groups.",
+                    hint=(
+                        f"Modifier key {modifier_key!r} appears in groups: {group_keys!r}. "
+                        "Modifier keys must be globally unique within a lab catalog."
+                    ),
+                    id="chatlab.E004",
                 )
             )
 

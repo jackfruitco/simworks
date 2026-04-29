@@ -18,7 +18,7 @@ class TestSyncLabModifiers:
         from apps.simcore.models import ModifierCatalog
         from apps.simcore.modifiers.syncer import sync_lab_modifiers
 
-        # Data migration may have seeded chatlab; clear it first to test creation path
+        # Start empty to test the explicit management-command sync path.
         ModifierCatalog.objects.filter(lab_type="chatlab").delete()
         assert not ModifierCatalog.objects.filter(lab_type="chatlab").exists()
         sync_lab_modifiers("chatlab")
@@ -43,6 +43,27 @@ class TestSyncLabModifiers:
         assert summary["defs_created"] == 6
         assert summary["groups_updated"] == 0
         assert summary["defs_updated"] == 0
+
+    def test_live_sync_rolls_back_partial_writes(self):
+        from unittest.mock import patch
+
+        from apps.simcore.models import ModifierCatalog, ModifierGroup
+        from apps.simcore.modifiers.syncer import sync_lab_modifiers
+
+        ModifierCatalog.objects.filter(lab_type="chatlab").delete()
+
+        with (
+            patch.object(
+                ModifierGroup.objects,
+                "get_or_create",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            sync_lab_modifiers("chatlab")
+
+        assert not ModifierCatalog.objects.filter(lab_type="chatlab").exists()
+        assert not ModifierGroup.objects.filter(catalog__lab_type="chatlab").exists()
 
     def test_is_idempotent(self):
         from apps.simcore.models import ModifierCatalog, ModifierDefinition, ModifierGroup

@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ModifierDefinitionSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key: str
     label: str
     description: str
@@ -14,11 +16,15 @@ class ModifierDefinitionSchema(BaseModel):
 
 
 class SelectionConfigSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["single", "multiple"]
     required: bool = False
 
 
 class ModifierGroupSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key: str
     label: str
     description: str
@@ -27,6 +33,8 @@ class ModifierGroupSchema(BaseModel):
 
 
 class ModifierCatalogSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     lab: str
     version: int
     groups: list[ModifierGroupSchema]

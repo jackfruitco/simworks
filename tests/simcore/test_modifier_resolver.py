@@ -164,9 +164,7 @@ class TestResolveModifiers:
     def test_ignores_inactive_required_group(self):
         from apps.simcore.models import ModifierGroup
 
-        ModifierGroup.objects.filter(key="clinical_scenario").update(
-            required=True, is_active=False
-        )
+        ModifierGroup.objects.filter(key="clinical_scenario").update(required=True, is_active=False)
 
         resolved = resolve_modifiers("chatlab", [])
         assert resolved == []

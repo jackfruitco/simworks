@@ -98,7 +98,7 @@ class TestChatLabSystemCheck:
         from apps.chatlab.checks import check_chatlab_modifier_catalog
         from apps.simcore.models import ModifierCatalog
 
-        # Data migration seeds chatlab; remove it to test the warning path
+        # The management command is the supported DB seed path; absent rows warn.
         ModifierCatalog.objects.filter(lab_type="chatlab").delete()
         errors = check_chatlab_modifier_catalog(None)
         ids = [e.id for e in errors]
@@ -122,3 +122,102 @@ class TestChatLabSystemCheck:
         finally:
             app_config.path = original_path
             _clear_cache()
+
+    def test_check_fails_on_duplicate_modifier_keys_within_group(self, monkeypatch, seed_chatlab):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.modifiers.schemas import (
+            ModifierCatalogSchema,
+            ModifierDefinitionSchema,
+            ModifierGroupSchema,
+            SelectionConfigSchema,
+        )
+
+        catalog = ModifierCatalogSchema(
+            lab="chatlab",
+            version=1,
+            groups=[
+                ModifierGroupSchema(
+                    key="clinical_scenario",
+                    label="Clinical Scenario",
+                    description="",
+                    selection=SelectionConfigSchema(mode="single", required=False),
+                    modifiers=[
+                        ModifierDefinitionSchema(
+                            key="duplicate",
+                            label="Duplicate One",
+                            description="",
+                            prompt_fragment="One.",
+                        ),
+                        ModifierDefinitionSchema(
+                            key="duplicate",
+                            label="Duplicate Two",
+                            description="",
+                            prompt_fragment="Two.",
+                        ),
+                    ],
+                )
+            ],
+        )
+        monkeypatch.setattr(
+            "apps.simcore.modifiers.loader.load_lab_modifier_catalog",
+            lambda lab_type: catalog,
+        )
+
+        errors = check_chatlab_modifier_catalog(None)
+
+        assert any(error.id == "chatlab.E003" for error in errors)
+
+    def test_check_fails_on_duplicate_modifier_keys_across_groups(self, monkeypatch, seed_chatlab):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.modifiers.schemas import (
+            ModifierCatalogSchema,
+            ModifierDefinitionSchema,
+            ModifierGroupSchema,
+            SelectionConfigSchema,
+        )
+
+        catalog = ModifierCatalogSchema(
+            lab="chatlab",
+            version=1,
+            groups=[
+                ModifierGroupSchema(
+                    key="clinical_scenario",
+                    label="Clinical Scenario",
+                    description="",
+                    selection=SelectionConfigSchema(mode="single", required=False),
+                    modifiers=[
+                        ModifierDefinitionSchema(
+                            key="shared",
+                            label="Shared Scenario",
+                            description="",
+                            prompt_fragment="Scenario.",
+                        ),
+                    ],
+                ),
+                ModifierGroupSchema(
+                    key="clinical_duration",
+                    label="Clinical Duration",
+                    description="",
+                    selection=SelectionConfigSchema(mode="single", required=False),
+                    modifiers=[
+                        ModifierDefinitionSchema(
+                            key="shared",
+                            label="Shared Duration",
+                            description="",
+                            prompt_fragment="Duration.",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        monkeypatch.setattr(
+            "apps.simcore.modifiers.loader.load_lab_modifier_catalog",
+            lambda lab_type: catalog,
+        )
+
+        errors = check_chatlab_modifier_catalog(None)
+
+        duplicate_error = next(error for error in errors if error.id == "chatlab.E004")
+        assert "shared" in duplicate_error.msg
+        assert "clinical_scenario" in duplicate_error.hint
+        assert "clinical_duration" in duplicate_error.hint
