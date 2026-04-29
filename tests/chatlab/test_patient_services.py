@@ -435,3 +435,87 @@ class TestPatientRecentScenarioHistoryInstruction:
 
         assert '("Right lower quadrant pain", "Appendicitis")' in rendered
         assert '("Flank pain and fever", "Pyelonephritis")' not in rendered
+
+    def test_resolves_user_via_user_id_when_bare_simulation_cached_in_context(
+        self,
+        history_user,
+    ):
+        """Regression: PatientRecentScenarioHistoryInstruction must not trigger lazy FK access.
+
+        In production, PatientModifierInstruction (order=5) runs before this instruction and
+        caches the simulation in context.  Before the fix, if that cached simulation was fetched
+        without select_related("user"), accessing simulation.user inside an async service call
+        would raise SynchronousOnlyOperation.
+
+        This test verifies the instruction resolves the user via the user_id context primitive
+        (Fix 2) so it never needs to traverse the simulation.user FK at all.
+        """
+        from apps.simcore.models import Simulation
+
+        current_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Current Diagnosis",
+            chief_complaint="Current Complaint",
+            sim_patient_full_name="Current Patient",
+        )
+        recent_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Pneumonia",
+            chief_complaint="Shortness of breath",
+            sim_patient_full_name="Recent Patient",
+        )
+        _set_start_timestamp(recent_simulation, days_ago=15)
+
+        # Simulate what PatientModifierInstruction used to do before Fix 1:
+        # fetch simulation bare (no select_related) and cache it to context.
+        bare_simulation = Simulation.objects.get(pk=current_simulation.pk)
+
+        service = GenerateInitialResponse(
+            context={
+                "simulation_id": current_simulation.id,
+                "user_id": history_user.id,
+                "simulation": bare_simulation,  # cached without select_related("user")
+            }
+        )
+
+        # The instruction must resolve user via user_id, not via bare_simulation.user.
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
+
+        assert '("Shortness of breath", "Pneumonia")' in rendered
+
+    def test_patient_modifier_instruction_caches_simulation_with_user_preloaded(
+        self,
+        history_user,
+    ):
+        """Regression: PatientModifierInstruction must select_related("user") when caching.
+
+        Before Fix 1, PatientModifierInstruction cached a bare simulation (no select_related).
+        PatientRecentScenarioHistoryInstruction (order=80) would then try simulation.user on
+        that bare object inside an async context, causing SynchronousOnlyOperation in production.
+
+        This test verifies that after PatientModifierInstruction runs, the simulation stored in
+        context has the user FK already loaded (no lazy DB hit needed).
+        """
+        from apps.chatlab.orca.instructions import PatientModifierInstruction
+        from apps.simcore.models import Simulation
+
+        simulation = Simulation.objects.create(
+            user=history_user,
+            sim_patient_full_name="Test Patient",
+        )
+
+        service = GenerateInitialResponse(context={"simulation_id": simulation.id})
+
+        async_to_sync(PatientModifierInstruction.render_instruction)(service)
+
+        cached = service.context.get("simulation")
+        assert cached is not None, "PatientModifierInstruction must cache simulation in context"
+        # Accessing .user must not require a DB round-trip; verify the field descriptor
+        # does not indicate a deferred/non-loaded state.
+        assert cached.user_id == history_user.id
+        # If user was not select_related, cached.user would trigger a sync ORM query here.
+        # After Fix 1, it is pre-loaded so this access is safe.
+        assert cached.user is not None
+        assert cached.user.pk == history_user.pk

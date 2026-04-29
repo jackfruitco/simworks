@@ -33,4 +33,13 @@ else
   echo "Skipping default role creation."
 fi
 
+if [ "${DJANGO_SYNC_LAB_MODIFIERS:-0}" = "1" ]; then
+  echo
+  echo "Syncing lab modifier catalogs..."
+  python manage.py sync_lab_modifiers --lab chatlab
+else
+  echo
+  echo "Skipping lab modifier sync."
+fi
+
 exec "$@"
