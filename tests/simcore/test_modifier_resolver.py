@@ -173,6 +173,60 @@ class TestResolveModifiers:
         with pytest.raises(UnknownModifierError, match="nonexistent"):
             resolve_modifiers("chatlab", ["nonexistent_xyz"])
 
+    def test_raises_for_duplicate_active_db_keys_across_groups(self):
+        from django.core.exceptions import ImproperlyConfigured
+
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=True,
+        )
+
+        with pytest.raises(ImproperlyConfigured, match="Duplicate active modifier keys"):
+            resolve_modifiers("chatlab", ["musculoskeletal"])
+
+    def test_inactive_duplicate_db_key_does_not_raise(self):
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Inactive Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=False,
+        )
+
+        resolved = resolve_modifiers("chatlab", ["musculoskeletal"])
+        assert len(resolved) == 1
+        assert resolved[0].group_key == "clinical_scenario"
+
+    def test_duplicate_db_key_in_inactive_group_does_not_raise(self):
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        duration_group.is_active = False
+        duration_group.save(update_fields=["is_active"])
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Inactive Group Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=True,
+        )
+
+        resolved = resolve_modifiers("chatlab", ["musculoskeletal"])
+        assert len(resolved) == 1
+        assert resolved[0].group_key == "clinical_scenario"
+
     def test_raises_for_single_select_violation(self):
         with pytest.raises(SelectionConstraintError, match="single-select"):
             resolve_modifiers("chatlab", ["musculoskeletal", "respiratory"])

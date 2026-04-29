@@ -65,9 +65,14 @@ def check_chatlab_modifier_catalog(app_configs, **kwargs):
 
     # Tolerant DB check — warn if catalog not seeded, but don't block startup
     try:
-        from apps.simcore.models import ModifierCatalog
+        from apps.simcore.models import ModifierCatalog, ModifierDefinition
 
-        if not ModifierCatalog.objects.filter(lab_type="chatlab", is_active=True).exists():
+        catalog_obj = ModifierCatalog.objects.filter(
+            lab_type="chatlab",
+            is_active=True,
+        ).first()
+
+        if catalog_obj is None:
             errors.append(
                 Warning(
                     "ChatLab modifier catalog is not seeded in the database.",
@@ -75,6 +80,32 @@ def check_chatlab_modifier_catalog(app_configs, **kwargs):
                     id="chatlab.W001",
                 )
             )
+        else:
+            key_groups = defaultdict(list)
+            modifiers = (
+                ModifierDefinition.objects.filter(
+                    group__catalog=catalog_obj,
+                    group__is_active=True,
+                    is_active=True,
+                )
+                .select_related("group")
+                .order_by("key", "group__key")
+            )
+            for modifier in modifiers:
+                key_groups[modifier.key].append(modifier.group.key)
+
+            for key, groups in key_groups.items():
+                if len(set(groups)) > 1:
+                    errors.append(
+                        Error(
+                            f"ChatLab DB modifier catalog has duplicate active modifier key {key!r} across groups.",
+                            hint=(
+                                f"Modifier key {key!r} appears in active groups: {groups!r}. "
+                                "Modifier keys must be globally unique within a lab catalog."
+                            ),
+                            id="chatlab.E005",
+                        )
+                    )
     except Exception:
         pass  # DB not available yet (pre-migration), skip silently
 

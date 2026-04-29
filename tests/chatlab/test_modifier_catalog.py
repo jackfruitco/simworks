@@ -221,3 +221,62 @@ class TestChatLabSystemCheck:
         assert "shared" in duplicate_error.msg
         assert "clinical_scenario" in duplicate_error.hint
         assert "clinical_duration" in duplicate_error.hint
+
+    def test_check_fails_on_duplicate_active_db_modifier_keys_across_groups(self, seed_chatlab):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=True,
+        )
+
+        errors = check_chatlab_modifier_catalog(None)
+
+        duplicate_error = next(error for error in errors if error.id == "chatlab.E005")
+        assert "musculoskeletal" in duplicate_error.msg
+        assert "clinical_scenario" in duplicate_error.hint
+        assert "clinical_duration" in duplicate_error.hint
+
+    def test_check_ignores_inactive_duplicate_db_modifier_key(self, seed_chatlab):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Inactive Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=False,
+        )
+
+        errors = check_chatlab_modifier_catalog(None)
+
+        assert not any(error.id == "chatlab.E005" for error in errors)
+
+    def test_check_ignores_duplicate_db_modifier_key_in_inactive_group(self, seed_chatlab):
+        from apps.chatlab.checks import check_chatlab_modifier_catalog
+        from apps.simcore.models import ModifierDefinition, ModifierGroup
+
+        duration_group = ModifierGroup.objects.get(key="clinical_duration")
+        duration_group.is_active = False
+        duration_group.save(update_fields=["is_active"])
+        ModifierDefinition.objects.create(
+            group=duration_group,
+            key="musculoskeletal",
+            label="Inactive Group Duplicate Musculoskeletal",
+            description="",
+            prompt_fragment="Duplicate.",
+            is_active=True,
+        )
+
+        errors = check_chatlab_modifier_catalog(None)
+
+        assert not any(error.id == "chatlab.E005" for error in errors)

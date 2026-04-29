@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 from .schemas import ModifierDefinitionSchema, ResolvedModifier
 
 
@@ -86,6 +88,8 @@ def get_modifier(lab_type: str, key: str) -> ModifierDefinitionSchema | None:
 
 
 def resolve_modifiers(lab_type: str, keys: list[str]) -> list[ResolvedModifier]:
+    from django.core.exceptions import ImproperlyConfigured
+
     from apps.simcore.models import ModifierDefinition, ModifierGroup
 
     catalog = _get_active_catalog(lab_type)
@@ -99,6 +103,23 @@ def resolve_modifiers(lab_type: str, keys: list[str]) -> list[ResolvedModifier]:
         if keys
         else []
     )
+
+    mods_by_key = defaultdict(list)
+    for mod in mods:
+        mods_by_key[mod.key].append(mod)
+
+    duplicates = {
+        key: values
+        for key, values in mods_by_key.items()
+        if len({mod.group_id for mod in values}) > 1
+    }
+    if duplicates:
+        duplicate_keys = sorted(duplicates)
+        raise ImproperlyConfigured(
+            f"Duplicate active modifier keys in DB catalog for lab_type={lab_type!r}: "
+            f"{duplicate_keys!r}. Modifier keys must be globally unique within a lab catalog."
+        )
+
     found_keys = {m.key: m for m in mods}
 
     unknown = [k for k in keys if k not in found_keys]
