@@ -9,7 +9,11 @@ from .lab_orders import (
     LabOrderSchemaContractInstruction,
     LabOrderTestListInstruction,
 )
-from .patient import PatientModifierInstruction, PatientNameInstruction, PatientRecentScenarioHistoryInstruction
+from .patient import (
+    PatientModifierInstruction,
+    PatientNameInstruction,
+    PatientRecentScenarioHistoryInstruction,
+)
 from .stitch import (
     StitchConversationContextInstruction,
     StitchDebriefInstruction,

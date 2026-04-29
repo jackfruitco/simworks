@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 from apps.chatlab.orca.instructions import (
-    PatientModifierInstruction,
     PatientRecentScenarioHistoryInstruction,
     patient as patient_instruction_module,
 )

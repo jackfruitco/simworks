@@ -1,6 +1,5 @@
 """Integration tests for the ChatLab modifier catalog."""
 
-
 import pytest
 
 

@@ -152,9 +152,7 @@ class ModifierCatalog(models.Model):
         verbose_name = "Modifier Catalog"
         verbose_name_plural = "Modifier Catalogs"
         constraints = [
-            models.UniqueConstraint(
-                fields=["lab_type"], name="uniq_modifier_catalog_lab_type"
-            ),
+            models.UniqueConstraint(fields=["lab_type"], name="uniq_modifier_catalog_lab_type"),
         ]
 
     def __str__(self):
@@ -164,9 +162,7 @@ class ModifierCatalog(models.Model):
 class ModifierGroup(models.Model):
     """A grouping of related modifiers within a catalog."""
 
-    catalog = models.ForeignKey(
-        ModifierCatalog, on_delete=models.CASCADE, related_name="groups"
-    )
+    catalog = models.ForeignKey(ModifierCatalog, on_delete=models.CASCADE, related_name="groups")
     key = models.CharField(max_length=100)
     label = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -198,9 +194,7 @@ class ModifierGroup(models.Model):
 class ModifierDefinition(models.Model):
     """A single modifier option within a group."""
 
-    group = models.ForeignKey(
-        ModifierGroup, on_delete=models.CASCADE, related_name="modifiers"
-    )
+    group = models.ForeignKey(ModifierGroup, on_delete=models.CASCADE, related_name="modifiers")
     key = models.CharField(max_length=100)
     label = models.CharField(max_length=200)
     description = models.TextField(blank=True)

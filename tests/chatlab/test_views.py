@@ -323,7 +323,9 @@ class TestCreateSimulationModifierValidation:
         client.force_login(user)
         with patch(
             "apps.chatlab.views.create_new_simulation",
-            new=AsyncMock(side_effect=UnknownModifierError("Unknown modifier keys: ['nonexistent_key_xyz']")),
+            new=AsyncMock(
+                side_effect=UnknownModifierError("Unknown modifier keys: ['nonexistent_key_xyz']")
+            ),
         ):
             response = client.get("/chatlab/simulation/create/?modifier=nonexistent_key_xyz")
         assert response.status_code == 400
