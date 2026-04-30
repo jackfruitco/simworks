@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "apps.privacy",
     "apps.trainerlab",
     "apps.feedback",
+    "apps.staffhub",
     "channels",  # For WebSocket support
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
