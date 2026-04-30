@@ -142,6 +142,7 @@ INSTALLED_APPS = [
     "apps.privacy",
     "apps.trainerlab",
     "apps.feedback",
+    "apps.staffhub",
     "orchestrai_django",
     "imagekit",
 ]

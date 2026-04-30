@@ -24,6 +24,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("billing/", include("apps.billing.urls", namespace="billing")),
     path("staff/", include("apps.accounts.staff_urls", namespace="staff")),
+    path("staff/", include("apps.staffhub.urls", namespace="staffhub")),
     path("chatlab/", include("apps.chatlab.urls")),
     path("trainerlab/", include("apps.trainerlab.urls")),
     path("staff/feedback/", include("apps.feedback.urls")),
