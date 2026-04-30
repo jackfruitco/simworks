@@ -291,11 +291,56 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             return
 
+        if self._is_self_typing_event(envelope):
+            logger.debug(
+                "chatlab.ws.typing_self_suppressed",
+                simulation_id=self.simulation_id,
+                user_id=getattr(self.scope.get("user"), "id", None),
+                channel_name=self.channel_name,
+                event_type=envelope.get("event_type"),
+                conversation_id=(envelope.get("payload") or {}).get("conversation_id"),
+            )
+            return
+
         if self.is_replaying:
             self.deferred_transient_events.append(envelope)
             return
 
         await self._send_envelope(envelope)
+
+    def _is_self_typing_event(self, envelope: dict[str, Any]) -> bool:
+        event_type = str(envelope.get("event_type") or "")
+        if event_type not in {TYPING_STARTED, TYPING_STOPPED}:
+            return False
+
+        payload = envelope.get("payload") or {}
+        if payload.get("actor_type") != "user":
+            return False
+
+        scope_user = self.scope.get("user")
+        current_user_id = getattr(scope_user, "id", None)
+        current_user_uuid = getattr(scope_user, "uuid", None)
+        current_user_email = getattr(scope_user, "email", None)
+
+        sender_id = payload.get("sender_id") or payload.get("actor_user_id")
+        if sender_id is not None and current_user_id is not None:
+            try:
+                if int(sender_id) == int(current_user_id):
+                    return True
+            except (TypeError, ValueError):
+                # Non-integer IDs may arrive from older clients; fall through to UUID/email checks.
+                pass
+
+        actor_user_uuid = payload.get("actor_user_uuid")
+        if actor_user_uuid and current_user_uuid and str(actor_user_uuid) == str(current_user_uuid):
+            return True
+
+        payload_user = payload.get("user")
+        return bool(
+            payload_user
+            and current_user_email
+            and str(payload_user).lower() == str(current_user_email).lower()
+        )
 
     async def _handle_session_event(self, inbound) -> None:
         if self.session_established:
@@ -584,10 +629,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user_label = getattr(scope_user, "email", None) or SYSTEM_USER
         display_initials = await sync_to_async(get_user_initials)(user_label)
         event_type = TYPING_STARTED if started else TYPING_STOPPED
+        user_id = getattr(scope_user, "id", None)
+        user_uuid = getattr(scope_user, "uuid", None)
         event_payload = {
             "conversation_id": payload.get("conversation_id"),
             "user": user_label,
             "display_initials": display_initials,
+            "actor_type": "user",
+            "sender_id": user_id,
+            "actor_user_id": user_id,
+            "actor_user_uuid": str(user_uuid) if user_uuid else None,
         }
         envelope = build_realtime_envelope(
             event_type,
@@ -626,6 +677,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "conversation_id": None,
                 "user": SYSTEM_USER,
                 "display_initials": self.simulation.sim_patient_initials,
+                "actor_type": "system",
+                "sender_id": None,
+                "actor_user_id": None,
+                "actor_user_uuid": None,
             },
             correlation_id=correlation_id,
         )

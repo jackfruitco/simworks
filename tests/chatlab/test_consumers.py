@@ -167,36 +167,77 @@ class TestChatConsumerContract:
         await communicator.disconnect()
 
     async def test_typing_events_are_live_only_and_enveloped(self):
-        simulation, user = await create_simulation_and_user(in_progress=True)
-        communicator = await connect_and_hello(simulation, user)
+        from django.contrib.auth import get_user_model
 
-        ready = await receive_json(communicator)
-        assert ready["event_type"] == "session.ready"
+        simulation, sender_user = await create_simulation_and_user(in_progress=True)
 
-        initial_typing = await receive_json(communicator)
+        User = get_user_model()
+        observer_user = await User.objects.acreate(
+            email=f"chatws_observer_{uuid4().hex[:8]}@test.com",
+            role=sender_user.role,
+            is_staff=True,
+        )
+
+        sender = await connect_and_hello(simulation, sender_user)
+        sender_ready = await receive_json(sender)
+        assert sender_ready["event_type"] == "session.ready"
+
+        # In-progress simulations with no messages emit initial system typing on session hello.
+        initial_typing = await receive_json(sender)
         assert initial_typing["event_type"] == "typing.started"
+        assert initial_typing["payload"]["actor_type"] == "system"
 
-        await communicator.send_json_to(
+        observer = await connect_and_hello(simulation, observer_user)
+        observer_ready = await receive_json(observer)
+        assert observer_ready["event_type"] == "session.ready"
+
+        observer_initial_typing = await receive_json(observer)
+        assert observer_initial_typing["event_type"] == "typing.started"
+        assert observer_initial_typing["payload"]["actor_type"] == "system"
+
+        sender_observer_initial_typing = await receive_json(sender)
+        assert sender_observer_initial_typing["event_type"] == "typing.started"
+        assert sender_observer_initial_typing["payload"]["actor_type"] == "system"
+
+        await sender.send_json_to(
             {
                 "event_type": "typing.started",
                 "payload": {"conversation_id": 123},
             }
         )
-        typing_started = await receive_json(communicator)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await receive_json(sender, timeout=0.2)
+
+        typing_started = await receive_json(observer)
         assert typing_started["event_type"] == "typing.started"
         assert typing_started["payload"]["conversation_id"] == 123
+        assert typing_started["payload"]["actor_type"] == "user"
+        assert typing_started["payload"]["sender_id"] == sender_user.id
+        assert typing_started["payload"]["actor_user_id"] == sender_user.id
+        expected_uuid = str(sender_user.uuid) if getattr(sender_user, "uuid", None) else None
+        assert typing_started["payload"]["actor_user_uuid"] == expected_uuid
+        assert typing_started["payload"]["user"] == sender_user.email
+        assert "display_initials" in typing_started["payload"]
 
-        await communicator.send_json_to(
+        await sender.send_json_to(
             {
                 "event_type": "typing.stopped",
                 "payload": {"conversation_id": 123},
             }
         )
-        typing_stopped = await receive_json(communicator)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await receive_json(sender, timeout=0.2)
+
+        typing_stopped = await receive_json(observer)
         assert typing_stopped["event_type"] == "typing.stopped"
         assert typing_stopped["payload"]["conversation_id"] == 123
+        assert typing_stopped["payload"]["actor_type"] == "user"
+        assert typing_stopped["payload"]["sender_id"] == sender_user.id
 
-        await communicator.disconnect()
+        await sender.disconnect()
+        await observer.disconnect()
 
     async def test_resume_replays_durable_events_after_anchor_and_excludes_anchor(self):
         simulation, user = await create_simulation_and_user()
@@ -265,6 +306,71 @@ class TestChatConsumerContract:
         assert response["payload"]["reason"] == "unknown_last_event_id"
 
         await communicator.disconnect()
+
+    async def test_chatlab_transient_suppresses_self_user_typing(self):
+        simulation, user = await create_simulation_and_user(in_progress=True)
+        consumer = ChatConsumer()
+        consumer.scope = {"user": user}
+        consumer.simulation_id = simulation.id
+        consumer.channel_name = "test-channel"
+        consumer._send_envelope = AsyncMock()
+
+        envelope = chat_realtime.build_realtime_envelope(
+            chat_realtime.TYPING_STARTED,
+            {
+                "conversation_id": 123,
+                "actor_type": "user",
+                "sender_id": user.id,
+                "actor_user_id": user.id,
+                "actor_user_uuid": str(getattr(user, "uuid", ""))
+                if getattr(user, "uuid", None)
+                else None,
+                "user": user.email,
+                "display_initials": "TU",
+            },
+        )
+
+        await consumer.chatlab_transient({"event": envelope})
+
+        consumer._send_envelope.assert_not_awaited()
+
+    async def test_chatlab_transient_allows_system_typing(self):
+        simulation, user = await create_simulation_and_user(in_progress=True)
+        consumer = ChatConsumer()
+        consumer.scope = {"user": user}
+        consumer.simulation_id = simulation.id
+        consumer.channel_name = "test-channel"
+        consumer._send_envelope = AsyncMock()
+
+        envelope = chat_realtime.build_realtime_envelope(
+            chat_realtime.TYPING_STARTED,
+            {
+                "conversation_id": None,
+                "actor_type": "system",
+                "sender_id": None,
+                "actor_user_id": None,
+                "actor_user_uuid": None,
+                "user": "system@medsim.local",
+                "display_initials": "TP",
+            },
+        )
+
+        await consumer.chatlab_transient({"event": envelope})
+
+        consumer._send_envelope.assert_awaited_once()
+
+    async def test_chatlab_transient_rejects_non_transient_events(self):
+        simulation, user = await create_simulation_and_user(in_progress=True)
+        consumer = ChatConsumer()
+        consumer.scope = {"user": user}
+        consumer.simulation_id = simulation.id
+        consumer.channel_name = "test-channel"
+        consumer._send_envelope = AsyncMock()
+
+        envelope = chat_realtime.build_realtime_envelope(chat_realtime.PING, {"ok": True})
+        await consumer.chatlab_transient({"event": envelope})
+
+        consumer._send_envelope.assert_not_awaited()
 
     async def test_resume_deduplicates_live_events_buffered_during_replay(self, monkeypatch):
         simulation, user = await create_simulation_and_user()
