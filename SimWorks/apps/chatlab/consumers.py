@@ -308,7 +308,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self._send_envelope(envelope)
 
-
     def _is_self_typing_event(self, envelope: dict[str, Any]) -> bool:
         event_type = str(envelope.get("event_type") or "")
         if event_type not in {TYPING_STARTED, TYPING_STOPPED}:
@@ -329,19 +328,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if int(sender_id) == int(current_user_id):
                     return True
             except (TypeError, ValueError):
+                # Non-integer IDs may arrive from older clients; fall through to UUID/email checks.
                 pass
 
         actor_user_uuid = payload.get("actor_user_uuid")
-        if actor_user_uuid and current_user_uuid:
-            if str(actor_user_uuid) == str(current_user_uuid):
-                return True
+        if actor_user_uuid and current_user_uuid and str(actor_user_uuid) == str(current_user_uuid):
+            return True
 
         payload_user = payload.get("user")
-        if payload_user and current_user_email:
-            if str(payload_user).lower() == str(current_user_email).lower():
-                return True
-
-        return False
+        return bool(
+            payload_user
+            and current_user_email
+            and str(payload_user).lower() == str(current_user_email).lower()
+        )
 
     async def _handle_session_event(self, inbound) -> None:
         if self.session_established:

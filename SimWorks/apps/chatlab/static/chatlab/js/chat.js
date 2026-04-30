@@ -1213,28 +1213,40 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
         },
 
         _typingUserKey(userData) {
-            return userData?.actorUserUuid || userData?.actorUserId || userData?.senderId || userData?.user || null;
+            return (
+                userData?.actor_user_uuid ||
+                userData?.actorUserUuid ||
+                userData?.actor_user_id ||
+                userData?.actorUserId ||
+                userData?.sender_id ||
+                userData?.senderId ||
+                userData?.user ||
+                null
+            );
         },
 
         removeTypingUser(data) {
-            const conversationId = this._normalizeConversationId(data?.conversation_id ?? this.activeConversationId);
+            const conversationId = this._normalizeConversationId(
+                data?.conversation_id ?? this.activeConversationId
+            );
             if (!conversationId) return;
 
-            const existingUsers = this.typingUsersByConversation[conversationId] || [];
-            const targetSenderId = data?.sender_id ?? data?.actor_user_id ?? data?.senderId ?? data?.actorUserId ?? null;
-            const targetUser = data?.user || null;
-            const nextUsers = existingUsers.filter((u) => {
-                if (targetSenderId !== null && targetSenderId !== undefined) {
-                    return String(u.senderId ?? u.actorUserId ?? '') !== String(targetSenderId);
-                }
-                return u.user !== targetUser;
-            });
+            const targetKey = this._typingUserKey(data);
+            if (!targetKey) return;
 
-            this.typingUsersByConversation = {
-                ...this.typingUsersByConversation,
-                [conversationId]: nextUsers,
-            };
-            if (!nextUsers.length) delete this.typingUsersByConversation[conversationId];
+            const existingUsers = this.typingUsersByConversation[conversationId] || [];
+            const nextUsers = existingUsers.filter(
+                user => this._typingUserKey(user) !== targetKey
+            );
+
+            const nextByConversation = { ...this.typingUsersByConversation };
+            if (nextUsers.length) {
+                nextByConversation[conversationId] = nextUsers;
+            } else {
+                delete nextByConversation[conversationId];
+            }
+
+            this.typingUsersByConversation = nextByConversation;
         },
 
         updateTypingUsers(data, started = true) {
