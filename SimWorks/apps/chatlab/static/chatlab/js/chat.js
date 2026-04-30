@@ -141,7 +141,8 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
 
         get activeTypingUsers() {
             if (!this.activeConversationId) return [];
-            return this.typingUsersByConversation[this.activeConversationId] || [];
+            const users = this.typingUsersByConversation[this.activeConversationId] || [];
+            return users.filter(user => !this._isSelfTypingPayload(user));
         },
 
         init() {
@@ -564,13 +565,37 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             });
         },
 
-        handleTyping(data, started) {
+        _isSelfTypingPayload(data) {
+            if (!data) return false;
+
+            const senderIdRaw = data.sender_id ?? data.actor_user_id ?? data.senderId ?? data.actorUserId;
+            const senderId = Number.parseInt(senderIdRaw, 10);
+
             if (
-                data.user !== this.currentUserEmail &&
-                !(data.sender_id && Number.parseInt(data.sender_id, 10) === this.currentUserId)
+                Number.isFinite(senderId) &&
+                Number.isFinite(this.currentUserId) &&
+                senderId === this.currentUserId
             ) {
-                this.updateTypingUsers(data, started);
+                return true;
             }
+
+            const payloadUser = data.user ? String(data.user).toLowerCase() : '';
+            const currentEmail = this.currentUserEmail ? String(this.currentUserEmail).toLowerCase() : '';
+
+            if (payloadUser && currentEmail && payloadUser === currentEmail) {
+                return true;
+            }
+
+            return false;
+        },
+
+        handleTyping(data, started) {
+            if (this._isSelfTypingPayload(data)) {
+                this.removeTypingUser(data);
+                return;
+            }
+
+            this.updateTypingUsers(data, started);
         },
 
         handleSocketConnected() {
@@ -1187,22 +1212,58 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             });
         },
 
+        _typingUserKey(userData) {
+            return userData?.actorUserUuid || userData?.actorUserId || userData?.senderId || userData?.user || null;
+        },
+
+        removeTypingUser(data) {
+            const conversationId = this._normalizeConversationId(data?.conversation_id ?? this.activeConversationId);
+            if (!conversationId) return;
+
+            const existingUsers = this.typingUsersByConversation[conversationId] || [];
+            const targetSenderId = data?.sender_id ?? data?.actor_user_id ?? data?.senderId ?? data?.actorUserId ?? null;
+            const targetUser = data?.user || null;
+            const nextUsers = existingUsers.filter((u) => {
+                if (targetSenderId !== null && targetSenderId !== undefined) {
+                    return String(u.senderId ?? u.actorUserId ?? '') !== String(targetSenderId);
+                }
+                return u.user !== targetUser;
+            });
+
+            this.typingUsersByConversation = {
+                ...this.typingUsersByConversation,
+                [conversationId]: nextUsers,
+            };
+            if (!nextUsers.length) delete this.typingUsersByConversation[conversationId];
+        },
+
         updateTypingUsers(data, started = true) {
             const conversationId = this._normalizeConversationId(
                 data.conversation_id ?? this.activeConversationId
             );
             if (!conversationId) return;
 
-            const displayInitials = data.display_initials || 'Unk';
+            const typingUser = {
+                user: data.user,
+                displayInitials: data.display_initials || data.displayInitials || 'Unk',
+                senderId: data.sender_id ?? data.actor_user_id ?? null,
+                actorUserId: data.actor_user_id ?? data.sender_id ?? null,
+                actorUserUuid: data.actor_user_uuid ?? null,
+                actorType: data.actor_type ?? 'user',
+            };
+            const typingKey = this._typingUserKey(typingUser);
             const existingUsers = this.typingUsersByConversation[conversationId] || [];
             let nextUsers = existingUsers;
 
             if (!started) {
-                nextUsers = existingUsers.filter(u => u.user !== data.user);
+                nextUsers = existingUsers.filter(u => this._typingUserKey(u) !== typingKey);
             } else {
-                const alreadyTyping = existingUsers.some(u => u.user === data.user);
-                if (!alreadyTyping) {
-                    nextUsers = [...existingUsers, { user: data.user, displayInitials }];
+                const existingIndex = existingUsers.findIndex(u => this._typingUserKey(u) === typingKey);
+                if (existingIndex >= 0) {
+                    nextUsers = [...existingUsers];
+                    nextUsers[existingIndex] = { ...nextUsers[existingIndex], ...typingUser };
+                } else {
+                    nextUsers = [...existingUsers, typingUser];
                 }
             }
 
