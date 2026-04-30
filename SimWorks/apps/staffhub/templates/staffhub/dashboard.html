@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Dashboard - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+    <section class="rounded-lg border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <div class="flex flex-col gap-2">
+            <h1 class="text-2xl font-bold text-content sm:text-3xl">Staff Dashboard</h1>
+            <p class="text-sm text-content-secondary">Internal tools and operational links.</p>
+        </div>
+    </section>
+
+    <section class="mt-4 rounded-lg border border-border bg-surface p-4">
+        <div class="text-xs font-semibold uppercase text-content-secondary">Environment</div>
+        <dl class="mt-2 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <div>
+                <dt class="text-xs text-content-secondary">Environment</dt>
+                <dd class="font-mono text-sm">{{ status.environment|default:"unknown" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Version</dt>
+                <dd class="font-mono text-sm">{{ status.version|default:"unknown" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Build</dt>
+                <dd class="font-mono text-sm">
+                    {% if status.commit_short %}sha-{{ status.commit_short }}{% else %}unknown{% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Build time</dt>
+                <dd class="font-mono text-sm">{{ status.build_time|default:"unknown" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">OrchestrAI</dt>
+                <dd class="font-mono text-sm">{{ status.orchestrai_version|default:"unknown" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Debug</dt>
+                <dd class="font-mono text-sm">{{ status.debug|yesno:"true,false" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Database</dt>
+                <dd class="font-mono text-sm">{{ status.database }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">Redis</dt>
+                <dd class="font-mono text-sm">{{ status.redis }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs text-content-secondary">OpenAI configured</dt>
+                <dd class="font-mono text-sm">{{ status.openai_configured|yesno:"yes,no" }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    {% for group_name, group_links in groups.items %}
+    <section class="mt-6">
+        <h2 class="mb-3 text-lg font-semibold text-content">{{ group_name }}</h2>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {% for link in group_links %}
+            <a href="{{ link.url }}"
+               {% if link.external %}target="_blank" rel="noopener noreferrer"{% endif %}
+               class="block rounded-lg border border-border bg-surface p-4 hover:bg-surface-alt focus:outline-none focus:ring-2 focus:ring-jckfrt-olive">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="text-base font-semibold text-content">{{ link.label }}</div>
+                    <div class="flex items-center gap-1">
+                        {% if link.superuser_only %}
+                            <span class="rounded bg-yellow-100 px-2 py-0.5 text-xs font-semibold uppercase text-yellow-900">admin</span>
+                        {% endif %}
+                        {% if link.external %}
+                            <span class="iconify text-content-secondary" data-icon="mdi:open-in-new"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if link.description %}
+                    <p class="mt-1 text-sm text-content-secondary">{{ link.description }}</p>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+
+</div>
+{% endblock %}
