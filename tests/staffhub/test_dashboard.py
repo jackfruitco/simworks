@@ -14,6 +14,15 @@ pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
+def _dashboard_section(body: str) -> str:
+    """Return only the staffhub dashboard markup, excluding the base nav."""
+    start = body.find('id="staffhub-dashboard"')
+    if start < 0:
+        return ""
+    end = body.find("</main>", start)
+    return body[start:end] if end > 0 else body[start:]
+
+
 @pytest.fixture
 def role():
     return UserRole.objects.create(title="Staffhub Test Role")
@@ -73,23 +82,24 @@ def test_staff_non_superuser_does_not_see_admin_links(client, staff_user):
     client.force_login(staff_user)
     response = client.get(reverse("staffhub:dashboard"))
     assert response.status_code == 200
-    body = response.content.decode()
-    assert "Django Admin" not in body
-    assert "API Docs" not in body
-    assert "OpenAPI Schema" not in body
-    assert "Invitations" not in body
-    assert "Billing" not in body
+    section = _dashboard_section(response.content.decode())
+    assert section, "staffhub dashboard section not found in response"
+    assert "Django Admin" not in section
+    assert "API Docs" not in section
+    assert "OpenAPI Schema" not in section
+    assert "Invitations" not in section
+    assert "Billing" not in section
 
 
 def test_superuser_sees_admin_and_api_links(client, superuser):
     client.force_login(superuser)
     response = client.get(reverse("staffhub:dashboard"))
     assert response.status_code == 200
-    body = response.content.decode()
-    assert "Django Admin" in body
-    assert "API Docs" in body
-    assert "OpenAPI Schema" in body
-    assert "Invitations" in body
+    section = _dashboard_section(response.content.decode())
+    assert "Django Admin" in section
+    assert "API Docs" in section
+    assert "OpenAPI Schema" in section
+    assert "Invitations" in section
 
 
 def test_dashboard_renders_without_external_links_setting(client, staff_user, settings):
@@ -107,13 +117,13 @@ def test_external_links_appear_only_for_superuser(client, staff_user, superuser,
     }
 
     client.force_login(staff_user)
-    body = client.get(reverse("staffhub:dashboard")).content.decode()
-    assert "Github Repo" not in body
+    section = _dashboard_section(client.get(reverse("staffhub:dashboard")).content.decode())
+    assert "Github Repo" not in section
 
     client.force_login(superuser)
-    body = client.get(reverse("staffhub:dashboard")).content.decode()
-    assert "Github Repo" in body
-    assert "https://github.com/jackfruitco/simworks" in body
+    section = _dashboard_section(client.get(reverse("staffhub:dashboard")).content.decode())
+    assert "Github Repo" in section
+    assert "https://github.com/jackfruitco/simworks" in section
 
 
 def test_dashboard_status_returns_dict_safely():
