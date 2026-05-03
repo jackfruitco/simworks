@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from asgiref.sync import async_to_sync
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -119,6 +120,18 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     return parsed
 
 
+def get_runtime_debounce_seconds() -> float:
+    return float(getattr(settings, "TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS", 2.0))
+
+
+def get_runtime_min_interval_seconds() -> float:
+    return float(getattr(settings, "TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS", 8.0))
+
+
+def get_runtime_max_chained_turns() -> int:
+    return int(getattr(settings, "TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS", 2))
+
+
 def _sanitize_runtime_state_payload(state: dict[str, Any] | None) -> dict[str, Any]:
     return {
         key: value
@@ -155,6 +168,12 @@ def build_runtime_state_defaults(
         "pending_runtime_reasons": [],
         "currently_processing_reasons": [],
         "runtime_processing": False,
+        "active_service_call_id": "",
+        "active_started_at": None,
+        "pending_since": None,
+        "scheduled_runtime_task_run_at": None,
+        "last_runtime_call_at": None,
+        "chained_turn_count": 0,
         "intervention_effects": {},
         "last_runtime_enqueued_at": None,
         "last_runtime_completed_at": None,
@@ -1265,12 +1284,200 @@ def _schedule_tick(session: TrainerSession) -> None:
 
 
 def _schedule_runtime_turn(session_id: int) -> None:
+    schedule_runtime_turn_once(session_id=session_id, trigger_kind="runtime_requested")
+
+
+def _runtime_trigger_kind(reason_kind: str) -> str:
+    return {
+        "run_started": "run/start",
+        "run_resumed": "run/resume",
+        "tick": "run/tick",
+        "manual_tick": "manual_tick",
+        "adjustment": "adjust",
+        "steer_prompt": "steer_prompt",
+        "preset_applied": "preset_applied",
+        "intervention_recorded": "intervention_created",
+    }.get(reason_kind, reason_kind)
+
+
+def _runtime_trigger_delay_seconds(trigger_kind: str) -> float:
+    if trigger_kind in {"intervention_created", "runtime_follow_up"}:
+        return get_runtime_debounce_seconds()
+    return 0.0
+
+
+def _runtime_trigger_respects_min_interval(trigger_kind: str) -> bool:
+    return trigger_kind in {"run/tick", "scheduled_progression"}
+
+
+def _runtime_decision_log_name(decision: str) -> str:
+    return {
+        "coalesced": "trainerlab.runtime.schedule_coalesced",
+        "skipped_active_call": "trainerlab.runtime.skipped_active_call",
+    }.get(decision, "trainerlab.runtime.schedule_decision")
+
+
+def _log_runtime_schedule_decision(
+    *,
+    session: TrainerSession,
+    state: dict[str, Any],
+    trigger_kind: str,
+    decision: str,
+    trigger_event_id: int | str | None = None,
+    run_at: datetime | None = None,
+) -> None:
+    pending_reason_count = len(state.get("pending_runtime_reasons") or [])
+    active_service_call_id = state.get("active_service_call_id") or ""
+    logger.info(
+        _runtime_decision_log_name(decision),
+        simulation_id=session.simulation_id,
+        session_id=session.id,
+        run_id=session.id,
+        trigger_kind=trigger_kind,
+        trigger_event_id=trigger_event_id,
+        active_service_call_id=active_service_call_id,
+        pending_reason_count=pending_reason_count,
+        debounce_seconds=get_runtime_debounce_seconds(),
+        min_interval_seconds=get_runtime_min_interval_seconds(),
+        decision=decision,
+        scheduled_runtime_task_run_at=_iso_or_none(run_at),
+    )
+
+
+def _enqueue_runtime_turn_task(*, session_id: int, run_at: datetime | None) -> None:
     from .tasks import trainerlab_process_runtime_turn
 
     try:
-        trainerlab_process_runtime_turn.enqueue(session_id=session_id)
+        if run_at is not None and run_at > timezone.now():
+            trainerlab_process_runtime_turn.using(run_after=run_at).enqueue(session_id=session_id)
+        else:
+            trainerlab_process_runtime_turn.enqueue(session_id=session_id)
     except Exception:
         logger.exception("trainerlab.runtime.schedule_failed", session_id=session_id)
+
+
+def _schedule_runtime_follow_up_if_pending(session_id: int) -> None:
+    schedule_runtime_turn_once(
+        session_id=session_id,
+        trigger_kind="runtime_follow_up",
+    )
+
+
+def schedule_runtime_turn_once(
+    *,
+    session_id: int,
+    trigger_kind: str,
+    trigger_event_id: int | str | None = None,
+) -> bool:
+    """Schedule at most one pending runtime-turn task for a TrainerLab session."""
+
+    should_enqueue = False
+    run_at: datetime | None = None
+    with transaction.atomic():
+        session = (
+            TrainerSession.objects.select_for_update()
+            .select_related("simulation")
+            .get(pk=session_id)
+        )
+        state = get_runtime_state(session)
+        now = timezone.now()
+        pending = list(state.get("pending_runtime_reasons") or [])
+
+        if not pending:
+            state["pending_since"] = None
+            state["scheduled_runtime_task_run_at"] = None
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            _log_runtime_schedule_decision(
+                session=session,
+                state=state,
+                trigger_kind=trigger_kind,
+                trigger_event_id=trigger_event_id,
+                decision="skipped_no_pending_reasons",
+            )
+            return False
+
+        if not state.get("pending_since"):
+            state["pending_since"] = pending[0].get("created_at") or now.astimezone(UTC).isoformat()
+
+        active_service_call_id = state.get("active_service_call_id") or ""
+        if active_service_call_id or state.get("runtime_processing"):
+            _log_runtime_schedule_decision(
+                session=session,
+                state=state,
+                trigger_kind=trigger_kind,
+                trigger_event_id=trigger_event_id,
+                decision="skipped_active_call",
+            )
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            return False
+
+        scheduled_at = _parse_iso_datetime(state.get("scheduled_runtime_task_run_at"))
+        if scheduled_at is not None and scheduled_at > now:
+            _log_runtime_schedule_decision(
+                session=session,
+                state=state,
+                trigger_kind=trigger_kind,
+                trigger_event_id=trigger_event_id,
+                decision="coalesced",
+                run_at=scheduled_at,
+            )
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            return False
+
+        if trigger_kind == "runtime_follow_up":
+            chained_turn_count = int(state.get("chained_turn_count", 0) or 0)
+            if chained_turn_count >= get_runtime_max_chained_turns():
+                _log_runtime_schedule_decision(
+                    session=session,
+                    state=state,
+                    trigger_kind=trigger_kind,
+                    trigger_event_id=trigger_event_id,
+                    decision="max_chain_reached",
+                )
+                session.runtime_state_json = state
+                session.save(update_fields=["runtime_state_json", "modified_at"])
+                return False
+            state["chained_turn_count"] = chained_turn_count + 1
+        else:
+            state["chained_turn_count"] = 0
+
+        if _runtime_trigger_respects_min_interval(trigger_kind):
+            last_runtime_call_at = _parse_iso_datetime(state.get("last_runtime_call_at"))
+            if last_runtime_call_at is not None:
+                elapsed = (now - last_runtime_call_at).total_seconds()
+                if elapsed < get_runtime_min_interval_seconds():
+                    _log_runtime_schedule_decision(
+                        session=session,
+                        state=state,
+                        trigger_kind=trigger_kind,
+                        trigger_event_id=trigger_event_id,
+                        decision="skipped_min_interval",
+                    )
+                    session.runtime_state_json = state
+                    session.save(update_fields=["runtime_state_json", "modified_at"])
+                    return False
+
+        delay_seconds = _runtime_trigger_delay_seconds(trigger_kind)
+        run_at = now + timedelta(seconds=delay_seconds)
+        state["scheduled_runtime_task_run_at"] = run_at.astimezone(UTC).isoformat()
+        session.runtime_state_json = state
+        session.save(update_fields=["runtime_state_json", "modified_at"])
+        _log_runtime_schedule_decision(
+            session=session,
+            state=state,
+            trigger_kind=trigger_kind,
+            trigger_event_id=trigger_event_id,
+            decision="scheduled",
+            run_at=run_at,
+        )
+        should_enqueue = True
+
+    if should_enqueue:
+        _enqueue_runtime_turn_task(session_id=session_id, run_at=run_at)
+    return should_enqueue
 
 
 def discard_runtime_work(
@@ -1284,6 +1491,11 @@ def discard_runtime_work(
     state["pending_runtime_reasons"] = []
     state["currently_processing_reasons"] = []
     state["runtime_processing"] = False
+    state["active_service_call_id"] = ""
+    state["active_started_at"] = None
+    state["pending_since"] = None
+    state["scheduled_runtime_task_run_at"] = None
+    state["chained_turn_count"] = 0
     state["last_runtime_error"] = ""
     state["last_discarded_runtime_reasons"] = discarded
     state["last_runtime_discarded_at"] = _iso_or_none(discarded_at or timezone.now())
@@ -1307,12 +1519,27 @@ def append_pending_runtime_reason(
         "correlation_id": correlation_id,
     }
     pending = list(state.get("pending_runtime_reasons") or [])
+    was_empty = not pending
     pending.append(reason)
     state["pending_runtime_reasons"] = pending
+    if was_empty or not state.get("pending_since"):
+        state["pending_since"] = reason["created_at"]
+    if reason_kind not in {"tick"}:
+        state["chained_turn_count"] = 0
     state["last_runtime_error"] = ""
     locked.runtime_state_json = state
     locked.save(update_fields=["runtime_state_json", "modified_at"])
-    transaction.on_commit(lambda: _schedule_runtime_turn(locked.id))
+    trigger_kind = _runtime_trigger_kind(reason_kind)
+    trigger_event_id = (payload or {}).get("domain_event_id") or (payload or {}).get(
+        "intervention_event_id"
+    )
+    transaction.on_commit(
+        lambda: schedule_runtime_turn_once(
+            session_id=locked.id,
+            trigger_kind=trigger_kind,
+            trigger_event_id=trigger_event_id,
+        )
+    )
     return reason
 
 
@@ -1524,11 +1751,20 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
                 session.save(update_fields=["runtime_state_json", "modified_at"])
             return None
 
-        if state.get("runtime_processing"):
+        if state.get("runtime_processing") or state.get("active_service_call_id"):
+            return None
+
+        scheduled_at = _parse_iso_datetime(state.get("scheduled_runtime_task_run_at"))
+        now = timezone.now()
+        if scheduled_at is not None and scheduled_at > now:
             return None
 
         pending = list(state.get("pending_runtime_reasons") or [])
         if not pending:
+            state["pending_since"] = None
+            state["scheduled_runtime_task_run_at"] = None
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
             return None
 
         reasons, remaining = _select_runtime_batch_reasons(
@@ -1546,7 +1782,10 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         state["pending_runtime_reasons"] = remaining
         state["currently_processing_reasons"] = reasons
         state["runtime_processing"] = True
-        state["last_runtime_enqueued_at"] = timezone.now().astimezone(UTC).isoformat()
+        state["active_started_at"] = now.astimezone(UTC).isoformat()
+        state["scheduled_runtime_task_run_at"] = None
+        state["pending_since"] = remaining[0].get("created_at") if remaining else None
+        state["last_runtime_enqueued_at"] = now.astimezone(UTC).isoformat()
         debug = dict(state.get("control_plane_debug") or {})
         debug["execution_plan"] = ["core_runtime", "vitals", "recommendation", "narrative"]
         debug["current_step_index"] = 0
@@ -1597,6 +1836,14 @@ def _restore_runtime_turn_batch(
         state["pending_runtime_reasons"] = reasons + pending
         state["currently_processing_reasons"] = []
         state["runtime_processing"] = False
+        state["active_service_call_id"] = ""
+        state["active_started_at"] = None
+        state["scheduled_runtime_task_run_at"] = None
+        state["pending_since"] = (
+            state["pending_runtime_reasons"][0].get("created_at")
+            if state["pending_runtime_reasons"]
+            else None
+        )
         state["last_runtime_error"] = error[:500]
         debug = dict(state.get("control_plane_debug") or {})
         debug["queued_reasons"] = state["pending_runtime_reasons"]
@@ -1605,6 +1852,25 @@ def _restore_runtime_turn_batch(
         debug["status_flags"] = {
             **dict(debug.get("status_flags") or {}),
             "runtime_processing": False,
+        }
+        state["control_plane_debug"] = debug
+        session.runtime_state_json = state
+        session.save(update_fields=["runtime_state_json", "modified_at"])
+
+
+def _mark_runtime_service_call_active(*, session_id: int, call_id: str) -> None:
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session_id)
+        state = get_runtime_state(session)
+        now = timezone.now()
+        state["active_service_call_id"] = str(call_id)
+        state["last_runtime_call_at"] = now.astimezone(UTC).isoformat()
+        if not state.get("active_started_at"):
+            state["active_started_at"] = now.astimezone(UTC).isoformat()
+        debug = dict(state.get("control_plane_debug") or {})
+        debug["status_flags"] = {
+            **dict(debug.get("status_flags") or {}),
+            "runtime_processing": bool(state.get("runtime_processing")),
         }
         state["control_plane_debug"] = debug
         session.runtime_state_json = state
@@ -1727,6 +1993,14 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
 
     try:
         call_id = enqueue_runtime_turn_service_call(request_batch)
+        try:
+            _mark_runtime_service_call_active(session_id=session_id, call_id=call_id)
+        except Exception:
+            logger.exception(
+                "trainerlab.runtime.active_call_mark_failed",
+                session_id=session_id,
+                service_call_id=call_id,
+            )
         return call_id
     except Exception as exc:
         logger.exception("trainerlab.runtime.enqueue_failed", session_id=session_id)
@@ -1770,6 +2044,7 @@ def clear_runtime_processing(
     error: str = "",
     requeue_current_batch: bool = False,
 ) -> None:
+    should_schedule_follow_up = False
     with transaction.atomic():
         session = TrainerSession.objects.select_for_update().get(pk=session_id)
         state = get_runtime_state(session)
@@ -1782,6 +2057,12 @@ def clear_runtime_processing(
         state["pending_runtime_reasons"] = pending
         state["currently_processing_reasons"] = []
         state["runtime_processing"] = False
+        state["active_service_call_id"] = ""
+        state["active_started_at"] = None
+        state["scheduled_runtime_task_run_at"] = None
+        state["pending_since"] = pending[0].get("created_at") if pending else None
+        if not pending:
+            state["chained_turn_count"] = 0
         state["last_runtime_error"] = error[:500]
         debug = dict(state.get("control_plane_debug") or {})
         debug["queued_reasons"] = pending
@@ -1794,6 +2075,11 @@ def clear_runtime_processing(
         state["control_plane_debug"] = debug
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
+        should_schedule_follow_up = (
+            bool(pending) and session.status not in TERMINAL_SESSION_STATUSES
+        )
+    if should_schedule_follow_up:
+        _schedule_runtime_follow_up_if_pending(session_id)
 
 
 def _resolve_superseded_event(
@@ -2928,6 +3214,15 @@ def apply_runtime_turn_output(
             )
         state["runtime_processing"] = False
         state["currently_processing_reasons"] = []
+        state["active_service_call_id"] = ""
+        state["active_started_at"] = None
+        state["scheduled_runtime_task_run_at"] = None
+        pending_after_turn = list(state.get("pending_runtime_reasons") or [])
+        state["pending_since"] = (
+            pending_after_turn[0].get("created_at") if pending_after_turn else None
+        )
+        if not pending_after_turn:
+            state["chained_turn_count"] = 0
         state["last_runtime_error"] = ""
         state["llm_conditions_check"] = list(output_payload.get("llm_conditions_check") or [])
         state["ai_plan"] = {
@@ -2966,7 +3261,7 @@ def apply_runtime_turn_output(
     refreshed = aggregate.runtime_state
 
     if refreshed.get("pending_runtime_reasons"):
-        _schedule_runtime_turn(session_id)
+        _schedule_runtime_follow_up_if_pending(session_id)
 
     return refreshed
 
