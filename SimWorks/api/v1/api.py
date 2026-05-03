@@ -59,7 +59,7 @@ def create_error_response(
 
 # Create the API instance
 api = NinjaAPI(
-    title="SimWorks API",
+    title="MedSim API",
     version="0.10.2",
     description="REST API for SimWorks medical training platform",
     urls_namespace="api-v1",
