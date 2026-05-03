@@ -30,6 +30,16 @@ These codes live in [catalog.py](../../SimWorks/apps/billing/catalog.py).
 - Stripe plan or price codes map to canonical internal products in `apps.billing.catalog`.
 - Web checkout requests send internal `product_code` only. MedSim maps
   `product_code:monthly` to a Stripe price ID using `BILLING_STRIPE_PRICE_PLAN_MAP`.
+- Stripe Checkout promo coupons may use the same product/interval key format, for example:
+
+  ```bash
+  BILLING_STRIPE_PROMO_COUPON_MAP='{"medsim_one:monthly":"coupon_...", "chatlab_go:monthly":"coupon_..."}'
+  ```
+
+  Fixed-amount Stripe coupons must be configured per MVP product because one global fixed
+  discount can be incorrect across differently priced products. `BILLING_STRIPE_PROMO_COUPON_ID`
+  is supported only as a legacy/global fallback when a product-specific coupon map entry is
+  missing.
 - Product-to-lab capability rules also live in the catalog. Use helpers such as
   `product_includes_lab(...)` or `product_codes_for_lab(...)` instead of hardcoding
   product lists in lab-specific access code.
@@ -54,9 +64,9 @@ BILLING_STRIPE_PRICE_PLAN_MAP='{
 }'
 ```
 
-`BILLING_STRIPE_PROMO_COUPON_ID` may point at a Stripe coupon for the promotional first
-three months. Stripe Customer Portal plan-change options must be constrained in Stripe to
-the same three monthly products.
+`BILLING_STRIPE_PROMO_COUPON_MAP` should be preferred for promotional first-three-month
+offers, especially for fixed-amount coupons. Stripe Customer Portal plan-change options
+must be constrained in Stripe to the same three monthly products.
 
 Stripe Dashboard checklist:
 

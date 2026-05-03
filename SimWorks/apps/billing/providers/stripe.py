@@ -15,6 +15,7 @@ from apps.billing.catalog import (
     canonicalize_product_code,
     product_code_from_stripe_plan_code,
     resolve_stripe_price_id,
+    resolve_stripe_promo_coupon_id,
 )
 from apps.billing.models import (
     BillingAccount,
@@ -197,7 +198,7 @@ def create_personal_checkout_session(
         },
         "billing_address_collection": "required",
     }
-    coupon_id = (getattr(settings, "BILLING_STRIPE_PROMO_COUPON_ID", "") or "").strip()
+    coupon_id = resolve_stripe_promo_coupon_id(canonical_product_code, billing_interval)
     if coupon_id:
         session_params["discounts"] = [{"coupon": coupon_id}]
 
