@@ -26,7 +26,11 @@ When following the intended architecture, Django app code should prefer this pac
 ## Setup overview
 
 ```bash
+# standalone
 pip install orchestrai-django
+
+# within the MedSim monorepo
+uv sync
 ```
 
 Typical usage in a Django project:
@@ -57,8 +61,16 @@ class GenerateInitialResponse(PersonaInstruction, DjangoBaseService):
 
 - Docs index: [`docs/index.md`](docs/index.md)
 - Quick start: [`docs/quick-start.md`](docs/quick-start.md)
-- Settings: [`docs/settings.md`](docs/settings.md)
+- Decorators: [`docs/decorators.md`](docs/decorators.md)
 - Services: [`docs/services.md`](docs/services.md)
+- Instructions: [`docs/instructions.md`](docs/instructions.md)
+- Identity: [`docs/identity.md`](docs/identity.md)
+- Registries: [`docs/registries.md`](docs/registries.md)
+- Schemas: [`docs/schemas.md`](docs/schemas.md)
 - Persistence: [`docs/persistence.md`](docs/persistence.md)
+- Execution backends: [`docs/execution_backends.md`](docs/execution_backends.md)
+- Settings: [`docs/settings.md`](docs/settings.md)
+- Signals: [`docs/signals.md`](docs/signals.md)
+- Prompt rendering: [`docs/prompt_engine.md`](docs/prompt_engine.md)
 - MedSim platform docs: [`../../docs/index.md`](../../docs/index.md)
 - Core orchestration package: [`../orchestrai/README.md`](../orchestrai/README.md)

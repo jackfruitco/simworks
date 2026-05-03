@@ -9,7 +9,7 @@ It provides reusable primitives for building structured AI workflows without cou
 `orchestrai` standardizes how projects:
 - configure providers/clients,
 - register services/schemas/tools,
-- run explicit lifecycle bootstrapping (`configure → setup → discover → finalize`),
+- run explicit lifecycle bootstrapping (`configure → setup → discover → finalize`, or use `start()` as a shortcut for `discover + finalize`),
 - and keep orchestration behavior consistent across environments.
 
 ## What it owns
@@ -42,26 +42,25 @@ In MedSim, app code should usually consume the Django-facing APIs from `orchestr
 - **Service**: executable orchestration unit.
 - **Schema**: structured output contract.
 - **Registry**: validated lookup store for registered components.
-- **Lifecycle**: explicit setup/discovery/finalization steps to avoid import-time side effects.
+- **Lifecycle**: explicit setup/discovery/finalization steps to avoid import-time side effects. `start()` is a shortcut that calls `discover()` + `finalize()` and prints a component summary.
 
 ## Minimal usage
 
 ```python
 from orchestrai import OrchestrAI
 
-app = (
-    OrchestrAI()
-    .configure(
-        {
-            "CLIENT": "default",
-            "CLIENTS": {"default": {"name": "default", "api_key": "token"}},
-            "PROVIDERS": {"default": {"backend": "openai", "model": "gpt-4o-mini"}},
-        }
-    )
-    .setup()
-    .discover()
-    .finalize()
+app = OrchestrAI()
+app.configure(
+    {
+        "CLIENT": "default",
+        "CLIENTS": {"default": {"name": "default", "api_key": "token"}},
+        "PROVIDERS": {"default": {"backend": "openai", "model": "gpt-4o-mini"}},
+        # Override DISCOVERY_PATHS to add custom modules, or set to () to disable autodiscovery.
+        "DISCOVERY_PATHS": ["my_project.services"],
+    }
 )
+app.setup()
+app.start()  # shortcut for discover() + finalize(); prints a component summary
 ```
 
 ## Stability notes
