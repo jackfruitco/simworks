@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from django.core.management.base import CommandError
@@ -26,6 +27,15 @@ class BusinessDataCheck:
     @property
     def has_business_data(self) -> bool:
         return bool(self.non_empty_tables or self.non_seed_user_count)
+
+
+@dataclass(frozen=True)
+class FullRestoreEmptinessCheck:
+    non_empty_tables: tuple[str, ...]
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.non_empty_tables
 
 
 def quote_table(table: str) -> str:
@@ -71,6 +81,77 @@ def truncate_core_tables() -> None:
     table_sql = ", ".join(quote_table(table) for table in reversed(CORE_BACKUP_TABLES))
     with connection.cursor() as cursor:
         cursor.execute(f"TRUNCATE TABLE {table_sql} RESTART IDENTITY CASCADE")
+
+
+def sequence_columns_for_table(table: str) -> tuple[str, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT column_name, column_default, identity_generation
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+            ORDER BY ordinal_position
+            """,
+            [table],
+        )
+        rows = cursor.fetchall()
+    all_columns = [row[0] for row in rows]
+    columns = [
+        column_name
+        for column_name, column_default, identity_generation in rows
+        if (column_default or "").startswith("nextval(") or identity_generation is not None
+    ]
+    if "id" in all_columns and "id" not in columns:
+        columns.insert(0, "id")
+    return tuple(columns)
+
+
+def reseed_table_sequences(tables: Iterable[str]) -> None:
+    with connection.cursor() as cursor:
+        for table in tables:
+            quoted_table = quote_table(table)
+            for column in sequence_columns_for_table(table):
+                cursor.execute("SELECT pg_get_serial_sequence(%s, %s)", [f"public.{table}", column])
+                row = cursor.fetchone()
+                sequence_name = row[0] if row else None
+                if not sequence_name:
+                    continue
+                quoted_column = quote_table(column)
+                cursor.execute(
+                    f"""
+                    SELECT setval(
+                        %s,
+                        COALESCE(MAX({quoted_column}), 1),
+                        MAX({quoted_column}) IS NOT NULL
+                    )
+                    FROM {quoted_table}
+                    """,
+                    [sequence_name],
+                )
+
+
+def reseed_core_sequences() -> None:
+    reseed_table_sequences(CORE_BACKUP_TABLES)
+
+
+def user_tables_for_full_restore_check() -> tuple[str, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT tablename
+            FROM pg_catalog.pg_tables
+            WHERE schemaname = 'public'
+              AND tablename <> 'django_migrations'
+            ORDER BY tablename
+            """
+        )
+        return tuple(row[0] for row in cursor.fetchall())
+
+
+def check_database_empty_for_full_restore() -> FullRestoreEmptinessCheck:
+    non_empty = tuple(table for table in user_tables_for_full_restore_check() if table_count(table))
+    return FullRestoreEmptinessCheck(non_empty_tables=non_empty)
 
 
 def expire_pending_invitations_after_restore() -> int:

@@ -216,7 +216,7 @@ services:
       BACKUP_CRON_ENABLE_CORE: ${BACKUP_CRON_ENABLE_CORE:-true}
       BACKUP_CRON_ENABLE_FULL: ${BACKUP_CRON_ENABLE_FULL:-true}
       BACKUP_CORE_CRON: "${BACKUP_CORE_CRON:-0 3 * * *}"
-      BACKUP_FULL_CRON: "${BACKUP_FULL_CRON:-30 3 * * *}"
+      BACKUP_FULL_CRON: "${BACKUP_FULL_CRON:-0 4 * * *}"
     user: root
     command: ["/app/docker/run-backup-cron.sh"]
     depends_on:

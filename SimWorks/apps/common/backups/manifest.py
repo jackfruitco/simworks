@@ -14,6 +14,8 @@ from django.conf import settings
 from django.db import connection
 from django.db.migrations.loader import MigrationLoader
 
+from .inventory import CORE_MIGRATION_APPS
+
 MANIFEST_VERSION = 1
 
 
@@ -149,11 +151,15 @@ def validate_manifest(manifest: dict[str, Any], *, expected_mode: str | None = N
         raise ValueError("Backup manifest tables must be a list.")
 
 
-def validate_migration_compatibility(manifest: dict[str, Any]) -> None:
+def validate_migration_compatibility(manifest: dict[str, Any], *, mode: str | None = None) -> None:
     current_heads = get_migration_heads()
     backup_heads = manifest.get("migration_heads") or {}
+    backup_type = mode or manifest.get("backup_type")
+    relevant_apps = set(CORE_MIGRATION_APPS) if backup_type == "core" else None
     mismatches = []
     for app_label, backup_head in backup_heads.items():
+        if relevant_apps is not None and app_label not in relevant_apps:
+            continue
         current_head = current_heads.get(app_label)
         if current_head != backup_head:
             mismatches.append(f"{app_label}: backup={backup_head}, current={current_head}")

@@ -63,4 +63,6 @@ class R2Storage:
         if int(head.get("ContentLength", -1)) != int(size_bytes):
             return False
         metadata = head.get("Metadata") or {}
-        return not (sha256 and metadata.get("sha256") and metadata["sha256"] != sha256)
+        if sha256 is None:
+            return True
+        return metadata.get("sha256") == sha256

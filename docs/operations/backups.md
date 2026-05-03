@@ -56,7 +56,7 @@ Backups use this key structure:
 <environment>/<mode>/latest.json
 ```
 
-The manifest records the mode, environment, Django settings module, database name, migration heads, table list, encryption/compression settings, encrypted artifact SHA-256, size, and object keys.
+The manifest records the mode, environment, Django settings module, database name, migration heads, table list, encryption/compression settings, encrypted artifact SHA-256, size, and object keys. Upload verification requires the object size to match and, for backup artifacts, requires R2 checksum metadata to contain the expected SHA-256 value.
 
 ## Manual Backup
 
@@ -84,10 +84,10 @@ The command requires PostgreSQL and passes the database password only through `P
 
 ```cron
 0 3 * * * core backup
-30 3 * * * full backup
+0 4 * * * full backup
 ```
 
-Use `BACKUP_CRON_ENABLE_CORE=false` or `BACKUP_CRON_ENABLE_FULL=false` to disable a scheduled mode.
+Use `BACKUP_CRON_ENABLE_CORE=false` or `BACKUP_CRON_ENABLE_FULL=false` to disable a scheduled mode. Cron jobs explicitly source the generated backup environment file and redirect command output to the container stdout/stderr streams, so backup logs appear in normal container logs.
 
 ## Restore Procedure
 
@@ -118,9 +118,13 @@ uv run python manage.py check_core_restore
 uv run python manage.py seed_roles
 ```
 
-The restore command checks for non-seed business data before writing. A freshly migrated database may contain default roles and system users; those are allowed. The command then truncates the core allowlist tables in deterministic FK-safe order, runs `pg_restore`, expires pending invitations inside a transaction, and runs post-restore validation.
+The restore command checks for non-seed business data before writing. A freshly migrated database may contain default roles and system users; those are allowed. The command then truncates the core allowlist tables in deterministic FK-safe order, runs `pg_restore`, reseeds restored serial/identity sequences so future inserts do not collide with restored primary keys, expires pending invitations inside a transaction, and runs post-restore validation.
+
+Core restore migration compatibility checks are limited to account, auth, allauth, site, content type, and billing apps represented in the core table allowlist. Unrelated simulation or TrainerLab migration changes do not block a core restore because those tables are intentionally excluded.
 
 To intentionally overwrite an already populated database, pass `--truncate-managed-tables`. This is destructive and should not be used for normal production restore.
+
+Full restores require `--require-empty-db` and a fresh migrated database. The command refuses to run a full restore if public application tables contain rows. Use a newly created database and run migrations before invoking a full restore.
 
 ## Invitation Policy
 
@@ -129,3 +133,5 @@ Invitations are backed up, but pending invitations contain sensitive tokens. Aft
 ## Key Rotation
 
 Generate a new age key pair, update the sidecar with the new public key, and keep both old and new private keys available until all backups encrypted with the old key expire. Do not store private keys in R2 or in always-running containers.
+
+The scheduled backup sidecar only needs `BACKUP_AGE_PUBLIC_KEY`. Keep `BACKUP_AGE_PRIVATE_KEY` out of the sidecar and provide it only in a manual restore environment.

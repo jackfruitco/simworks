@@ -122,7 +122,7 @@ class TestOpenAPISchema:
         assert "openapi" in schema
         assert schema["openapi"].startswith("3.")
         assert "info" in schema
-        assert schema["info"]["title"] == "MedSim API"
+        assert schema["info"]["title"] == "SimWorks API"
         assert "paths" in schema
 
     def test_openapi_includes_health_endpoint(self):

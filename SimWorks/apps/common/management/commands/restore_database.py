@@ -20,8 +20,10 @@ from apps.common.backups.manifest import (
 )
 from apps.common.backups.postgres import age_decrypt, pg_restore, zstd_decompress
 from apps.common.backups.restore import (
+    check_database_empty_for_full_restore,
     check_no_business_data,
     expire_pending_invitations_after_restore,
+    reseed_core_sequences,
     truncate_core_tables,
 )
 from apps.common.backups.storage import R2Storage
@@ -44,11 +46,15 @@ class Command(BaseCommand):
         backup_key_arg = options["backup_key"]
         dry_run = options["dry_run"]
         connection_info = get_postgres_connection_info()
+        if mode == "full" and not dry_run and not options["require_empty_db"]:
+            raise CommandError(
+                "Full restore requires --require-empty-db and a fresh migrated database."
+            )
         storage = R2Storage(get_r2_settings())
 
         manifest = self._resolve_manifest(storage, backup_key_arg)
         validate_manifest(manifest, expected_mode=mode)
-        validate_migration_compatibility(manifest)
+        validate_migration_compatibility(manifest, mode=mode)
         backup_key = manifest["backup_key"]
 
         self.stdout.write(f"Restore {'dry run' if dry_run else 'started'}: mode={mode}")
@@ -73,6 +79,15 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS("Restore dry run completed successfully."))
                 return
 
+            if mode == "full":
+                emptiness = check_database_empty_for_full_restore()
+                if not emptiness.is_empty:
+                    tables = ", ".join(emptiness.non_empty_tables)
+                    raise CommandError(
+                        "Refusing full restore into a database with existing data. "
+                        f"Non-empty tables: {tables}. Use a fresh migrated database."
+                    )
+
             private_key = get_required_env("BACKUP_AGE_PRIVATE_KEY")
             age_decrypt(encrypted_path, compressed_path, private_key)
             zstd_decompress(compressed_path, dump_path)
@@ -91,9 +106,11 @@ class Command(BaseCommand):
 
             pg_restore(connection_info=connection_info, input_path=dump_path)
 
-            if mode == "core" and not options["preserve_pending_invitations"]:
-                expired_count = expire_pending_invitations_after_restore()
-                self.stdout.write(f"Expired pending invitations after restore: {expired_count}")
+            if mode == "core":
+                reseed_core_sequences()
+                if not options["preserve_pending_invitations"]:
+                    expired_count = expire_pending_invitations_after_restore()
+                    self.stdout.write(f"Expired pending invitations after restore: {expired_count}")
 
             if mode == "core" and not options["skip_post_restore_check"]:
                 call_command("check_core_restore")

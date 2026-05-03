@@ -71,6 +71,16 @@ CORE_FORBIDDEN_TABLES: tuple[str, ...] = (
     "common_outboxevent",
 )
 
+CORE_MIGRATION_APPS: tuple[str, ...] = (
+    "accounts",
+    "account",
+    "socialaccount",
+    "auth",
+    "contenttypes",
+    "sites",
+    "billing",
+)
+
 BACKUP_MODES = ("core", "full")
 BACKUP_ADVISORY_LOCK_ID = 714_202_605_030_001
 
