@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "SimWorks API",
+    "title": "MedSim API",
     "version": "0.10.2",
     "description": "REST API for SimWorks medical training platform"
   },
