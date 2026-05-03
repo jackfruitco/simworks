@@ -200,6 +200,38 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  backup:
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-stable}
+    environment:
+      <<: *app_env
+      DJANGO_MIGRATE: 0
+      DJANGO_CREATE_DEFAULT_ROLES: 0
+      DJANGO_COLLECTSTATIC: 0
+      BACKUP_ENVIRONMENT: ${BACKUP_ENVIRONMENT:-production}
+      BACKUP_R2_BUCKET: ${BACKUP_R2_BUCKET}
+      BACKUP_R2_ENDPOINT_URL: ${BACKUP_R2_ENDPOINT_URL}
+      BACKUP_R2_ACCESS_KEY_ID: ${BACKUP_R2_ACCESS_KEY_ID}
+      BACKUP_R2_SECRET_ACCESS_KEY: ${BACKUP_R2_SECRET_ACCESS_KEY}
+      BACKUP_AGE_PUBLIC_KEY: ${BACKUP_AGE_PUBLIC_KEY}
+      BACKUP_CRON_ENABLE_CORE: ${BACKUP_CRON_ENABLE_CORE:-true}
+      BACKUP_CRON_ENABLE_FULL: ${BACKUP_CRON_ENABLE_FULL:-true}
+      BACKUP_CORE_CRON: "${BACKUP_CORE_CRON:-0 3 * * *}"
+      BACKUP_FULL_CRON: "${BACKUP_FULL_CRON:-30 3 * * *}"
+    user: root
+    command: ["/app/docker/run-backup-cron.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+    hostname: 'backup-cron'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   db-data:
   static-vol:

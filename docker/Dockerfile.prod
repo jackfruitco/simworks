@@ -60,7 +60,12 @@ RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends curl && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        age \
+        cron \
+        curl \
+        postgresql-client \
+        zstd && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER appuser
@@ -69,6 +74,7 @@ COPY SimWorks /app/SimWorks
 COPY --from=assets /app/SimWorks/static/css/tailwind.css /app/SimWorks/static/css/tailwind.css
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
+COPY --chown=appuser:appuser --chmod=0755 docker/run-backup-cron.sh /app/docker/run-backup-cron.sh
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app/docker/healthcheck.sh
 
