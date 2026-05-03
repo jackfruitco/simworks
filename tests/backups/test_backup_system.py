@@ -15,7 +15,6 @@ from apps.common.backups.config import get_postgres_connection_info
 from apps.common.backups.inventory import (
     CORE_BACKUP_TABLES,
     CORE_FORBIDDEN_TABLES,
-    CORE_TRUNCATE_TABLES,
 )
 from apps.common.backups.manifest import build_manifest, keys_for_backup, sha256_file
 from apps.common.backups.postgres import backup_advisory_lock, pg_dump
@@ -183,9 +182,9 @@ def test_pending_invitations_expire_after_restore_transaction():
 
 
 def test_core_truncate_order_is_deterministic_and_fk_safe_shape():
-    assert tuple(reversed(CORE_BACKUP_TABLES)) == CORE_TRUNCATE_TABLES
-    assert CORE_TRUNCATE_TABLES[0] == "billing_seatassignment"
-    assert CORE_TRUNCATE_TABLES[-1] == "django_content_type"
+    truncate_order = tuple(reversed(CORE_BACKUP_TABLES))
+    assert truncate_order[0] == "billing_seatassignment"
+    assert truncate_order[-1] == "django_content_type"
 
 
 def test_advisory_lock_refuses_overlap(monkeypatch):

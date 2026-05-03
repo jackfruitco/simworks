@@ -57,10 +57,6 @@ CORE_BUSINESS_TABLES: tuple[str, ...] = (
     "billing_seatassignment",
 )
 
-# Deterministic order used before pg_restore. TRUNCATE is run with CASCADE because
-# migrations may create FK relationships between these tables.
-CORE_TRUNCATE_TABLES: tuple[str, ...] = tuple(reversed(CORE_BACKUP_TABLES))
-
 CORE_FORBIDDEN_TABLES: tuple[str, ...] = (
     "django_session",
     "accounts_accountauditevent",

@@ -13,7 +13,7 @@ from apps.accounts.management.commands.seed_roles import SYSTEM_USERS
 from apps.accounts.models import Account, AccountMembership, Invitation, User
 from apps.billing.models import BillingAccount, Entitlement, SeatAssignment, Subscription
 
-from .inventory import CORE_BUSINESS_TABLES, CORE_TRUNCATE_TABLES
+from .inventory import CORE_BACKUP_TABLES, CORE_BUSINESS_TABLES
 
 SYSTEM_USER_EMAILS = {entry["email"] for entry in SYSTEM_USERS}
 
@@ -68,7 +68,7 @@ def check_no_business_data() -> BusinessDataCheck:
 
 
 def truncate_core_tables() -> None:
-    table_sql = ", ".join(quote_table(table) for table in CORE_TRUNCATE_TABLES)
+    table_sql = ", ".join(quote_table(table) for table in reversed(CORE_BACKUP_TABLES))
     with connection.cursor() as cursor:
         cursor.execute(f"TRUNCATE TABLE {table_sql} RESTART IDENTITY CASCADE")
 
