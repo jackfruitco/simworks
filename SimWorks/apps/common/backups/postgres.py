@@ -88,7 +88,9 @@ def age_decrypt(input_path: Path, output_path: Path, private_key: str) -> None:
     try:
         identity_path.write_text(private_key + "\n", encoding="utf-8")
         identity_path.chmod(0o600)
-        run_checked(["age", "-d", "-i", str(identity_path), "-o", str(output_path), str(input_path)])
+        run_checked(
+            ["age", "-d", "-i", str(identity_path), "-o", str(output_path), str(input_path)]
+        )
     finally:
         identity_path.unlink(missing_ok=True)
 

@@ -112,7 +112,9 @@ class Command(BaseCommand):
             if manifest["backup_key"] != backup_key:
                 raise CommandError("Manifest backup key does not match requested backup object.")
             return manifest
-        raise CommandError("Backup key must point to latest.json, a manifest, or an encrypted dump.")
+        raise CommandError(
+            "Backup key must point to latest.json, a manifest, or an encrypted dump."
+        )
 
 
 def parse_manifest_pointer(raw: bytes) -> dict:

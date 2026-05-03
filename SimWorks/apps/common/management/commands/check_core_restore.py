@@ -6,7 +6,9 @@ from apps.common.backups.restore import raise_if_core_restore_invalid, validate_
 
 
 class Command(BaseCommand):
-    help = "Validate account, billing, invitation, and entitlement relationships after a core restore."
+    help = (
+        "Validate account, billing, invitation, and entitlement relationships after a core restore."
+    )
 
     def handle(self, *args, **options):
         errors = validate_core_restore()

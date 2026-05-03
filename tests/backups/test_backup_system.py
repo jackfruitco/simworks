@@ -47,9 +47,7 @@ def test_keys_are_environment_scoped_and_deterministic():
     keys = keys_for_backup("production", "core", datetime(2026, 5, 3, 12, 0, tzinfo=UTC))
 
     assert keys.backup_key == "production/core/2026/05/03/core-20260503T120000Z.dump.zst.age"
-    assert keys.manifest_key == (
-        "production/core/2026/05/03/core-20260503T120000Z.manifest.json"
-    )
+    assert keys.manifest_key == ("production/core/2026/05/03/core-20260503T120000Z.manifest.json")
     assert keys.latest_key == "production/core/latest.json"
 
 
@@ -134,7 +132,9 @@ def test_restore_dry_run_verifies_checksum_before_decrypt(monkeypatch, tmp_path)
     monkeypatch.setenv("BACKUP_R2_ACCESS_KEY_ID", "read-key")
     monkeypatch.setenv("BACKUP_R2_SECRET_ACCESS_KEY", "read-secret")
     monkeypatch.setattr("apps.common.management.commands.restore_database.R2Storage", FakeStorage)
-    monkeypatch.setattr("apps.common.management.commands.restore_database.age_decrypt", fail_decrypt)
+    monkeypatch.setattr(
+        "apps.common.management.commands.restore_database.age_decrypt", fail_decrypt
+    )
     monkeypatch.setattr(
         "apps.common.management.commands.restore_database.validate_migration_compatibility",
         lambda manifest: None,
@@ -208,5 +208,8 @@ def test_advisory_lock_refuses_overlap(monkeypatch):
 
     monkeypatch.setattr("apps.common.backups.postgres.connection", FakeConnection())
 
-    with pytest.raises(CommandError, match="Another backup is already running"), backup_advisory_lock():
+    with (
+        pytest.raises(CommandError, match="Another backup is already running"),
+        backup_advisory_lock(),
+    ):
         pass

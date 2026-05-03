@@ -92,7 +92,9 @@ def build_manifest(
         "django_settings_module": getattr(settings, "SETTINGS_MODULE", ""),
         "database_name": database_name,
         "tables": list(tables),
-        "migration_heads": migration_heads if migration_heads is not None else get_migration_heads(),
+        "migration_heads": migration_heads
+        if migration_heads is not None
+        else get_migration_heads(),
         "compression": "zstd",
         "encryption": "age",
         "sha256": sha256,
@@ -156,4 +158,6 @@ def validate_migration_compatibility(manifest: dict[str, Any]) -> None:
         if current_head != backup_head:
             mismatches.append(f"{app_label}: backup={backup_head}, current={current_head}")
     if mismatches:
-        raise ValueError("Backup migration heads do not match current schema: " + "; ".join(mismatches))
+        raise ValueError(
+            "Backup migration heads do not match current schema: " + "; ".join(mismatches)
+        )

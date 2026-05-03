@@ -76,18 +76,22 @@ def truncate_core_tables() -> None:
 def expire_pending_invitations_after_restore() -> int:
     with transaction.atomic():
         restored_at = timezone.now()
-        return Invitation.objects.select_for_update().filter(
-            Q(expires_at__isnull=True) | Q(expires_at__gt=restored_at),
-            is_claimed=False,
-            revoked_at__isnull=True,
-        ).update(expires_at=restored_at)
+        return (
+            Invitation.objects.select_for_update()
+            .filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=restored_at),
+                is_claimed=False,
+                revoked_at__isnull=True,
+            )
+            .update(expires_at=restored_at)
+        )
 
 
 def validate_core_restore() -> list[str]:
     errors: list[str] = []
 
-    duplicate_emails = User.objects.values("email").order_by().annotate(count=Count("id")).filter(
-        count__gt=1
+    duplicate_emails = (
+        User.objects.values("email").order_by().annotate(count=Count("id")).filter(count__gt=1)
     )
     if duplicate_emails.exists():
         errors.append("Duplicate user emails exist.")
