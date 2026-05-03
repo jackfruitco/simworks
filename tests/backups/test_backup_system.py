@@ -322,7 +322,7 @@ def test_core_restore_reseeds_sequences_after_data_only_restore(monkeypatch, tmp
     )
     monkeypatch.setattr(
         "apps.common.management.commands.restore_database.check_no_business_data",
-        lambda: type("BusinessCheck", (), {"has_business_data": False})(),
+        type("BusinessCheck", (), {"has_business_data": False}),
     )
     monkeypatch.setattr(
         "apps.common.management.commands.restore_database.truncate_core_tables",
