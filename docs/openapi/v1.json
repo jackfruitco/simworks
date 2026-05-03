@@ -9953,6 +9953,18 @@
               }
             ],
             "title": "Supersedes Event Id"
+          },
+          "client_event_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Event Id"
           }
         },
         "required": [
