@@ -219,6 +219,7 @@ class InterventionCreateIn(BaseModel):
     initiated_by_type: Literal["user", "instructor", "system"] = "user"
     initiated_by_id: int | None = None
     supersedes_event_id: int | None = None
+    client_event_id: str | None = Field(default=None, max_length=255)
 
     @field_validator("intervention_type")
     @classmethod
@@ -229,6 +230,14 @@ class InterventionCreateIn(BaseModel):
     @classmethod
     def _normalize_site_code(cls, v: str) -> str:
         return normalize_site_code(v)
+
+    @field_validator("client_event_id")
+    @classmethod
+    def _normalize_client_event_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     @model_validator(mode="after")
     def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":

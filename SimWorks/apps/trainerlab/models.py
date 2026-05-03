@@ -1313,10 +1313,20 @@ class Intervention(BaseDomainEvent):
         db_index=True,
     )
     initiated_by_id = models.PositiveIntegerField(null=True, blank=True)
+    client_event_id = models.CharField(max_length=255, blank=True, default="")
     target_problem_previous_status = models.CharField(max_length=16, blank=True, default="")
     target_problem_current_status = models.CharField(max_length=16, blank=True, default="")
     adjudication_reason = models.CharField(max_length=120, blank=True, default="")
     adjudication_rule_id = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "client_event_id"],
+                condition=~models.Q(client_event_id=""),
+                name="uniq_intervention_sim_client_event",
+            ),
+        ]
 
     def sync_legacy_fields(self) -> None:
         if not self.intervention_type:

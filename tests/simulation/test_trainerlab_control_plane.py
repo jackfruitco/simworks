@@ -1,3 +1,6 @@
+from datetime import UTC
+
+from django.utils import timezone
 import pytest
 
 from apps.accounts.models import UserRole
@@ -5,11 +8,13 @@ from apps.common.models import OutboxEvent
 from apps.trainerlab.models import SessionStatus, TrainerAgentViewModelRecord
 from apps.trainerlab.orca.services.runtime import GenerateTrainerRuntimeTurn
 from apps.trainerlab.services import (
+    append_pending_runtime_reason,
     apply_runtime_turn_output,
     create_session,
     enqueue_runtime_turn_service_call,
     get_runtime_state,
     process_runtime_turn_queue,
+    schedule_runtime_turn_once,
 )
 from orchestrai_django.models import CallStatus, ServiceCall
 from orchestrai_django.signals import ai_response_failed
@@ -22,12 +27,254 @@ class _FakeEncoding:
         return list(range(max(1, len(text) // 4)))
 
 
+def _create_running_session(django_user_model, *, email: str):
+    role = UserRole.objects.create(title=f"TrainerLab Runtime Scheduling {email}")
+    user = django_user_model.objects.create_user(
+        email=email,
+        password="pass12345",
+        role=role,
+    )
+    session = create_session(
+        user=user,
+        scenario_spec={},
+        directives="",
+        modifiers=[],
+    )
+    session.status = SessionStatus.RUNNING
+    session.save(update_fields=["status", "modified_at"])
+    return session
+
+
 @pytest.fixture(autouse=True)
 def _mock_tiktoken_encoding(monkeypatch):
     monkeypatch.setattr(
         "apps.trainerlab.runtime_llm._encoding_for_model",
         lambda model_name: _FakeEncoding(),
     )
+
+
+@pytest.mark.django_db
+def test_rapid_intervention_reasons_coalesce_one_scheduled_runtime_call(
+    django_user_model,
+    django_capture_on_commit_callbacks,
+    monkeypatch,
+):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-coalesce@example.com",
+    )
+    scheduled: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="intervention_recorded",
+            payload={"domain_event_id": 101, "event_kind": "intervention"},
+        )
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="intervention_recorded",
+            payload={"domain_event_id": 102, "event_kind": "intervention"},
+        )
+
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    assert [r["payload"]["domain_event_id"] for r in state["pending_runtime_reasons"]] == [
+        101,
+        102,
+    ]
+    assert len(scheduled) == 1
+    assert state["scheduled_runtime_task_run_at"]
+
+
+@pytest.mark.django_db
+def test_intervention_reason_during_active_runtime_call_does_not_enqueue_parallel(
+    django_user_model,
+    django_capture_on_commit_callbacks,
+    monkeypatch,
+):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-active@example.com",
+    )
+    state = get_runtime_state(session)
+    state["runtime_processing"] = True
+    state["active_service_call_id"] = "call-active"
+    state["currently_processing_reasons"] = [
+        {"reason_kind": "manual_tick", "payload": {}, "created_at": "2026-03-22T00:00:00Z"}
+    ]
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    scheduled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="intervention_recorded",
+            payload={"domain_event_id": 201, "event_kind": "intervention"},
+        )
+
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    assert scheduled == []
+    assert state["pending_runtime_reasons"][-1]["payload"]["domain_event_id"] == 201
+    assert state["active_service_call_id"] == "call-active"
+
+
+@pytest.mark.django_db
+def test_runtime_completion_schedules_one_follow_up_for_pending_reasons(
+    django_user_model,
+    monkeypatch,
+):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-follow-up@example.com",
+    )
+    state = get_runtime_state(session)
+    state["runtime_processing"] = True
+    state["active_service_call_id"] = "call-current"
+    state["currently_processing_reasons"] = [
+        {"reason_kind": "manual_tick", "payload": {}, "created_at": "2026-03-22T00:00:00Z"}
+    ]
+    state["pending_runtime_reasons"] = [
+        {
+            "reason_kind": "intervention_recorded",
+            "payload": {"domain_event_id": 301, "event_kind": "intervention"},
+            "created_at": "2026-03-22T00:00:01Z",
+        }
+    ]
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    scheduled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    apply_runtime_turn_output(
+        session_id=session.id,
+        output_payload={
+            "state_changes": {
+                "problem_observations": [],
+                "vital_updates": [],
+                "pulse_updates": [],
+                "finding_updates": [],
+                "recommendation_suggestions": [],
+                "intervention_assessments": [],
+            },
+            "patient_status": {"narrative": "stable"},
+            "instructor_intent": {"summary": "observe"},
+            "rationale_notes": [],
+        },
+        service_context={"correlation_id": "follow-up", "call_id": "call-current"},
+    )
+
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    assert len(scheduled) == 1
+    assert state["active_service_call_id"] == ""
+    assert state["currently_processing_reasons"] == []
+    assert state["pending_runtime_reasons"][0]["payload"]["domain_event_id"] == 301
+    assert state["chained_turn_count"] == 1
+
+
+@pytest.mark.django_db
+def test_run_start_schedules_runtime_immediately(django_user_model, monkeypatch):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-run-start@example.com",
+    )
+    state = get_runtime_state(session)
+    state["pending_runtime_reasons"] = [
+        {"reason_kind": "run_started", "payload": {}, "created_at": "2026-03-22T00:00:00Z"}
+    ]
+    state["pending_since"] = "2026-03-22T00:00:00Z"
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    scheduled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    assert schedule_runtime_turn_once(session_id=session.id, trigger_kind="run/start") is True
+    assert len(scheduled) == 1
+    assert scheduled[0]["session_id"] == session.id
+
+
+@pytest.mark.django_db
+def test_run_tick_respects_runtime_min_interval(django_user_model, monkeypatch):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-tick-min@example.com",
+    )
+    state = get_runtime_state(session)
+    state["pending_runtime_reasons"] = [
+        {"reason_kind": "tick", "payload": {}, "created_at": "2026-03-22T00:00:00Z"}
+    ]
+    state["pending_since"] = "2026-03-22T00:00:00Z"
+    state["last_runtime_call_at"] = timezone.now().astimezone(UTC).isoformat()
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    scheduled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    assert schedule_runtime_turn_once(session_id=session.id, trigger_kind="run/tick") is False
+    session.refresh_from_db()
+    assert scheduled == []
+    assert get_runtime_state(session)["scheduled_runtime_task_run_at"] is None
+
+
+@pytest.mark.django_db
+def test_max_chained_turns_prevents_follow_up_schedule(
+    django_user_model,
+    monkeypatch,
+    settings,
+):
+    settings.TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS = 2
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-max-chain@example.com",
+    )
+    state = get_runtime_state(session)
+    state["pending_runtime_reasons"] = [
+        {
+            "reason_kind": "intervention_recorded",
+            "payload": {"domain_event_id": 401, "event_kind": "intervention"},
+            "created_at": "2026-03-22T00:00:00Z",
+        }
+    ]
+    state["pending_since"] = "2026-03-22T00:00:00Z"
+    state["chained_turn_count"] = 2
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    scheduled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    assert (
+        schedule_runtime_turn_once(session_id=session.id, trigger_kind="runtime_follow_up") is False
+    )
+    assert scheduled == []
 
 
 @pytest.mark.django_db

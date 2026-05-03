@@ -149,6 +149,10 @@ def _get_idempotency_key(request: HttpRequest) -> str:
     return key
 
 
+def _get_optional_idempotency_key(request: HttpRequest) -> str | None:
+    return request.headers.get("Idempotency-Key")
+
+
 def _require_lab_access(request: HttpRequest):
     return require_lab_access(request.auth, request=request)
 
@@ -1430,6 +1434,15 @@ def _create_disposition_state(
 
 
 def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
+    if body.client_event_id:
+        existing = Intervention.objects.filter(
+            simulation=session.simulation,
+            client_event_id=body.client_event_id,
+        ).first()
+        if existing is not None:
+            existing._duplicate_client_event = True
+            return existing
+
     supersedes = _resolve_superseded_intervention(
         simulation_id=session.simulation_id,
         supersedes_event_id=body.supersedes_event_id,
@@ -1448,6 +1461,7 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         details_json=body.details.model_dump(exclude_none=True),
         initiated_by_type=body.initiated_by_type,
         initiated_by_id=body.initiated_by_id,
+        client_event_id=body.client_event_id or "",
     )
     obj.save()
     obj._deactivated_objects = [supersedes] if supersedes else []
@@ -1523,10 +1537,11 @@ def _inject_event_core(
     command_type: str,
     payload_json: dict,
     create_fn: Callable[[TrainerSession], Any],
+    idempotency_key: str | None = None,
 ) -> TrainerCommandAck:
     user = request.auth
     _require_lab_access(request)
-    idempotency_key = _get_idempotency_key(request)
+    idempotency_key = idempotency_key or _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
     session = _get_session_for_simulation(request, simulation_id, user)
@@ -1553,6 +1568,12 @@ def _inject_event_core(
     except ValidationError as exc:
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
+
+    if getattr(domain_event, "_duplicate_client_event", False):
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        command.save(update_fields=["status", "processed_at"])
+        return _accepted(command)
 
     event_type = {
         "injury": outbox_events.PATIENT_INJURY_CREATED,
@@ -1784,12 +1805,16 @@ def create_intervention_event(
     simulation_id: int,
     body: InterventionCreateIn,
 ) -> TrainerCommandAck:
+    idempotency_key = _get_optional_idempotency_key(request)
+    if not idempotency_key and body.client_event_id:
+        idempotency_key = f"intervention-client-event:{simulation_id}:{body.client_event_id}"
     return _inject_event_core(
         request=request,
         simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
+        idempotency_key=idempotency_key,
     )
 
 
