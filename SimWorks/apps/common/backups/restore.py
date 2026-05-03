@@ -30,12 +30,12 @@ class BusinessDataCheck:
 
 
 @dataclass(frozen=True)
-class FullRestoreEmptinessCheck:
-    non_empty_tables: tuple[str, ...]
+class FullRestoreTableCheck:
+    conflicting_tables: tuple[str, ...]
 
     @property
     def is_empty(self) -> bool:
-        return not self.non_empty_tables
+        return not self.conflicting_tables
 
 
 def quote_table(table: str) -> str:
@@ -135,23 +135,21 @@ def reseed_core_sequences() -> None:
     reseed_table_sequences(CORE_BACKUP_TABLES)
 
 
-def user_tables_for_full_restore_check() -> tuple[str, ...]:
+def public_tables_for_full_restore_check() -> tuple[str, ...]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT tablename
             FROM pg_catalog.pg_tables
             WHERE schemaname = 'public'
-              AND tablename <> 'django_migrations'
             ORDER BY tablename
             """
         )
         return tuple(row[0] for row in cursor.fetchall())
 
 
-def check_database_empty_for_full_restore() -> FullRestoreEmptinessCheck:
-    non_empty = tuple(table for table in user_tables_for_full_restore_check() if table_count(table))
-    return FullRestoreEmptinessCheck(non_empty_tables=non_empty)
+def check_database_empty_for_full_restore() -> FullRestoreTableCheck:
+    return FullRestoreTableCheck(conflicting_tables=public_tables_for_full_restore_check())
 
 
 def expire_pending_invitations_after_restore() -> int:

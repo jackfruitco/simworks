@@ -48,7 +48,8 @@ class Command(BaseCommand):
         connection_info = get_postgres_connection_info()
         if mode == "full" and not dry_run and not options["require_empty_db"]:
             raise CommandError(
-                "Full restore requires --require-empty-db and a fresh migrated database."
+                "Full restore requires --require-empty-db and a newly-created empty "
+                "PostgreSQL database; do not run Django migrations before full restore."
             )
         storage = R2Storage(get_r2_settings())
 
@@ -82,10 +83,11 @@ class Command(BaseCommand):
             if mode == "full":
                 emptiness = check_database_empty_for_full_restore()
                 if not emptiness.is_empty:
-                    tables = ", ".join(emptiness.non_empty_tables)
+                    tables = ", ".join(emptiness.conflicting_tables)
                     raise CommandError(
-                        "Refusing full restore into a database with existing data. "
-                        f"Non-empty tables: {tables}. Use a fresh migrated database."
+                        "Refusing full restore into a database with existing public tables. "
+                        f"Existing tables: {tables}. Use a newly-created empty PostgreSQL "
+                        "database; do not run Django migrations before full restore."
                     )
 
             private_key = get_required_env("BACKUP_AGE_PRIVATE_KEY")

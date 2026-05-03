@@ -91,7 +91,41 @@ Use `BACKUP_CRON_ENABLE_CORE=false` or `BACKUP_CRON_ENABLE_FULL=false` to disabl
 
 ## Restore Procedure
 
-Core restore is designed for a clean database lifecycle:
+Full and core restores have different preconditions:
+
+- Full restore targets a newly-created empty PostgreSQL database. Do not run Django migrations before a full restore.
+- Core restore targets a migrated PostgreSQL database because core backups are data-only and rely on the existing schema.
+
+### Full Restore
+
+Use full restore for disaster recovery when restoring the entire database, including simulation history:
+
+```bash
+# 1. Create/recreate containers and database volume.
+# 2. Create a newly-created empty PostgreSQL database.
+# 3. Do not run Django migrations.
+
+# 4. Dry-run restore validation. This resolves latest.json, downloads the encrypted
+# object, and verifies checksum without writing to the database.
+uv run python manage.py restore_database \
+  --mode full \
+  --backup-key production/full/latest.json \
+  --dry-run
+
+# 5. Restore the full database.
+uv run python manage.py restore_database \
+  --mode full \
+  --backup-key production/full/latest.json \
+  --require-empty-db
+
+# 6. Start the app normally after restore.
+```
+
+The command refuses full restore unless `--require-empty-db` is passed, then verifies that no public tables exist before decrypting and restoring. A migrated Django database contains tables such as `django_content_type`, `auth_permission`, and `django_site`, so it is not a valid full-restore target.
+
+### Core Restore
+
+Core restore is designed for a migrated database lifecycle:
 
 ```bash
 # 1. Create/recreate containers and database volume.
@@ -123,8 +157,6 @@ The restore command checks for non-seed business data before writing. A freshly 
 Core restore migration compatibility checks are limited to account, auth, allauth, site, content type, and billing apps represented in the core table allowlist. Unrelated simulation or TrainerLab migration changes do not block a core restore because those tables are intentionally excluded.
 
 To intentionally overwrite an already populated database, pass `--truncate-managed-tables`. This is destructive and should not be used for normal production restore.
-
-Full restores require `--require-empty-db` and a fresh migrated database. The command refuses to run a full restore if public application tables contain rows. Use a newly created database and run migrations before invoking a full restore.
 
 ## Invitation Policy
 

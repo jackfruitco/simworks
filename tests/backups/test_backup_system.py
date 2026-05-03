@@ -25,7 +25,8 @@ from apps.common.backups.manifest import (
 )
 from apps.common.backups.postgres import backup_advisory_lock, pg_dump
 from apps.common.backups.restore import (
-    FullRestoreEmptinessCheck,
+    FullRestoreTableCheck,
+    check_database_empty_for_full_restore,
     check_no_business_data,
     expire_pending_invitations_after_restore,
     reseed_table_sequences,
@@ -192,7 +193,7 @@ def test_full_restore_without_require_empty_db_refuses_to_run():
 
 
 @override_settings(DATABASES=POSTGRES_DATABASES)
-def test_full_restore_with_non_empty_db_refuses_to_run(monkeypatch, tmp_path):
+def test_full_restore_with_existing_public_tables_refuses_to_run(monkeypatch, tmp_path):
     encrypted = tmp_path / "full.dump.zst.age"
     encrypted.write_bytes(b"encrypted-full-backup")
     FakeStorage.manifest = build_test_manifest("full", encrypted)
@@ -206,10 +207,10 @@ def test_full_restore_with_non_empty_db_refuses_to_run(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "apps.common.management.commands.restore_database.check_database_empty_for_full_restore",
-        lambda: FullRestoreEmptinessCheck(non_empty_tables=("accounts_user",)),
+        lambda: FullRestoreTableCheck(conflicting_tables=("django_content_type",)),
     )
 
-    with pytest.raises(CommandError, match="fresh migrated database"):
+    with pytest.raises(CommandError, match="newly-created empty PostgreSQL database"):
         call_command(
             "restore_database",
             "--mode",
@@ -218,6 +219,58 @@ def test_full_restore_with_non_empty_db_refuses_to_run(monkeypatch, tmp_path):
             "production/full/2026/05/03/full-20260503T120000Z.manifest.json",
             "--require-empty-db",
         )
+
+
+def test_full_restore_empty_check_refuses_existing_public_tables_even_if_empty(monkeypatch):
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql):
+            self.sql = sql
+
+        def fetchall(self):
+            return [("django_content_type",), ("auth_permission",)]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr("apps.common.backups.restore.connection", FakeConnection())
+
+    result = check_database_empty_for_full_restore()
+
+    assert not result.is_empty
+    assert result.conflicting_tables == ("django_content_type", "auth_permission")
+
+
+def test_full_restore_empty_check_allows_no_public_tables(monkeypatch):
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql):
+            self.sql = sql
+
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr("apps.common.backups.restore.connection", FakeConnection())
+
+    result = check_database_empty_for_full_restore()
+
+    assert result.is_empty
+    assert result.conflicting_tables == ()
 
 
 @override_settings(DATABASES=POSTGRES_DATABASES)
