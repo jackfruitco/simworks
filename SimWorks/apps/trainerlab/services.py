@@ -121,15 +121,35 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
 
 
 def get_runtime_debounce_seconds() -> float:
-    return float(getattr(settings, "TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS", 2.0))
+    value = _runtime_setting_or_default(
+        getattr(settings, "TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS", 2.0),
+        2.0,
+    )
+    return max(0.0, float(value))
 
 
 def get_runtime_min_interval_seconds() -> float:
-    return float(getattr(settings, "TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS", 8.0))
+    value = _runtime_setting_or_default(
+        getattr(settings, "TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS", 8.0),
+        8.0,
+    )
+    return max(0.0, float(value))
 
 
 def get_runtime_max_chained_turns() -> int:
-    return int(getattr(settings, "TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS", 2))
+    value = _runtime_setting_or_default(
+        getattr(settings, "TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS", 2),
+        2,
+    )
+    return max(1, int(value))
+
+
+def _runtime_setting_or_default(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str) and value.strip() == "":
+        return default
+    return value
 
 
 def _sanitize_runtime_state_payload(state: dict[str, Any] | None) -> dict[str, Any]:
@@ -1284,7 +1304,7 @@ def _schedule_tick(session: TrainerSession) -> None:
 
 
 def _schedule_runtime_turn(session_id: int) -> None:
-    schedule_runtime_turn_once(session_id=session_id, trigger_kind="runtime_requested")
+    schedule_runtime_turn_once(session_id=session_id, trigger_kind="runtime/requested")
 
 
 def _runtime_trigger_kind(reason_kind: str) -> str:
@@ -1292,22 +1312,22 @@ def _runtime_trigger_kind(reason_kind: str) -> str:
         "run_started": "run/start",
         "run_resumed": "run/resume",
         "tick": "run/tick",
-        "manual_tick": "manual_tick",
-        "adjustment": "adjust",
-        "steer_prompt": "steer_prompt",
-        "preset_applied": "preset_applied",
-        "intervention_recorded": "intervention_created",
+        "manual_tick": "runtime/manual",
+        "adjustment": "user/adjust",
+        "steer_prompt": "user/steer",
+        "preset_applied": "user/preset",
+        "intervention_recorded": "user/intervention",
     }.get(reason_kind, reason_kind)
 
 
 def _runtime_trigger_delay_seconds(trigger_kind: str) -> float:
-    if trigger_kind in {"intervention_created", "runtime_follow_up"}:
+    if trigger_kind in {"user/intervention", "runtime/follow_up"}:
         return get_runtime_debounce_seconds()
     return 0.0
 
 
 def _runtime_trigger_respects_min_interval(trigger_kind: str) -> bool:
-    return trigger_kind in {"run/tick", "scheduled_progression"}
+    return trigger_kind in {"run/tick", "scheduled/progression"}
 
 
 def _runtime_decision_log_name(decision: str) -> str:
@@ -1344,7 +1364,7 @@ def _log_runtime_schedule_decision(
     )
 
 
-def _enqueue_runtime_turn_task(*, session_id: int, run_at: datetime | None) -> None:
+def _enqueue_runtime_turn_task(*, session_id: int, run_at: datetime | None) -> bool:
     from .tasks import trainerlab_process_runtime_turn
 
     try:
@@ -1352,14 +1372,20 @@ def _enqueue_runtime_turn_task(*, session_id: int, run_at: datetime | None) -> N
             trainerlab_process_runtime_turn.using(run_after=run_at).enqueue(session_id=session_id)
         else:
             trainerlab_process_runtime_turn.enqueue(session_id=session_id)
+        return True
     except Exception:
-        logger.exception("trainerlab.runtime.schedule_failed", session_id=session_id)
+        logger.exception(
+            "trainerlab.runtime.schedule_failed",
+            session_id=session_id,
+            run_at=_iso_or_none(run_at),
+        )
+        return False
 
 
 def _schedule_runtime_follow_up_if_pending(session_id: int) -> None:
     schedule_runtime_turn_once(
         session_id=session_id,
-        trigger_kind="runtime_follow_up",
+        trigger_kind="runtime/follow_up",
     )
 
 
@@ -1427,56 +1453,78 @@ def schedule_runtime_turn_once(
             session.save(update_fields=["runtime_state_json", "modified_at"])
             return False
 
-        if trigger_kind == "runtime_follow_up":
+        delayed_for_max_chain = False
+        if trigger_kind == "runtime/follow_up":
             chained_turn_count = int(state.get("chained_turn_count", 0) or 0)
             if chained_turn_count >= get_runtime_max_chained_turns():
+                delay_seconds = max(
+                    get_runtime_min_interval_seconds(),
+                    get_runtime_debounce_seconds(),
+                )
+                run_at = now + timedelta(seconds=delay_seconds)
+                state["chained_turn_count"] = 0
+                state["scheduled_runtime_task_run_at"] = run_at.astimezone(UTC).isoformat()
+                session.runtime_state_json = state
+                session.save(update_fields=["runtime_state_json", "modified_at"])
                 _log_runtime_schedule_decision(
                     session=session,
                     state=state,
                     trigger_kind=trigger_kind,
                     trigger_event_id=trigger_event_id,
-                    decision="max_chain_reached",
+                    decision="max_chain_delayed",
+                    run_at=run_at,
                 )
-                session.runtime_state_json = state
-                session.save(update_fields=["runtime_state_json", "modified_at"])
-                return False
-            state["chained_turn_count"] = chained_turn_count + 1
+                should_enqueue = True
+                delayed_for_max_chain = True
+            else:
+                state["chained_turn_count"] = chained_turn_count + 1
         else:
             state["chained_turn_count"] = 0
 
-        if _runtime_trigger_respects_min_interval(trigger_kind):
-            last_runtime_call_at = _parse_iso_datetime(state.get("last_runtime_call_at"))
-            if last_runtime_call_at is not None:
-                elapsed = (now - last_runtime_call_at).total_seconds()
-                if elapsed < get_runtime_min_interval_seconds():
-                    _log_runtime_schedule_decision(
-                        session=session,
-                        state=state,
-                        trigger_kind=trigger_kind,
-                        trigger_event_id=trigger_event_id,
-                        decision="skipped_min_interval",
-                    )
-                    session.runtime_state_json = state
-                    session.save(update_fields=["runtime_state_json", "modified_at"])
-                    return False
+        if not delayed_for_max_chain:
+            if _runtime_trigger_respects_min_interval(trigger_kind):
+                last_runtime_call_at = _parse_iso_datetime(state.get("last_runtime_call_at"))
+                if last_runtime_call_at is not None:
+                    elapsed = (now - last_runtime_call_at).total_seconds()
+                    if elapsed < get_runtime_min_interval_seconds():
+                        _log_runtime_schedule_decision(
+                            session=session,
+                            state=state,
+                            trigger_kind=trigger_kind,
+                            trigger_event_id=trigger_event_id,
+                            decision="skipped_min_interval",
+                        )
+                        session.runtime_state_json = state
+                        session.save(update_fields=["runtime_state_json", "modified_at"])
+                        return False
 
-        delay_seconds = _runtime_trigger_delay_seconds(trigger_kind)
-        run_at = now + timedelta(seconds=delay_seconds)
-        state["scheduled_runtime_task_run_at"] = run_at.astimezone(UTC).isoformat()
-        session.runtime_state_json = state
-        session.save(update_fields=["runtime_state_json", "modified_at"])
-        _log_runtime_schedule_decision(
-            session=session,
-            state=state,
-            trigger_kind=trigger_kind,
-            trigger_event_id=trigger_event_id,
-            decision="scheduled",
-            run_at=run_at,
-        )
-        should_enqueue = True
+            delay_seconds = _runtime_trigger_delay_seconds(trigger_kind)
+            run_at = now + timedelta(seconds=delay_seconds)
+            state["scheduled_runtime_task_run_at"] = run_at.astimezone(UTC).isoformat()
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            _log_runtime_schedule_decision(
+                session=session,
+                state=state,
+                trigger_kind=trigger_kind,
+                trigger_event_id=trigger_event_id,
+                decision="scheduled",
+                run_at=run_at,
+            )
+            should_enqueue = True
 
     if should_enqueue:
-        _enqueue_runtime_turn_task(session_id=session_id, run_at=run_at)
+        enqueued = _enqueue_runtime_turn_task(session_id=session_id, run_at=run_at)
+        if not enqueued:
+            with transaction.atomic():
+                session = TrainerSession.objects.select_for_update().get(pk=session_id)
+                state = get_runtime_state(session)
+                expected = run_at.astimezone(UTC).isoformat() if run_at is not None else None
+                if state.get("scheduled_runtime_task_run_at") == expected:
+                    state["scheduled_runtime_task_run_at"] = None
+                    session.runtime_state_json = state
+                    session.save(update_fields=["runtime_state_json", "modified_at"])
+            return False
     return should_enqueue
 
 

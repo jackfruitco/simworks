@@ -7,11 +7,20 @@ from apps.accounts.models import UserRole
 from apps.common.models import OutboxEvent
 from apps.trainerlab.models import SessionStatus, TrainerAgentViewModelRecord
 from apps.trainerlab.orca.services.runtime import GenerateTrainerRuntimeTurn
+from apps.trainerlab.runtime_llm import (
+    get_runtime_max_batch_reasons,
+    get_runtime_max_output_tokens,
+    get_runtime_max_prompt_tokens,
+)
 from apps.trainerlab.services import (
+    _runtime_trigger_kind,
     append_pending_runtime_reason,
     apply_runtime_turn_output,
     create_session,
     enqueue_runtime_turn_service_call,
+    get_runtime_debounce_seconds,
+    get_runtime_max_chained_turns,
+    get_runtime_min_interval_seconds,
     get_runtime_state,
     process_runtime_turn_queue,
     schedule_runtime_turn_once,
@@ -67,7 +76,7 @@ def test_rapid_intervention_reasons_coalesce_one_scheduled_runtime_call(
 
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -114,7 +123,7 @@ def test_intervention_reason_during_active_runtime_call_does_not_enqueue_paralle
     scheduled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -159,7 +168,7 @@ def test_runtime_completion_schedules_one_follow_up_for_pending_reasons(
     scheduled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
     apply_runtime_turn_output(
@@ -206,7 +215,7 @@ def test_run_start_schedules_runtime_immediately(django_user_model, monkeypatch)
     scheduled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
     assert schedule_runtime_turn_once(session_id=session.id, trigger_kind="run/start") is True
@@ -232,7 +241,7 @@ def test_run_tick_respects_runtime_min_interval(django_user_model, monkeypatch):
     scheduled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
     assert schedule_runtime_turn_once(session_id=session.id, trigger_kind="run/tick") is False
@@ -242,12 +251,14 @@ def test_run_tick_respects_runtime_min_interval(django_user_model, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_max_chained_turns_prevents_follow_up_schedule(
+def test_max_chained_turns_delays_follow_up_without_stranding_reasons(
     django_user_model,
     monkeypatch,
     settings,
 ):
     settings.TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS = 2
+    settings.TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS = 8.0
+    settings.TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS = 2.0
     session = _create_running_session(
         django_user_model,
         email="runtime-max-chain@example.com",
@@ -268,13 +279,77 @@ def test_max_chained_turns_prevents_follow_up_schedule(
     scheduled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "apps.trainerlab.services._enqueue_runtime_turn_task",
-        lambda **kwargs: scheduled.append(kwargs),
+        lambda **kwargs: scheduled.append(kwargs) or True,
     )
 
-    assert (
-        schedule_runtime_turn_once(session_id=session.id, trigger_kind="runtime_follow_up") is False
+    assert schedule_runtime_turn_once(session_id=session.id, trigger_kind="runtime/follow_up")
+    assert len(scheduled) == 1
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    scheduled_at = state["scheduled_runtime_task_run_at"]
+    assert scheduled_at
+    assert scheduled[0]["run_at"] > timezone.now()
+    assert state["pending_runtime_reasons"][0]["payload"]["domain_event_id"] == 401
+    assert state["chained_turn_count"] == 0
+
+
+@pytest.mark.django_db
+def test_schedule_runtime_turn_clears_marker_when_enqueue_fails(
+    django_user_model,
+    monkeypatch,
+):
+    session = _create_running_session(
+        django_user_model,
+        email="runtime-enqueue-failure@example.com",
     )
-    assert scheduled == []
+    state = get_runtime_state(session)
+    state["pending_runtime_reasons"] = [
+        {
+            "reason_kind": "intervention_recorded",
+            "payload": {"domain_event_id": 501, "event_kind": "intervention"},
+            "created_at": "2026-03-22T00:00:00Z",
+        }
+    ]
+    state["pending_since"] = "2026-03-22T00:00:00Z"
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    monkeypatch.setattr(
+        "apps.trainerlab.services._enqueue_runtime_turn_task",
+        lambda **_kwargs: False,
+    )
+
+    scheduled = schedule_runtime_turn_once(
+        session_id=session.id,
+        trigger_kind="user/intervention",
+    )
+
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    assert scheduled is False
+    assert state["scheduled_runtime_task_run_at"] is None
+    assert state["pending_runtime_reasons"][0]["payload"]["domain_event_id"] == 501
+
+
+def test_runtime_config_getters_use_defaults_for_blank_settings(settings):
+    settings.TRAINERLAB_RUNTIME_MAX_BATCH_REASONS = " "
+    settings.TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS = ""
+    settings.TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = "\t"
+    settings.TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS = " "
+    settings.TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS = ""
+    settings.TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS = "\n"
+
+    assert get_runtime_max_batch_reasons() == 8
+    assert get_runtime_max_prompt_tokens() == 7000
+    assert get_runtime_max_output_tokens() == 1200
+    assert get_runtime_debounce_seconds() == 2.0
+    assert get_runtime_min_interval_seconds() == 8.0
+    assert get_runtime_max_chained_turns() == 2
+
+
+def test_runtime_trigger_kind_uses_canonical_names():
+    assert _runtime_trigger_kind("intervention_recorded") == "user/intervention"
+    assert _runtime_trigger_kind("tick") == "run/tick"
 
 
 @pytest.mark.django_db

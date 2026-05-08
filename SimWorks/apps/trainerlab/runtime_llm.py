@@ -51,6 +51,14 @@ _VITAL_MODEL_MAP = {
 }
 
 
+def _runtime_setting_or_default(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str) and value.strip() == "":
+        return default
+    return value
+
+
 @dataclass(frozen=True)
 class RuntimeBudgetResult:
     runtime_llm_context: dict[str, Any]
@@ -67,8 +75,7 @@ def get_runtime_max_batch_reasons() -> int:
         "TRAINERLAB_RUNTIME_MAX_BATCH_REASONS",
         DEFAULT_RUNTIME_MAX_BATCH_REASONS,
     )
-    if value is None:
-        value = DEFAULT_RUNTIME_MAX_BATCH_REASONS
+    value = _runtime_setting_or_default(value, DEFAULT_RUNTIME_MAX_BATCH_REASONS)
     return max(1, int(value))
 
 
@@ -78,8 +85,7 @@ def get_runtime_max_prompt_tokens() -> int:
         "TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS",
         DEFAULT_RUNTIME_MAX_PROMPT_TOKENS,
     )
-    if value is None:
-        value = DEFAULT_RUNTIME_MAX_PROMPT_TOKENS
+    value = _runtime_setting_or_default(value, DEFAULT_RUNTIME_MAX_PROMPT_TOKENS)
     return max(1000, int(value))
 
 
@@ -89,8 +95,7 @@ def get_runtime_max_output_tokens() -> int:
         "TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS",
         DEFAULT_RUNTIME_MAX_OUTPUT_TOKENS,
     )
-    if value is None:
-        value = DEFAULT_RUNTIME_MAX_OUTPUT_TOKENS
+    value = _runtime_setting_or_default(value, DEFAULT_RUNTIME_MAX_OUTPUT_TOKENS)
     return max(128, int(value))
 
 

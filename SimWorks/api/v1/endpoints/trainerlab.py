@@ -8,6 +8,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
@@ -85,6 +86,7 @@ from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     list_intervention_definitions,
     normalize_site_code,
+    validate_intervention_details,
 )
 from apps.trainerlab.models import (
     ETCO2,
@@ -1433,20 +1435,77 @@ def _create_disposition_state(
     return obj
 
 
-def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
-    if body.client_event_id:
-        existing = Intervention.objects.filter(
-            simulation=session.simulation,
-            client_event_id=body.client_event_id,
-        ).first()
-        if existing is not None:
-            existing._duplicate_client_event = True
-            return existing
+_CLIENT_EVENT_ID_CONFLICT = "client_event_id already used for a different intervention payload"
 
+
+def _find_intervention_by_client_event_id(
+    *,
+    session: TrainerSession,
+    client_event_id: str,
+) -> Intervention | None:
+    return Intervention.objects.filter(
+        simulation=session.simulation,
+        client_event_id=client_event_id,
+    ).first()
+
+
+def _intervention_payload_matches_existing(
+    *,
+    existing: Intervention,
+    body: InterventionCreateIn,
+    supersedes: Intervention | None,
+) -> bool:
+    expected_details = validate_intervention_details(
+        body.intervention_type,
+        body.details.model_dump(exclude_none=True),
+    )
+    return (
+        existing.intervention_type == body.intervention_type
+        and existing.site_code == body.site_code
+        and existing.target_problem_id == body.target_problem_id
+        and existing.status == body.status
+        and existing.effectiveness == body.effectiveness
+        and existing.notes == body.notes
+        and (existing.details_json or {}) == expected_details
+        and existing.initiated_by_type == body.initiated_by_type
+        and existing.initiated_by_id == body.initiated_by_id
+        and existing.supersedes_id == (supersedes.id if supersedes else None)
+    )
+
+
+def _replay_or_reject_duplicate_intervention(
+    *,
+    existing: Intervention,
+    body: InterventionCreateIn,
+    supersedes: Intervention | None,
+) -> Intervention:
+    if not _intervention_payload_matches_existing(
+        existing=existing,
+        body=body,
+        supersedes=supersedes,
+    ):
+        raise ValidationError(_CLIENT_EVENT_ID_CONFLICT)
+    existing._duplicate_client_event = True
+    return existing
+
+
+def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
     supersedes = _resolve_superseded_intervention(
         simulation_id=session.simulation_id,
         supersedes_event_id=body.supersedes_event_id,
     )
+
+    if body.client_event_id:
+        existing = _find_intervention_by_client_event_id(
+            session=session,
+            client_event_id=body.client_event_id,
+        )
+        if existing is not None:
+            return _replay_or_reject_duplicate_intervention(
+                existing=existing,
+                body=body,
+                supersedes=supersedes,
+            )
 
     obj = Intervention(
         simulation=session.simulation,
@@ -1458,12 +1517,30 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         status=body.status,
         effectiveness=body.effectiveness,
         notes=body.notes,
-        details_json=body.details.model_dump(exclude_none=True),
+        details_json=validate_intervention_details(
+            body.intervention_type,
+            body.details.model_dump(exclude_none=True),
+        ),
         initiated_by_type=body.initiated_by_type,
         initiated_by_id=body.initiated_by_id,
         client_event_id=body.client_event_id or "",
     )
-    obj.save()
+    try:
+        obj.save()
+    except IntegrityError:
+        if not body.client_event_id:
+            raise
+        existing = _find_intervention_by_client_event_id(
+            session=session,
+            client_event_id=body.client_event_id,
+        )
+        if existing is None:
+            raise
+        return _replay_or_reject_duplicate_intervention(
+            existing=existing,
+            body=body,
+            supersedes=supersedes,
+        )
     obj._deactivated_objects = [supersedes] if supersedes else []
     obj._adjudication_result = adjudicate_intervention(obj)
     return obj
