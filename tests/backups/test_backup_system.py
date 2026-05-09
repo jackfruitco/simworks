@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
+import re
+import subprocess
 from typing import ClassVar
 
 from django.core.management import call_command
@@ -24,6 +26,7 @@ from apps.common.backups.manifest import (
     validate_migration_compatibility,
 )
 from apps.common.backups.postgres import backup_advisory_lock, pg_dump
+from apps.common.backups.preflight import validate_pg_dump_server_compatibility
 from apps.common.backups.restore import (
     FullRestoreTableCheck,
     check_database_empty_for_full_restore,
@@ -81,6 +84,35 @@ class FakeStorage:
         Path(path).write_bytes(self.encrypted_payload)
 
 
+def configure_backup_preflight(monkeypatch, *, pg_dump_output: str, server_version_num: object):
+    def fake_run(command, check, capture_output, text):
+        assert command == ["pg_dump", "--version"]
+        assert check is True
+        assert capture_output is True
+        assert text is True
+        return subprocess.CompletedProcess(command, 0, stdout=pg_dump_output, stderr="")
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql):
+            assert sql == "SHOW server_version_num;"
+
+        def fetchone(self):
+            return (server_version_num,)
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr("apps.common.backups.preflight.subprocess.run", fake_run)
+    monkeypatch.setattr("apps.common.backups.preflight.connection", FakeConnection())
+
+
 def test_core_allowlist_excludes_runtime_and_audit_tables():
     assert "django_session" not in CORE_BACKUP_TABLES
     assert "accounts_accountauditevent" not in CORE_BACKUP_TABLES
@@ -128,6 +160,65 @@ def test_rejects_non_postgresql_database(settings):
         get_postgres_connection_info()
 
 
+def test_backup_preflight_rejects_older_pg_dump(monkeypatch):
+    configure_backup_preflight(
+        monkeypatch,
+        pg_dump_output="pg_dump (PostgreSQL) 15.16 (Debian 15.16-0+deb12u1)\n",
+        server_version_num="180002",
+    )
+
+    with pytest.raises(
+        CommandError,
+        match=re.escape(
+            "server major version is 18, but pg_dump major version is 15. "
+            "Install postgresql-client-18"
+        ),
+    ):
+        validate_pg_dump_server_compatibility()
+
+
+def test_backup_preflight_allows_matching_pg_dump(monkeypatch):
+    configure_backup_preflight(
+        monkeypatch,
+        pg_dump_output="pg_dump (PostgreSQL) 18.2\n",
+        server_version_num="180002",
+    )
+
+    validate_pg_dump_server_compatibility()
+
+
+def test_backup_preflight_allows_newer_pg_dump(monkeypatch):
+    configure_backup_preflight(
+        monkeypatch,
+        pg_dump_output="pg_dump (PostgreSQL) 19.0\n",
+        server_version_num="180002",
+    )
+
+    validate_pg_dump_server_compatibility()
+
+
+def test_backup_preflight_rejects_malformed_pg_dump_version(monkeypatch):
+    configure_backup_preflight(
+        monkeypatch,
+        pg_dump_output="pg_dump from somewhere unexpected\n",
+        server_version_num="180002",
+    )
+
+    with pytest.raises(CommandError, match="Could not parse pg_dump major version"):
+        validate_pg_dump_server_compatibility()
+
+
+def test_backup_preflight_rejects_malformed_server_version(monkeypatch):
+    configure_backup_preflight(
+        monkeypatch,
+        pg_dump_output="pg_dump (PostgreSQL) 18.2\n",
+        server_version_num="eighteen",
+    )
+
+    with pytest.raises(CommandError, match="Could not parse PostgreSQL server_version_num"):
+        validate_pg_dump_server_compatibility()
+
+
 @override_settings(DATABASES=POSTGRES_DATABASES)
 def test_backup_dry_run_prints_tables_without_dump_or_upload(monkeypatch):
     def fail(*args, **kwargs):
@@ -137,6 +228,29 @@ def test_backup_dry_run_prints_tables_without_dump_or_upload(monkeypatch):
     monkeypatch.setattr("apps.common.management.commands.backup_database.R2Storage", fail)
 
     call_command("backup_database", "--mode", "core", "--dry-run")
+
+
+@override_settings(DATABASES=POSTGRES_DATABASES)
+def test_backup_preflight_runs_before_dump(monkeypatch):
+    calls = []
+
+    def fake_preflight():
+        calls.append("preflight")
+        raise CommandError("preflight failed before dump")
+
+    def fail_pg_dump(*args, **kwargs):
+        raise AssertionError("pg_dump should not run when preflight fails")
+
+    monkeypatch.setattr(
+        "apps.common.management.commands.backup_database.validate_pg_dump_server_compatibility",
+        fake_preflight,
+    )
+    monkeypatch.setattr("apps.common.management.commands.backup_database.pg_dump", fail_pg_dump)
+
+    with pytest.raises(CommandError, match="preflight failed before dump"):
+        call_command("backup_database", "--mode", "core", "--upload", "none", "--encrypt")
+
+    assert calls == ["preflight"]
 
 
 @override_settings(DATABASES=POSTGRES_DATABASES)
