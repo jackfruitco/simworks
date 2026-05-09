@@ -2337,6 +2337,293 @@ class TestTrainerLabDictionaries:
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
+    def test_duplicate_intervention_client_event_id_replays_without_duplicate_event(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.trainerlab.models import Injury, Intervention, Problem, TrainerSession
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services._enqueue_runtime_turn_task",
+            lambda **_kwargs: True,
+        )
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="intervention-client-event-session")
+        simulation_id = session["simulation_id"]
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-client-event-injury",
+            injury_location="LUL",
+            injury_kind="GSW",
+            injury_description="GSW to the left thigh",
+        )
+        assert injury_resp.status_code == 200
+        cause = Injury.objects.get(injury_description="GSW to the left thigh")
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-client-event-problem",
+            cause_kind="injury",
+            cause_id=cause.id,
+            kind="hemorrhage",
+            title="Massive hemorrhage from left thigh",
+            march_category="M",
+            severity="critical",
+            anatomical_location=cause.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+        problem_id = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp").id
+
+        payload = {
+            "client_event_id": "tap-abc-123",
+            "intervention_type": "tourniquet",
+            "site_code": "left_arm",
+            "target_problem_id": problem_id,
+            "status": "applied",
+            "effectiveness": "unknown",
+            "notes": "Tourniquet placed high and tight",
+            "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
+            "initiated_by_type": "user",
+        }
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data=payload,
+            content_type="application/json",
+        )
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data=payload,
+            content_type="application/json",
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json() == second.json()
+        assert (
+            Intervention.objects.filter(
+                simulation_id=simulation_id,
+                client_event_id="tap-abc-123",
+            ).count()
+            == 1
+        )
+
+        trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
+        reasons = [
+            reason
+            for reason in trainer_session.runtime_state_json.get("pending_runtime_reasons", [])
+            if reason.get("payload", {}).get("event_kind") == "intervention"
+        ]
+        assert len(reasons) == 1
+
+    def test_duplicate_intervention_client_event_id_conflicting_payload_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.trainerlab.models import Injury, Intervention, Problem, TrainerCommand
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services._enqueue_runtime_turn_task",
+            lambda **_kwargs: True,
+        )
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="intervention-conflict-session")
+        simulation_id = session["simulation_id"]
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-conflict-injury",
+            injury_location="LUL",
+            injury_kind="GSW",
+            injury_description="GSW to the left forearm",
+        )
+        assert injury_resp.status_code == 200
+        cause = Injury.objects.get(injury_description="GSW to the left forearm")
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-conflict-problem",
+            cause_kind="injury",
+            cause_id=cause.id,
+            kind="hemorrhage",
+            title="Hemorrhage from left forearm",
+            march_category="M",
+            severity="critical",
+            anatomical_location=cause.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+        problem_id = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp").id
+        payload = {
+            "client_event_id": "tap-conflict-123",
+            "intervention_type": "tourniquet",
+            "site_code": "left_arm",
+            "target_problem_id": problem_id,
+            "status": "applied",
+            "effectiveness": "unknown",
+            "notes": "Tourniquet placed high and tight",
+            "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
+            "initiated_by_type": "user",
+        }
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data=payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-conflict-first",
+        )
+        conflicting_payload = {**payload, "notes": "Tourniquet moved lower"}
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data=conflicting_payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-conflict-second",
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert "client_event_id already used" in second.json()["detail"]
+        assert (
+            Intervention.objects.filter(
+                simulation_id=simulation_id,
+                client_event_id="tap-conflict-123",
+            ).count()
+            == 1
+        )
+        command = TrainerCommand.objects.get(idempotency_key="intervention-conflict-second")
+        assert command.status == TrainerCommand.CommandStatus.FAILED
+
+    def test_intervention_client_event_id_integrity_error_replays_existing_event(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from django.db import IntegrityError
+
+        from api.v1.endpoints import trainerlab as trainerlab_endpoint
+        from apps.trainerlab.models import (
+            EventSource,
+            Injury,
+            Intervention,
+            Problem,
+            TrainerSession,
+        )
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services._enqueue_runtime_turn_task",
+            lambda **_kwargs: True,
+        )
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="intervention-race-session")
+        simulation_id = session["simulation_id"]
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-race-injury",
+            injury_location="LUL",
+            injury_kind="GSW",
+            injury_description="GSW to the left upper arm",
+        )
+        assert injury_resp.status_code == 200
+        cause = Injury.objects.get(injury_description="GSW to the left upper arm")
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-race-problem",
+            cause_kind="injury",
+            cause_id=cause.id,
+            kind="hemorrhage",
+            title="Hemorrhage from left upper arm",
+            march_category="M",
+            severity="critical",
+            anatomical_location=cause.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+        problem_id = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp").id
+        payload = {
+            "client_event_id": "tap-race-123",
+            "intervention_type": "tourniquet",
+            "site_code": "left_arm",
+            "target_problem_id": problem_id,
+            "status": "applied",
+            "effectiveness": "unknown",
+            "notes": "Tourniquet placed high and tight",
+            "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
+            "initiated_by_type": "user",
+        }
+
+        Intervention.objects.create(
+            simulation_id=simulation_id,
+            source=EventSource.INSTRUCTOR,
+            client_event_id="tap-race-123",
+            intervention_type=payload["intervention_type"],
+            site_code=payload["site_code"],
+            target_problem_id=payload["target_problem_id"],
+            status=payload["status"],
+            effectiveness=payload["effectiveness"],
+            notes=payload["notes"],
+            details_json=payload["details"],
+            initiated_by_type=payload["initiated_by_type"],
+        )
+
+        original_find = trainerlab_endpoint._find_intervention_by_client_event_id
+        find_calls = {"count": 0}
+
+        def flaky_find(*args, **kwargs):
+            find_calls["count"] += 1
+            if find_calls["count"] == 1:
+                return None
+            return original_find(*args, **kwargs)
+
+        original_save = Intervention.save
+
+        def race_save(self, *args, **kwargs):
+            if self._state.adding and self.client_event_id == "tap-race-123":
+                raise IntegrityError("duplicate client_event_id")
+            return original_save(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            trainerlab_endpoint,
+            "_find_intervention_by_client_event_id",
+            flaky_find,
+        )
+        monkeypatch.setattr(Intervention, "save", race_save)
+        trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
+        pending_before = list(trainer_session.runtime_state_json.get("pending_runtime_reasons", []))
+
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data=payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-race-second",
+        )
+
+        assert second.status_code == 200
+        assert (
+            Intervention.objects.filter(
+                simulation_id=simulation_id,
+                client_event_id="tap-race-123",
+            ).count()
+            == 1
+        )
+        trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
+        pending_after = trainer_session.runtime_state_json.get("pending_runtime_reasons", [])
+        assert pending_after == pending_before
+        assert not any(
+            reason.get("reason_kind") == "intervention_recorded" for reason in pending_after
+        )
+
     def test_tourniquet_details_require_application_mode(
         self,
         auth_client_factory,

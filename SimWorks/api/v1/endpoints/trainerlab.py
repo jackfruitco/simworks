@@ -8,6 +8,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
@@ -85,6 +86,7 @@ from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     list_intervention_definitions,
     normalize_site_code,
+    validate_intervention_details,
 )
 from apps.trainerlab.models import (
     ETCO2,
@@ -147,6 +149,10 @@ def _get_idempotency_key(request: HttpRequest) -> str:
     if not key:
         raise HttpError(400, "Idempotency-Key header is required")
     return key
+
+
+def _get_optional_idempotency_key(request: HttpRequest) -> str | None:
+    return request.headers.get("Idempotency-Key")
 
 
 def _require_lab_access(request: HttpRequest):
@@ -1429,11 +1435,77 @@ def _create_disposition_state(
     return obj
 
 
+_CLIENT_EVENT_ID_CONFLICT = "client_event_id already used for a different intervention payload"
+
+
+def _find_intervention_by_client_event_id(
+    *,
+    session: TrainerSession,
+    client_event_id: str,
+) -> Intervention | None:
+    return Intervention.objects.filter(
+        simulation=session.simulation,
+        client_event_id=client_event_id,
+    ).first()
+
+
+def _intervention_payload_matches_existing(
+    *,
+    existing: Intervention,
+    body: InterventionCreateIn,
+    supersedes: Intervention | None,
+) -> bool:
+    expected_details = validate_intervention_details(
+        body.intervention_type,
+        body.details.model_dump(exclude_none=True),
+    )
+    return (
+        existing.intervention_type == body.intervention_type
+        and existing.site_code == body.site_code
+        and existing.target_problem_id == body.target_problem_id
+        and existing.status == body.status
+        and existing.effectiveness == body.effectiveness
+        and existing.notes == body.notes
+        and (existing.details_json or {}) == expected_details
+        and existing.initiated_by_type == body.initiated_by_type
+        and existing.initiated_by_id == body.initiated_by_id
+        and existing.supersedes_id == (supersedes.id if supersedes else None)
+    )
+
+
+def _replay_or_reject_duplicate_intervention(
+    *,
+    existing: Intervention,
+    body: InterventionCreateIn,
+    supersedes: Intervention | None,
+) -> Intervention:
+    if not _intervention_payload_matches_existing(
+        existing=existing,
+        body=body,
+        supersedes=supersedes,
+    ):
+        raise ValidationError(_CLIENT_EVENT_ID_CONFLICT)
+    existing._duplicate_client_event = True
+    return existing
+
+
 def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
     supersedes = _resolve_superseded_intervention(
         simulation_id=session.simulation_id,
         supersedes_event_id=body.supersedes_event_id,
     )
+
+    if body.client_event_id:
+        existing = _find_intervention_by_client_event_id(
+            session=session,
+            client_event_id=body.client_event_id,
+        )
+        if existing is not None:
+            return _replay_or_reject_duplicate_intervention(
+                existing=existing,
+                body=body,
+                supersedes=supersedes,
+            )
 
     obj = Intervention(
         simulation=session.simulation,
@@ -1445,11 +1517,30 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         status=body.status,
         effectiveness=body.effectiveness,
         notes=body.notes,
-        details_json=body.details.model_dump(exclude_none=True),
+        details_json=validate_intervention_details(
+            body.intervention_type,
+            body.details.model_dump(exclude_none=True),
+        ),
         initiated_by_type=body.initiated_by_type,
         initiated_by_id=body.initiated_by_id,
+        client_event_id=body.client_event_id or "",
     )
-    obj.save()
+    try:
+        obj.save()
+    except IntegrityError:
+        if not body.client_event_id:
+            raise
+        existing = _find_intervention_by_client_event_id(
+            session=session,
+            client_event_id=body.client_event_id,
+        )
+        if existing is None:
+            raise
+        return _replay_or_reject_duplicate_intervention(
+            existing=existing,
+            body=body,
+            supersedes=supersedes,
+        )
     obj._deactivated_objects = [supersedes] if supersedes else []
     obj._adjudication_result = adjudicate_intervention(obj)
     return obj
@@ -1523,10 +1614,11 @@ def _inject_event_core(
     command_type: str,
     payload_json: dict,
     create_fn: Callable[[TrainerSession], Any],
+    idempotency_key: str | None = None,
 ) -> TrainerCommandAck:
     user = request.auth
     _require_lab_access(request)
-    idempotency_key = _get_idempotency_key(request)
+    idempotency_key = idempotency_key or _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
     session = _get_session_for_simulation(request, simulation_id, user)
@@ -1553,6 +1645,12 @@ def _inject_event_core(
     except ValidationError as exc:
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
+
+    if getattr(domain_event, "_duplicate_client_event", False):
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        command.save(update_fields=["status", "processed_at"])
+        return _accepted(command)
 
     event_type = {
         "injury": outbox_events.PATIENT_INJURY_CREATED,
@@ -1784,12 +1882,16 @@ def create_intervention_event(
     simulation_id: int,
     body: InterventionCreateIn,
 ) -> TrainerCommandAck:
+    idempotency_key = _get_optional_idempotency_key(request)
+    if not idempotency_key and body.client_event_id:
+        idempotency_key = f"intervention-client-event:{simulation_id}:{body.client_event_id}"
     return _inject_event_core(
         request=request,
         simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
+        idempotency_key=idempotency_key,
     )
 
 
