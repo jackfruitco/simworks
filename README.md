@@ -14,7 +14,7 @@ MedSim (formerly SimWorks) is a medical simulation and training platform built o
 MedSim is organized into three layers:
 
 1. **Product/application layer (`SimWorks/`)**
-   Django apps for simulation workflows, including clinician/student-facing experiences such as ChatLab and trainer-facing flows such as TrainerLab.
+   Django apps for simulation workflows, including clinician/student-facing experiences (ChatLab), trainer-facing flows (TrainerLab), staff tooling (StaffHub), billing and entitlements, assessments, and shared domain logic.
 2. **Core orchestration library (`packages/orchestrai`)**
    Framework-agnostic orchestration primitives for providers, services, schemas, tools/codecs, and registries.
 3. **Django integration layer (`packages/orchestrai_django`)**
@@ -24,7 +24,9 @@ MedSim is organized into three layers:
 
 - **Platform docs:** [`docs/index.md`](docs/index.md)
 - **Architecture overview:** [`docs/architecture.md`](docs/architecture.md)
+- **Accounts, billing, and entitlements:** [`docs/architecture/accounts-billing-entitlements.md`](docs/architecture/accounts-billing-entitlements.md)
 - **Local development quick start:** [`docs/quick-start.md`](docs/quick-start.md)
+- **WebSocket event contract:** [`docs/WEBSOCKET_EVENTS.md`](docs/WEBSOCKET_EVENTS.md)
 - **Testing lanes and ownership:** [`docs/testing/`](docs/testing)
 - **`orchestrai` package docs:** [`packages/orchestrai/README.md`](packages/orchestrai/README.md)
 - **`orchestrai_django` package docs:** [`packages/orchestrai_django/README.md`](packages/orchestrai_django/README.md)
@@ -32,15 +34,29 @@ MedSim is organized into three layers:
 
 ## Local development and validation
 
+**Prerequisites:** Python 3.14+, [`uv`](https://github.com/astral-sh/uv), PostgreSQL and Redis (SQLite works for minimal runs).
+
 ```bash
 # Install workspace dependencies
 uv sync
+
+# Apply migrations
+uv run python SimWorks/manage.py migrate
 
 # Run Django dev server
 uv run python SimWorks/manage.py runserver
 
 # Run complete test suite
 uv run pytest
+```
+
+See [`docs/quick-start.md`](docs/quick-start.md) for environment variable reference and full setup details.
+
+**Optional Docker/Make workflow:**
+```bash
+make dev-up-core   # start backing services
+make dev-logs      # tail logs
+make dev-down      # tear down
 ```
 
 ### Reproduce CI lanes locally
