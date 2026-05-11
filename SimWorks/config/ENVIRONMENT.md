@@ -88,4 +88,7 @@ Sender identity defaults may be omitted if the defaults are acceptable:
 
 ## OrchestrAI / Observability
 - `ORCA_DEFAULT_MODEL`
+- `TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS` (default `2.0`): batches rapid user interventions into one runtime turn request.
+- `TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS` (default `8.0`): prevents run/tick and scheduled progression triggers from spamming runtime turns.
+- `TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS` (default `2`): caps immediate recursive runtime follow-ups while preserving pending work with a delayed continuation.
 - `LOGFIRE_TOKEN`

@@ -75,7 +75,7 @@ from .security_settings import (
     SESSION_COOKIE_SECURE,
     USE_X_FORWARDED_HOST,
 )
-from .settings_parsers import bool_from_env, int_from_env, optional_int_from_env
+from .settings_parsers import bool_from_env, float_from_env, int_from_env, optional_int_from_env
 from .task_settings import (
     CELERY_ACCEPT_CONTENT,
     CELERY_BEAT_SCHEDULER,
@@ -238,6 +238,21 @@ TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = optional_int_from_env(
 TRAINERLAB_RUNTIME_MAX_BATCH_REASONS = int_from_env(
     "TRAINERLAB_RUNTIME_MAX_BATCH_REASONS",
     default=8,
+    minimum=1,
+)
+TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS = float_from_env(
+    "TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS",
+    default=2.0,
+    minimum=0.0,
+)
+TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS = float_from_env(
+    "TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS",
+    default=8.0,
+    minimum=0.0,
+)
+TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS = int_from_env(
+    "TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS",
+    default=2,
     minimum=1,
 )
 

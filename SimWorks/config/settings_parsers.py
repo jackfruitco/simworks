@@ -39,6 +39,23 @@ def int_from_env(name: str, default: int, *, minimum: int | None = None) -> int:
     return result
 
 
+def float_from_env(name: str, default: float, *, minimum: float | None = None) -> float:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        result = default
+    else:
+        try:
+            result = float(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Environment variable {name} must be a float, got: {value!r}"
+            ) from exc
+
+    if minimum is not None and result < minimum:
+        raise ValueError(f"Environment variable {name} must be >= {minimum}, got: {result}")
+    return result
+
+
 def optional_int_from_env(name: str, *, minimum: int | None = None) -> int | None:
     """Return int if the env var is set to a non-blank value, otherwise None."""
     value = os.getenv(name)
