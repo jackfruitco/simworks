@@ -61,6 +61,24 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
     - Enables real-time UI updates when initial response is generated
     """
 
+    diagnosis: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Hidden scenario ground-truth diagnosis. Do not include this in "
+            "patient-facing messages."
+        ),
+    )
+    chief_complaint: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Hidden scenario chief complaint / presenting concern. Do not include this "
+            "in patient-facing messages unless naturally stated by the patient."
+        ),
+    )
     metadata: list[MetadataItem] = Field(
         ...,
         description="Patient demographics and initial metadata (polymorphic structure with 'kind' discriminator)",
@@ -111,6 +129,48 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
                     "value": meta.value,
                 },
             )
+
+        diagnosis = (self.diagnosis or "").strip()
+        chief_complaint = (self.chief_complaint or "").strip()
+
+        if not diagnosis or not chief_complaint:
+            logger.warning(
+                "Initial response missing scenario ground truth: sim=%s diagnosis=%r chief_complaint=%r",
+                context.simulation_id,
+                diagnosis,
+                chief_complaint,
+            )
+            return
+
+        from apps.simcore.models import Simulation
+
+        sim = await Simulation.objects.aget(pk=context.simulation_id)
+
+        update_fields = []
+        if not sim.diagnosis:
+            sim.diagnosis = diagnosis
+            update_fields.append("diagnosis")
+        elif sim.diagnosis != diagnosis:
+            logger.warning(
+                "Initial response diagnosis differs from existing simulation diagnosis: sim=%s existing=%r new=%r",
+                context.simulation_id,
+                sim.diagnosis,
+                diagnosis,
+            )
+
+        if not sim.chief_complaint:
+            sim.chief_complaint = chief_complaint
+            update_fields.append("chief_complaint")
+        elif sim.chief_complaint != chief_complaint:
+            logger.warning(
+                "Initial response chief_complaint differs from existing simulation chief_complaint: sim=%s existing=%r new=%r",
+                context.simulation_id,
+                sim.chief_complaint,
+                chief_complaint,
+            )
+
+        if update_fields:
+            await sim.asave(update_fields=update_fields)
 
 
 class PatientReplyOutputSchema(PatientResponseBaseMixin):

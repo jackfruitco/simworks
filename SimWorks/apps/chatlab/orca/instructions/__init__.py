@@ -19,6 +19,7 @@ from .stitch import (
     StitchDebriefInstruction,
     StitchPersonaInstruction,
     StitchRoleInstruction,
+    StitchScenarioGroundTruthInstruction,
     StitchSchemaContractInstruction,
     StitchToneInstruction,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "StitchPersonaInstruction",
     "StitchReplyDetailInstruction",
     "StitchRoleInstruction",
+    "StitchScenarioGroundTruthInstruction",
     "StitchSchemaContractInstruction",
     "StitchToneInstruction",
 ]
