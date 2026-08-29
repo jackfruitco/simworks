@@ -138,10 +138,7 @@ class TestPrepareTranscriptContext:
         assert "### Simulation Transcript" in user_msg
         assert "Where is the pain?" in user_msg
         assert service.context["scenario_diagnosis"] == "Acute appendicitis"
-        assert (
-            service.context["scenario_chief_complaint"]
-            == "Right lower quadrant abdominal pain"
-        )
+        assert service.context["scenario_chief_complaint"] == "Right lower quadrant abdominal pain"
 
     @pytest.mark.asyncio
     async def test_messages_are_chronologically_included(self, monkeypatch):

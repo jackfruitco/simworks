@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from .image import ImageGenerationInstruction
 from .lab_orders import (
     LabOrderPatientContextInstruction,
-    LabOrderResultDetailInstruction,
-    LabOrderSchemaContractInstruction,
     LabOrderTestListInstruction,
 )
 from .patient import (
@@ -16,31 +13,17 @@ from .patient import (
 )
 from .stitch import (
     StitchConversationContextInstruction,
-    StitchDebriefInstruction,
     StitchPersonaInstruction,
-    StitchRoleInstruction,
     StitchScenarioGroundTruthInstruction,
-    StitchSchemaContractInstruction,
-    StitchToneInstruction,
 )
 
-StitchReplyDetailInstruction = StitchDebriefInstruction
-
 __all__ = [
-    "ImageGenerationInstruction",
     "LabOrderPatientContextInstruction",
-    "LabOrderResultDetailInstruction",
-    "LabOrderSchemaContractInstruction",
     "LabOrderTestListInstruction",
     "PatientModifierInstruction",
     "PatientNameInstruction",
     "PatientRecentScenarioHistoryInstruction",
     "StitchConversationContextInstruction",
-    "StitchDebriefInstruction",
     "StitchPersonaInstruction",
-    "StitchReplyDetailInstruction",
-    "StitchRoleInstruction",
     "StitchScenarioGroundTruthInstruction",
-    "StitchSchemaContractInstruction",
-    "StitchToneInstruction",
 ]

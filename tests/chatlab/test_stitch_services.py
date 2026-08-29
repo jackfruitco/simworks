@@ -4,16 +4,14 @@ from asgiref.sync import sync_to_async
 import pytest
 
 from apps.chatlab.orca.instructions import (
-    StitchConversationContextInstruction,
-    StitchPersonaInstruction,
-    StitchReplyDetailInstruction,
-    StitchRoleInstruction,
     StitchScenarioGroundTruthInstruction,
-    StitchSchemaContractInstruction,
-    StitchToneInstruction,
 )
 from apps.chatlab.orca.schemas import StitchReplyOutputSchema
 from apps.chatlab.orca.services.stitch import GenerateStitchReply
+
+
+def _instruction_names(service) -> tuple[str, ...]:
+    return tuple(cls.__name__ for cls in service._instruction_classes)
 
 
 class TestGenerateStitchReplyService:
@@ -28,13 +26,14 @@ class TestGenerateStitchReplyService:
 
     def test_service_collects_instruction_classes(self):
         service = GenerateStitchReply(context={"simulation_id": 1, "conversation_id": 2})
-        assert StitchPersonaInstruction in service._instruction_classes
-        assert StitchRoleInstruction in service._instruction_classes
-        assert StitchScenarioGroundTruthInstruction in service._instruction_classes
-        assert StitchConversationContextInstruction in service._instruction_classes
-        assert StitchReplyDetailInstruction in service._instruction_classes
-        assert StitchSchemaContractInstruction in service._instruction_classes
-        assert StitchToneInstruction in service._instruction_classes
+        names = _instruction_names(service)
+        assert "StitchPersonaInstruction" in names
+        assert "StitchRoleInstruction" in names
+        assert "StitchScenarioGroundTruthInstruction" in names
+        assert "StitchConversationContextInstruction" in names
+        assert "StitchDebriefInstruction" in names
+        assert "StitchSchemaContractInstruction" in names
+        assert "StitchToneInstruction" in names
 
     def test_instruction_ordering_layers(self):
         service = GenerateStitchReply(context={"simulation_id": 1, "conversation_id": 2})
