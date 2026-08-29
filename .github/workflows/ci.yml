@@ -372,4 +372,5 @@ jobs:
         with:
           files: coverage-orchestrai.xml,coverage-orchestrai-django.xml,coverage-simworks.xml
           fail_ci_if_error: true
+          skip_validation: true
           token: ${{ secrets.CODECOV_TOKEN }}
