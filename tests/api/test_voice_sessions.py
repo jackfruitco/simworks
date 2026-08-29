@@ -98,7 +98,13 @@ def conversation(simulation, patient_type):
     )
 
 
-def _provider_start(expires_at=None):
+def _provider_start(
+    expires_at=None,
+    *,
+    provider_session_id="realtime_session_123",
+    calls_url="https://api.openai.test/v1/realtime/calls",
+    websocket_url=None,
+):
     from apps.chatlab.voice import VoiceSessionStart
 
     expires_at = expires_at or datetime.now(UTC) + timedelta(minutes=5)
@@ -106,10 +112,11 @@ def _provider_start(expires_at=None):
         client_secret={"value": "ek_test", "expires_at": int(expires_at.timestamp())},
         session_config={"type": "realtime", "model": "gpt-realtime-test"},
         realtime_url="https://api.openai.test/v1/realtime/client_secrets",
-        calls_url="https://api.openai.test/v1/realtime/calls",
+        calls_url=calls_url,
+        websocket_url=websocket_url,
         expires_at=expires_at,
-        provider_session_id="realtime_session_123",
-        provider_metadata={"id": "realtime_session_123"},
+        provider_session_id=provider_session_id,
+        provider_metadata={"id": provider_session_id},
     )
 
 
@@ -222,6 +229,126 @@ class TestVoiceSessions:
             event_type=event_types.VOICE_SESSION_CREATED,
             payload__voice_session_id=voice_session.pk,
         ).exists()
+
+    @override_settings(
+        OPENAI_API_KEY="sk-test",
+        VOICELAB_OPENAI_WEBSOCKET_URL="wss://api.openai.test/v1/realtime",
+    )
+    def test_realtime_broker_supports_websocket_transport(
+        self,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import VoiceSession
+        from apps.chatlab.voice import OpenAIRealtimeSessionBroker
+
+        response = MagicMock()
+        response.json.return_value = {
+            "id": "realtime_session_ws_123",
+            "client_secret": {
+                "value": "ek_test_ws",
+                "expires_at": int((datetime.now(UTC) + timedelta(minutes=5)).timestamp()),
+            },
+        }
+        response.raise_for_status.return_value = None
+
+        with patch("apps.chatlab.voice.httpx.post", return_value=response):
+            start = OpenAIRealtimeSessionBroker().start_session(
+                user=test_user,
+                simulation=simulation,
+                conversation=conversation,
+                transport=VoiceSession.Transport.WEBSOCKET,
+                model="gpt-realtime-test",
+                voice="verse",
+            )
+
+        assert start.client_secret["value"] == "ek_test_ws"
+        assert start.calls_url is None
+        assert start.websocket_url == "wss://api.openai.test/v1/realtime"
+
+    def test_start_voice_session_is_idempotent_for_client_key(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+    ):
+        from apps.chatlab.models import VoiceSession
+
+        with patch(
+            "apps.chatlab.voice.OpenAIRealtimeSessionBroker.start_session",
+            side_effect=[
+                _provider_start(provider_session_id="realtime_session_123"),
+                _provider_start(provider_session_id="realtime_session_456"),
+            ],
+        ) as start_session:
+            first = auth_client.post(
+                f"/api/v1/simulations/{simulation.pk}/voice/session/",
+                data={
+                    "conversation_id": conversation.pk,
+                    "transport": "webrtc",
+                    "model": "gpt-realtime-test",
+                    "voice": "verse",
+                    "idempotency_key": "voice-start-1",
+                },
+                content_type="application/json",
+            )
+            second = auth_client.post(
+                f"/api/v1/simulations/{simulation.pk}/voice/session/",
+                data={
+                    "conversation_id": conversation.pk,
+                    "transport": "webrtc",
+                    "model": "gpt-realtime-test",
+                    "voice": "verse",
+                    "idempotency_key": "voice-start-1",
+                },
+                content_type="application/json",
+            )
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert first.json()["id"] == second.json()["id"]
+        assert second.json()["provider_session_id"] == "realtime_session_456"
+        assert VoiceSession.objects.filter(simulation=simulation).count() == 1
+        assert start_session.call_count == 2
+
+    def test_start_voice_session_rejects_idempotency_key_parameter_mismatch(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+    ):
+        from apps.chatlab.models import VoiceSession
+
+        with patch(
+            "apps.chatlab.voice.OpenAIRealtimeSessionBroker.start_session",
+            return_value=_provider_start(),
+        ) as start_session:
+            first = auth_client.post(
+                f"/api/v1/simulations/{simulation.pk}/voice/session/",
+                data={
+                    "conversation_id": conversation.pk,
+                    "transport": "webrtc",
+                    "voice": "verse",
+                    "idempotency_key": "voice-start-conflict",
+                },
+                content_type="application/json",
+            )
+            second = auth_client.post(
+                f"/api/v1/simulations/{simulation.pk}/voice/session/",
+                data={
+                    "conversation_id": conversation.pk,
+                    "transport": "websocket",
+                    "voice": "verse",
+                    "idempotency_key": "voice-start-conflict",
+                },
+                content_type="application/json",
+            )
+
+        assert first.status_code == 201
+        assert second.status_code == 409
+        assert VoiceSession.objects.filter(simulation=simulation).count() == 1
+        assert start_session.call_count == 1
 
     def test_start_voice_session_defaults_to_patient_conversation(
         self,
@@ -415,7 +542,7 @@ class TestVoiceSessions:
         conversation,
         test_user,
     ):
-        from apps.chatlab.models import Message
+        from apps.chatlab.models import Message, VoiceTranscriptReceipt
 
         voice_session = _active_voice_session(simulation, conversation, test_user)
         url = (
@@ -446,6 +573,13 @@ class TestVoiceSessions:
         assert second.json()["persisted"] is False
         assert first.json()["message"]["id"] == second.json()["message"]["id"]
         assert Message.objects.filter(provider_response_id="item-duplicate-1").count() == 1
+        assert (
+            VoiceTranscriptReceipt.objects.filter(
+                voice_session=voice_session,
+                provider_message_id="item-duplicate-1",
+            ).count()
+            == 1
+        )
 
     def test_persist_voice_transcript_requires_active_session(
         self,
@@ -511,6 +645,8 @@ class TestVoiceSessions:
         conversation,
         test_user,
     ):
+        from apps.chatlab.models import VoiceToolCall
+
         mock_enqueue = MagicMock()
         mock_enqueue.aenqueue = AsyncMock(return_value="call-id-voice-1")
         mock_lab_results_task.using.return_value = mock_enqueue
@@ -546,11 +682,58 @@ class TestVoiceSessions:
             data={
                 "tool_call_id": "call-orders-1",
                 "name": "sign_lab_orders",
-                "arguments": {"orders": ["CBC"]},
+                "arguments": {"orders": [" CBC ", "CBC", "CMP"]},
             },
             content_type="application/json",
         )
 
         assert duplicate.status_code == 200
         assert duplicate.json()["output"] == data["output"]
+        assert mock_lab_results_task.using.call_count == 1
+        assert (
+            VoiceToolCall.objects.filter(
+                voice_session=voice_session,
+                tool_call_id="call-orders-1",
+                status=VoiceToolCall.Status.COMPLETED,
+            ).count()
+            == 1
+        )
+
+    @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")
+    def test_execute_voice_tool_call_rejects_idempotency_parameter_mismatch(
+        self,
+        mock_lab_results_task,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        mock_enqueue = MagicMock()
+        mock_enqueue.aenqueue = AsyncMock(return_value="call-id-voice-1")
+        mock_lab_results_task.using.return_value = mock_enqueue
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+        url = f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/tool-calls/"
+
+        first = auth_client.post(
+            url,
+            data={
+                "tool_call_id": "call-orders-conflict",
+                "name": "sign_lab_orders",
+                "arguments": {"orders": ["CBC"]},
+            },
+            content_type="application/json",
+        )
+        second = auth_client.post(
+            url,
+            data={
+                "tool_call_id": "call-orders-conflict",
+                "name": "sign_lab_orders",
+                "arguments": {"orders": ["CMP"]},
+            },
+            content_type="application/json",
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
         assert mock_lab_results_task.using.call_count == 1

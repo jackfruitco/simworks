@@ -1784,6 +1784,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionOut"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Created",
             "content": {
@@ -7009,6 +7019,18 @@
             "description": "Provider WebRTC SDP endpoint for the client.",
             "title": "Calls Url"
           },
+          "websocket_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider WebSocket endpoint for the client.",
+            "title": "Websocket Url"
+          },
           "client_secret": {
             "anyOf": [
               {
@@ -7102,6 +7124,20 @@
             ],
             "description": "Optional provider voice override.",
             "title": "Voice"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-generated key used to make voice session start safe to retry.",
+            "title": "Idempotency Key"
           },
           "client_metadata": {
             "additionalProperties": true,

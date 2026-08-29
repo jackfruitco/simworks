@@ -9,13 +9,19 @@ import json
 from typing import Any
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 import httpx
 from ninja.errors import HttpError
 
 from apps.chatlab.media_payloads import build_chat_message_event_payload
-from apps.chatlab.models import Message, RoleChoices, VoiceSession
+from apps.chatlab.models import (
+    Message,
+    RoleChoices,
+    VoiceSession,
+    VoiceToolCall,
+    VoiceTranscriptReceipt,
+)
 from apps.common.outbox import enqueue_event_sync, event_types as outbox_events, poke_drain_sync
 from apps.common.utils.accounts import get_or_create_system_user
 from apps.simcore.models import Simulation
@@ -39,7 +45,8 @@ class VoiceSessionStart:
     client_secret: dict[str, Any]
     session_config: dict[str, Any]
     realtime_url: str
-    calls_url: str
+    calls_url: str | None = None
+    websocket_url: str | None = None
     expires_at: datetime | None = None
     provider_session_id: str = ""
     provider_metadata: dict[str, Any] | None = None
@@ -74,6 +81,14 @@ def realtime_calls_url() -> str:
         settings,
         "VOICELAB_OPENAI_CALLS_URL",
         "https://api.openai.com/v1/realtime/calls",
+    )
+
+
+def realtime_websocket_url() -> str:
+    return getattr(
+        settings,
+        "VOICELAB_OPENAI_WEBSOCKET_URL",
+        "wss://api.openai.com/v1/realtime",
     )
 
 
@@ -242,7 +257,7 @@ def build_realtime_session_config(
 
 
 class OpenAIRealtimeSessionBroker:
-    """Mint ephemeral OpenAI Realtime client secrets for iOS WebRTC sessions."""
+    """Mint ephemeral OpenAI Realtime client secrets for iOS voice sessions."""
 
     def __init__(self, *, timeout_seconds: float = 10.0):
         self.timeout_seconds = timeout_seconds
@@ -262,10 +277,12 @@ class OpenAIRealtimeSessionBroker:
             raise VoiceProviderConfigurationError(
                 "OpenAI Realtime voice provider is not configured"
             )
-        if transport != VoiceSession.Transport.WEBRTC:
-            raise VoiceProviderConfigurationError(
-                "Only WebRTC voice sessions are currently supported"
-            )
+        supported_transports = {
+            VoiceSession.Transport.WEBRTC,
+            VoiceSession.Transport.WEBSOCKET,
+        }
+        if transport not in supported_transports:
+            raise VoiceProviderConfigurationError("Requested voice transport is not supported")
 
         session_config = build_realtime_session_config(
             simulation=simulation,
@@ -319,7 +336,12 @@ class OpenAIRealtimeSessionBroker:
             client_secret=client_secret,
             session_config=session_config,
             realtime_url=realtime_client_secrets_url(),
-            calls_url=realtime_calls_url(),
+            calls_url=(
+                realtime_calls_url() if transport == VoiceSession.Transport.WEBRTC else None
+            ),
+            websocket_url=(
+                realtime_websocket_url() if transport == VoiceSession.Transport.WEBSOCKET else None
+            ),
             expires_at=expires_at,
             provider_session_id=provider_session_id,
             provider_metadata=_redact_secret_payload(payload),
@@ -353,6 +375,35 @@ def _emit_voice_session_event(
         poke_drain_sync()
 
 
+def _normalize_idempotency_key(idempotency_key: str | None) -> str:
+    return (idempotency_key or "").strip()
+
+
+def _ensure_voice_start_matches(
+    voice_session: VoiceSession,
+    *,
+    conversation,
+    transport: str,
+    model: str,
+    voice: str,
+) -> None:
+    if (
+        voice_session.conversation_id != conversation.pk
+        or voice_session.transport != transport
+        or voice_session.model_name != model
+        or voice_session.voice_name != voice
+    ):
+        raise HttpError(
+            409,
+            "Voice session idempotency key was already used with different parameters",
+        )
+    if voice_session.status == VoiceSession.Status.ENDED:
+        raise HttpError(
+            409,
+            "Voice session idempotency key references an ended session",
+        )
+
+
 def create_voice_session(
     *,
     user,
@@ -361,27 +412,74 @@ def create_voice_session(
     transport: str,
     model: str | None,
     voice: str | None,
+    idempotency_key: str | None = None,
     client_metadata: dict[str, Any] | None = None,
     broker: OpenAIRealtimeSessionBroker | None = None,
     correlation_id: str | None = None,
-) -> tuple[VoiceSession, VoiceSessionStart]:
+) -> tuple[VoiceSession, VoiceSessionStart, bool]:
     """Create a VoiceSession and return provider connection material."""
 
     selected_model = model or default_realtime_model()
     selected_voice = voice or default_voice_name()
+    normalized_key = _normalize_idempotency_key(idempotency_key)
     broker = broker or OpenAIRealtimeSessionBroker()
+    created = False
 
-    with transaction.atomic():
-        voice_session = VoiceSession.objects.create(
-            simulation=simulation,
-            conversation=conversation,
-            created_by=user,
-            status=VoiceSession.Status.CONFIGURING,
-            transport=transport,
-            model_name=selected_model,
-            voice_name=selected_voice,
-            client_metadata=client_metadata or {},
-        )
+    try:
+        with transaction.atomic():
+            voice_session = None
+            if normalized_key:
+                voice_session = (
+                    VoiceSession.objects.select_for_update()
+                    .filter(
+                        simulation=simulation,
+                        created_by=user,
+                        client_idempotency_key=normalized_key,
+                    )
+                    .first()
+                )
+                if voice_session:
+                    _ensure_voice_start_matches(
+                        voice_session,
+                        conversation=conversation,
+                        transport=transport,
+                        model=selected_model,
+                        voice=selected_voice,
+                    )
+
+            if voice_session is None:
+                voice_session = VoiceSession.objects.create(
+                    simulation=simulation,
+                    conversation=conversation,
+                    created_by=user,
+                    status=VoiceSession.Status.CONFIGURING,
+                    transport=transport,
+                    model_name=selected_model,
+                    voice_name=selected_voice,
+                    client_idempotency_key=normalized_key,
+                    client_metadata=client_metadata or {},
+                )
+                created = True
+    except IntegrityError:
+        if not normalized_key:
+            raise
+        with transaction.atomic():
+            voice_session = (
+                VoiceSession.objects.select_for_update()
+                .filter(
+                    simulation=simulation,
+                    created_by=user,
+                    client_idempotency_key=normalized_key,
+                )
+                .get()
+            )
+            _ensure_voice_start_matches(
+                voice_session,
+                conversation=conversation,
+                transport=transport,
+                model=selected_model,
+                voice=selected_voice,
+            )
 
     try:
         start = broker.start_session(
@@ -423,12 +521,16 @@ def create_voice_session(
     voice_session.expires_at = start.expires_at
     voice_session.provider_session_id = start.provider_session_id
     voice_session.provider_metadata = start.provider_metadata or {}
+    voice_session.last_error_code = ""
+    voice_session.last_error_text = ""
     voice_session.save(
         update_fields=[
             "status",
             "expires_at",
             "provider_session_id",
             "provider_metadata",
+            "last_error_code",
+            "last_error_text",
             "updated_at",
         ]
     )
@@ -437,7 +539,7 @@ def create_voice_session(
         event_type=outbox_events.VOICE_SESSION_CREATED,
         correlation_id=correlation_id,
     )
-    return voice_session, start
+    return voice_session, start, created
 
 
 def end_voice_session(
@@ -521,16 +623,14 @@ def persist_voice_transcript(
     )
     if provider_id:
         existing = (
-            Message.objects.filter(
-                simulation=voice_session.simulation,
-                conversation=voice_session.conversation,
-                provider_response_id=provider_id,
+            VoiceTranscriptReceipt.objects.select_related(
+                "message__conversation__conversation_type",
             )
-            .select_related("conversation__conversation_type")
+            .filter(voice_session=voice_session, provider_message_id=provider_id)
             .first()
         )
         if existing:
-            return existing, False
+            return existing.message, False
 
     is_assistant = role == "assistant"
     sender = get_or_create_system_user() if is_assistant else user
@@ -543,21 +643,42 @@ def persist_voice_transcript(
     else:
         display_name = user.get_full_name() or user.email
 
-    message = Message(
-        simulation=voice_session.simulation,
-        conversation=voice_session.conversation,
-        sender=sender,
-        content=content,
-        role=RoleChoices.ASSISTANT if is_assistant else RoleChoices.USER,
-        message_type=Message.MessageType.TEXT,
-        is_from_ai=is_assistant,
-        delivery_status=Message.DeliveryStatus.DELIVERED,
-        delivery_retryable=False,
-        provider_response_id=provider_id or None,
-        display_name=display_name,
-    )
-    message._outbox_correlation_id = correlation_id
-    message.save()
+    try:
+        with transaction.atomic():
+            message = Message(
+                simulation=voice_session.simulation,
+                conversation=voice_session.conversation,
+                sender=sender,
+                content=content,
+                role=RoleChoices.ASSISTANT if is_assistant else RoleChoices.USER,
+                message_type=Message.MessageType.TEXT,
+                is_from_ai=is_assistant,
+                delivery_status=Message.DeliveryStatus.DELIVERED,
+                delivery_retryable=False,
+                provider_response_id=provider_id or None,
+                display_name=display_name,
+            )
+            message._outbox_correlation_id = correlation_id
+            message.save()
+            if provider_id:
+                VoiceTranscriptReceipt.objects.create(
+                    voice_session=voice_session,
+                    provider_message_id=provider_id,
+                    message=message,
+                )
+    except IntegrityError:
+        if not provider_id:
+            raise
+        existing = (
+            VoiceTranscriptReceipt.objects.select_related(
+                "message__conversation__conversation_type",
+            )
+            .filter(voice_session=voice_session, provider_message_id=provider_id)
+            .first()
+        )
+        if existing:
+            return existing.message, False
+        raise
 
     if is_assistant:
         _emit_message_created(message, correlation_id=correlation_id)
@@ -606,36 +727,120 @@ def execute_voice_tool_call(
     }
 
 
-def cached_voice_tool_call_result(
+def _ensure_voice_tool_call_matches(
+    record: VoiceToolCall,
     *,
-    voice_session: VoiceSession,
-    tool_call_id: str,
-) -> dict[str, Any] | None:
-    """Return a cached tool-call result for duplicate provider events."""
-
-    provider_metadata = voice_session.provider_metadata or {}
-    cached_results = provider_metadata.get("tool_call_results")
-    if not isinstance(cached_results, dict):
-        return None
-    cached = cached_results.get(tool_call_id)
-    return cached if isinstance(cached, dict) else None
-
-
-def record_voice_tool_call_result(
-    *,
-    voice_session: VoiceSession,
-    tool_call_id: str,
-    result: dict[str, Any],
+    name: str,
+    arguments: dict[str, Any],
 ) -> None:
-    """Cache a completed tool-call result on the VoiceSession."""
+    if record.name != name or record.arguments != arguments:
+        raise HttpError(
+            409,
+            "Voice tool call ID was already used with different parameters",
+        )
 
-    provider_metadata = dict(voice_session.provider_metadata or {})
-    cached_results = provider_metadata.get("tool_call_results")
-    if not isinstance(cached_results, dict):
-        cached_results = {}
-    cached_results[tool_call_id] = result
-    if len(cached_results) > 50:
-        cached_results = dict(list(cached_results.items())[-50:])
-    provider_metadata["tool_call_results"] = cached_results
-    voice_session.provider_metadata = provider_metadata
-    voice_session.save(update_fields=["provider_metadata", "updated_at"])
+
+def execute_voice_tool_call_once(
+    *,
+    voice_session: VoiceSession,
+    tool_call_id: str,
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Execute a voice tool call once, returning a durable result on duplicates."""
+
+    _require_active_voice_session(voice_session)
+    normalized_call_id = tool_call_id.strip()
+    normalized_name = name.strip()
+    normalized_arguments = arguments or {}
+    if not normalized_call_id:
+        raise HttpError(400, "tool_call_id must contain non-empty text")
+    if not normalized_name:
+        raise HttpError(400, "name must contain non-empty text")
+
+    try:
+        with transaction.atomic():
+            record = (
+                VoiceToolCall.objects.select_for_update()
+                .filter(voice_session=voice_session, tool_call_id=normalized_call_id)
+                .first()
+            )
+            if record:
+                _ensure_voice_tool_call_matches(
+                    record,
+                    name=normalized_name,
+                    arguments=normalized_arguments,
+                )
+                if record.status == VoiceToolCall.Status.COMPLETED:
+                    return {
+                        "name": record.name,
+                        "output": record.output,
+                    }, False
+                if record.status == VoiceToolCall.Status.RUNNING:
+                    raise HttpError(409, "Voice tool call is already in progress")
+                record.status = VoiceToolCall.Status.RUNNING
+                record.last_error_text = ""
+                record.save(update_fields=["status", "last_error_text", "updated_at"])
+            else:
+                record = VoiceToolCall.objects.create(
+                    voice_session=voice_session,
+                    tool_call_id=normalized_call_id,
+                    name=normalized_name,
+                    arguments=normalized_arguments,
+                    status=VoiceToolCall.Status.RUNNING,
+                )
+
+            execution_error = None
+            result = None
+            try:
+                result = execute_voice_tool_call(
+                    voice_session=voice_session,
+                    name=normalized_name,
+                    arguments=normalized_arguments,
+                    correlation_id=correlation_id,
+                )
+            except Exception as exc:
+                execution_error = exc
+                record.status = VoiceToolCall.Status.FAILED
+                record.last_error_text = str(exc)
+                record.save(
+                    update_fields=["status", "last_error_text", "updated_at"],
+                )
+            else:
+                record.name = result["name"]
+                record.output = result["output"]
+                record.status = VoiceToolCall.Status.COMPLETED
+                record.last_error_text = ""
+                record.save(
+                    update_fields=[
+                        "name",
+                        "output",
+                        "status",
+                        "last_error_text",
+                        "updated_at",
+                    ],
+                )
+        if execution_error:
+            raise execution_error
+    except IntegrityError as err:
+        record = (
+            VoiceToolCall.objects.select_related("voice_session")
+            .filter(voice_session=voice_session, tool_call_id=normalized_call_id)
+            .get()
+        )
+        _ensure_voice_tool_call_matches(
+            record,
+            name=normalized_name,
+            arguments=normalized_arguments,
+        )
+        if record.status == VoiceToolCall.Status.COMPLETED:
+            return {
+                "name": record.name,
+                "output": record.output,
+            }, False
+        raise HttpError(409, "Voice tool call is already in progress") from err
+
+    if result is None:
+        raise HttpError(500, "Voice tool call did not return a result")
+    return result, True

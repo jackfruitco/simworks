@@ -34,6 +34,12 @@ class VoiceSessionCreate(BaseModel):
         max_length=100,
         description="Optional provider voice override.",
     )
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description=("Client-generated key used to make voice session start safe to retry."),
+    )
     client_metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Non-sensitive client details for diagnostics and lifecycle tracking.",
@@ -64,6 +70,10 @@ class VoiceSessionOut(BaseModel):
     calls_url: str | None = Field(
         default=None,
         description="Provider WebRTC SDP endpoint for the client.",
+    )
+    websocket_url: str | None = Field(
+        default=None,
+        description="Provider WebSocket endpoint for the client.",
     )
     client_secret: dict[str, Any] | None = Field(
         default=None,
@@ -167,6 +177,7 @@ def voice_session_to_out(voice_session, start=None) -> VoiceSessionOut:
         expires_at=voice_session.expires_at,
         realtime_url=getattr(start, "realtime_url", None),
         calls_url=getattr(start, "calls_url", None),
+        websocket_url=getattr(start, "websocket_url", None),
         client_secret=getattr(start, "client_secret", None),
         session_config=getattr(start, "session_config", None),
     )

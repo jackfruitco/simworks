@@ -18,12 +18,10 @@ from api.v1.schemas.voice import (
 from api.v1.utils import get_chatlab_simulation_for_user
 from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.chatlab.voice import (
-    cached_voice_tool_call_result,
     create_voice_session,
     end_voice_session,
-    execute_voice_tool_call,
+    execute_voice_tool_call_once,
     persist_voice_transcript,
-    record_voice_tool_call_result,
 )
 from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
@@ -117,7 +115,7 @@ def _get_voice_session_for_user(sim: Simulation, user, voice_session_uuid: str):
 
 @router.post(
     "/{simulation_id}/voice/session/",
-    response={201: VoiceSessionOut},
+    response={200: VoiceSessionOut, 201: VoiceSessionOut},
     summary="Start a VoiceLab session",
     description=(
         "Creates a provider-backed live voice session for an in-progress ChatLab "
@@ -136,17 +134,18 @@ def start_voice_session(
     _guard_voice_session_start(sim)
     conversation = _resolve_conversation(sim, body.conversation_id)
 
-    voice_session, start = create_voice_session(
+    voice_session, start, created = create_voice_session(
         user=user,
         simulation=sim,
         conversation=conversation,
         transport=body.transport,
         model=body.model,
         voice=body.voice,
+        idempotency_key=body.idempotency_key,
         client_metadata=body.client_metadata,
         correlation_id=getattr(request, "correlation_id", None),
     )
-    return 201, voice_session_to_out(voice_session, start=start)
+    return (201 if created else 200), voice_session_to_out(voice_session, start=start)
 
 
 @router.post(
@@ -235,27 +234,12 @@ def execute_voice_tool_call_endpoint(
     _guard_voice_session_activity(sim)
     voice_session = _get_voice_session_for_user(sim, user, voice_session_uuid)
 
-    cached_result = cached_voice_tool_call_result(
+    result, _executed = execute_voice_tool_call_once(
         voice_session=voice_session,
         tool_call_id=body.tool_call_id,
-    )
-    if cached_result:
-        return VoiceToolCallOut(
-            tool_call_id=body.tool_call_id,
-            name=cached_result["name"],
-            output=cached_result["output"],
-        )
-
-    result = execute_voice_tool_call(
-        voice_session=voice_session,
         name=body.name,
         arguments=body.arguments,
         correlation_id=getattr(request, "correlation_id", None),
-    )
-    record_voice_tool_call_result(
-        voice_session=voice_session,
-        tool_call_id=body.tool_call_id,
-        result=result,
     )
     return VoiceToolCallOut(
         tool_call_id=body.tool_call_id,
