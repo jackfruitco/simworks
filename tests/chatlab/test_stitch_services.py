@@ -138,3 +138,28 @@ class TestStitchScenarioGroundTruthInstruction:
         assert "### Scenario Ground Truth" in rendered
         assert "Persisted scenario ground truth is unavailable" in rendered
         assert "Do not present an inferred diagnosis as certain" in rendered
+
+    async def test_renders_partial_ground_truth_limitation(self, django_user_model):
+        from apps.accounts.models import UserRole
+        from apps.simcore.models import Simulation
+
+        role = await UserRole.objects.acreate(title="Stitch Partial Ground Truth")
+        user = await sync_to_async(django_user_model.objects.create_user)(
+            email="stitch-partial-ground-truth@example.com",
+            password="testpass123",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(
+            user=user,
+            diagnosis="",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+
+        instruction = StitchScenarioGroundTruthInstruction()
+        instruction.context = {"simulation_id": sim.id}
+        rendered = await instruction.render_instruction()
+
+        assert "- Chief complaint: Right lower quadrant abdominal pain" in rendered
+        assert "- Correct diagnosis: unavailable" in rendered
+        assert "Persisted scenario ground truth is incomplete" in rendered
+        assert "unavailable inferred diagnosis" in rendered

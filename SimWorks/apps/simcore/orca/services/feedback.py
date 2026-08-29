@@ -19,11 +19,10 @@ def _scenario_ground_truth_context(simulation_id, sim) -> tuple[str, str, str]:
     diagnosis = (getattr(sim, "diagnosis", None) or "").strip()
     chief_complaint = (getattr(sim, "chief_complaint", None) or "").strip()
 
-    ground_truth_lines = []
-    if chief_complaint:
-        ground_truth_lines.append(f"Chief complaint: {chief_complaint}")
-    if diagnosis:
-        ground_truth_lines.append(f"Correct diagnosis: {diagnosis}")
+    ground_truth_lines = [
+        f"Chief complaint: {chief_complaint or 'unavailable'}",
+        f"Correct diagnosis: {diagnosis or 'unavailable'}",
+    ]
 
     if not diagnosis or not chief_complaint:
         logger.warning(
@@ -33,10 +32,13 @@ def _scenario_ground_truth_context(simulation_id, sim) -> tuple[str, str, str]:
             chief_complaint,
         )
 
-    ground_truth = "\n".join(ground_truth_lines) or (
-        "Scenario ground truth is unavailable. State this limitation; do not infer "
-        "the authoritative diagnosis as certain."
-    )
+    if not diagnosis or not chief_complaint:
+        ground_truth_lines.append(
+            "Persisted scenario ground truth is incomplete. State this limitation; "
+            "do not infer any unavailable authoritative case answer as certain."
+        )
+
+    ground_truth = "\n".join(ground_truth_lines)
     return diagnosis, chief_complaint, ground_truth
 
 

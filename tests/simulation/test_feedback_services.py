@@ -212,9 +212,33 @@ class TestEmptyTranscriptFallback:
         await service._aprepare_context()
 
         user_msg = service.context.get("user_message", "")
-        assert "Scenario ground truth is unavailable" in user_msg
-        assert "do not infer the authoritative diagnosis as certain" in user_msg
+        assert "Chief complaint: unavailable" in user_msg
+        assert "Correct diagnosis: unavailable" in user_msg
+        assert "Persisted scenario ground truth is incomplete" in user_msg
+        assert "do not infer any unavailable authoritative case answer as certain" in user_msg
         assert "Any vomiting?" in user_msg
+
+    @pytest.mark.asyncio
+    async def test_partial_ground_truth_marks_missing_diagnosis_unavailable(self, monkeypatch):
+        history = _make_history(
+            ("A", "Patient", "My stomach hurts."),
+            ("U", "Learner", "Any vomiting?"),
+        )
+        sim = _make_mock_sim(
+            history,
+            diagnosis="",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateInitialFeedback(context={"simulation_id": 99})
+        await service._aprepare_context()
+
+        user_msg = service.context.get("user_message", "")
+        assert "Chief complaint: Right lower quadrant abdominal pain" in user_msg
+        assert "Correct diagnosis: unavailable" in user_msg
+        assert "Persisted scenario ground truth is incomplete" in user_msg
+        assert "do not infer any unavailable authoritative case answer as certain" in user_msg
 
 
 # ---------------------------------------------------------------------------

@@ -97,10 +97,13 @@ class StitchScenarioGroundTruthInstruction(BaseInstruction):
             )
 
         lines = ["### Scenario Ground Truth"]
-        if chief_complaint:
-            lines.append(f"- Chief complaint: {chief_complaint}")
-        if diagnosis:
-            lines.append(f"- Correct diagnosis: {diagnosis}")
+        lines.append(f"- Chief complaint: {chief_complaint or 'unavailable'}")
+        lines.append(f"- Correct diagnosis: {diagnosis or 'unavailable'}")
+        if not diagnosis or not chief_complaint:
+            lines.append(
+                "- Persisted scenario ground truth is incomplete. Do not present an "
+                "unavailable inferred diagnosis or chief complaint as certain."
+            )
         lines.append(
             "- Use this as the authoritative case answer when responding to learner "
             "questions about diagnosis or case intent."
