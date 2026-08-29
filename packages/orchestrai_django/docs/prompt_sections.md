@@ -17,7 +17,8 @@ from orchestrai_django.decorators import orca
 - `instruction` (static instruction text)
 - `render_instruction(self)` (optional dynamic renderer, sync or async)
 
-Use `@orca.instruction(order=...)` to register instruction classes.
+Use `@orca.instruction(order=...)` to register Python instruction classes. Static app-local
+instructions may also be generated from YAML and referenced by identity.
 
 ---
 
@@ -56,6 +57,25 @@ class GenerateInitialResponse(
 ```
 
 `collect_instructions()` walks this MRO, filters abstract classes, and produces deterministic order.
+
+New services should prefer `instruction_refs`:
+
+```python
+@orca.service
+class GenerateInitialResponse(DjangoBaseService):
+    instruction_refs = [
+        "chatlab.patient.PatientNameInstruction",
+        "chatlab.patient.PatientSchemaContractInstruction",
+    ]
+    pass
+```
+
+## Budgeting Convention
+
+Use YAML for short, durable `role`, `contract`, `behavior`, and `schema_notes` instructions.
+Use Python for dynamic `context`, compact dictionaries, and codebooks. Keep examples optional and
+out of always-on prompts unless they address a known regression, eval/debug need, or high-risk
+ambiguity.
 
 ---
 

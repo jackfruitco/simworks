@@ -8,7 +8,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, OperationalError
 from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
@@ -141,6 +141,7 @@ router = Router(tags=["trainerlab"], auth=JWTAuth())
 UserModel = get_user_model()
 IDEMPOTENCY_POLL_INTERVAL_SECONDS = 0.01
 IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 5.0
+IDEMPOTENCY_COMMAND_WAIT_TIMEOUT_SECONDS = 15.0
 TRAINERLAB_HUB_EVENT_TYPES = (outbox_events.SIMULATION_STATUS_UPDATED,)
 
 
@@ -178,6 +179,22 @@ def _get_correlation_id(request: HttpRequest) -> str | None:
     return getattr(request, "correlation_id", None)
 
 
+def _is_database_lock_error(exc: OperationalError) -> bool:
+    message = str(exc).lower()
+    return "database is locked" in message or "database table is locked" in message
+
+
+def _with_database_lock_retry(operation: Callable[[], Any]) -> Any:
+    deadline = time.monotonic() + IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
+    while True:
+        try:
+            return operation()
+        except OperationalError as exc:
+            if not _is_database_lock_error(exc) or time.monotonic() >= deadline:
+                raise
+            time.sleep(IDEMPOTENCY_POLL_INTERVAL_SECONDS)
+
+
 def _build_trainer_hub_outbox_queryset(request: HttpRequest, user):
     """Return durable row-level TrainerLab events visible in the request scope."""
     simulation_queryset = get_simulation_queryset_for_request(request, user)
@@ -195,10 +212,12 @@ def _accepted(command: TrainerCommand) -> TrainerCommandAck:
 
 
 def _wait_for_command_settlement(command: TrainerCommand) -> TrainerCommand:
-    deadline = time.monotonic() + IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
+    deadline = time.monotonic() + IDEMPOTENCY_COMMAND_WAIT_TIMEOUT_SECONDS
     while command.status == TrainerCommand.CommandStatus.PENDING and time.monotonic() < deadline:
         time.sleep(IDEMPOTENCY_POLL_INTERVAL_SECONDS)
-        command.refresh_from_db(fields=["status", "error", "processed_at"])
+        _with_database_lock_retry(
+            lambda: command.refresh_from_db(fields=["status", "error", "processed_at"])
+        )
     return command
 
 
@@ -231,7 +250,7 @@ def _reject_terminal_mutation(
     command.status = TrainerCommand.CommandStatus.FAILED
     command.error = error
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "error", "processed_at"])
+    _save_command(command, update_fields=["status", "error", "processed_at"])
     raise HttpError(409, error)
 
 
@@ -243,6 +262,10 @@ def _build_dict_items(choices) -> list[DictionaryItemOut]:
     return [DictionaryItemOut(code=code, label=str(label)) for code, label in choices]
 
 
+def _save_command(command: TrainerCommand, *, update_fields: list[str]) -> None:
+    _with_database_lock_retry(lambda: command.save(update_fields=update_fields))
+
+
 def _claim_command(
     *,
     session: TrainerSession,
@@ -252,12 +275,14 @@ def _claim_command(
     payload_json: dict[str, Any] | None = None,
 ) -> tuple[TrainerCommand, bool]:
     normalized_payload = _normalize_command_payload(payload_json)
-    command, created = get_or_create_command(
-        session=session,
-        command_type=command_type,
-        idempotency_key=idempotency_key,
-        issued_by=issued_by,
-        payload_json=normalized_payload,
+    command, created = _with_database_lock_retry(
+        lambda: get_or_create_command(
+            session=session,
+            command_type=command_type,
+            idempotency_key=idempotency_key,
+            issued_by=issued_by,
+            payload_json=normalized_payload,
+        )
     )
     if created:
         return command, True
@@ -295,13 +320,15 @@ def _claim_create_session_request(
     payload_json: dict[str, Any],
 ) -> tuple[TrainerIdempotencyClaim, bool]:
     requested_account = get_account_for_request(request, user)
-    claim, created = TrainerIdempotencyClaim.objects.get_or_create(
-        idempotency_key=idempotency_key,
-        defaults={
-            "command_type": TrainerCommand.CommandType.CREATE_SESSION,
-            "payload_json": payload_json,
-            "issued_by": user,
-        },
+    claim, created = _with_database_lock_retry(
+        lambda: TrainerIdempotencyClaim.objects.get_or_create(
+            idempotency_key=idempotency_key,
+            defaults={
+                "command_type": TrainerCommand.CommandType.CREATE_SESSION,
+                "payload_json": payload_json,
+                "issued_by": user,
+            },
+        )
     )
     if created:
         return claim, True
@@ -329,7 +356,7 @@ def _wait_for_create_session_replay(
     deadline = time.monotonic() + IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
     while claim.session_id is None and time.monotonic() < deadline:
         time.sleep(IDEMPOTENCY_POLL_INTERVAL_SECONDS)
-        claim.refresh_from_db(fields=["session", "modified_at"])
+        _with_database_lock_retry(lambda: claim.refresh_from_db(fields=["session", "modified_at"]))
 
     if claim.session_id is None or claim.session is None:
         raise HttpError(409, "Idempotency-Key request is already in progress")
@@ -340,6 +367,19 @@ def _wait_for_create_session_replay(
     if not can_view_simulation(user, claim.session.simulation):
         raise HttpError(409, "Idempotency-Key already used")
     return claim.session
+
+
+def _attach_session_to_create_claim(
+    *, claim: TrainerIdempotencyClaim, session: TrainerSession
+) -> None:
+    _with_database_lock_retry(
+        lambda: TrainerIdempotencyClaim.objects.filter(pk=claim.pk).update(
+            session=session,
+            modified_at=timezone.now(),
+        )
+    )
+    claim.session = session
+    claim.session_id = session.id
 
 
 def _instruction_queryset_for_user(user):
@@ -702,7 +742,7 @@ def apply_preset(
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
+    _save_command(command, update_fields=["status", "processed_at"])
 
     # #5: Compute diff and return enriched response
     diff_data = compute_preset_diff(before=before_snapshot, session=session)
@@ -760,8 +800,7 @@ def create_trainer_session(
         claim.delete()
         raise
 
-    claim.session = session
-    claim.save(update_fields=["session", "modified_at"])
+    _attach_session_to_create_claim(claim=claim, session=session)
 
     TrainerCommand.objects.get_or_create(
         idempotency_key=idempotency_key,
@@ -872,7 +911,7 @@ def _mark_command_failed(command: TrainerCommand, error: str) -> None:
     command.status = TrainerCommand.CommandStatus.FAILED
     command.error = error
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "error", "processed_at"])
+    _save_command(command, update_fields=["status", "error", "processed_at"])
 
 
 def _process_run_command(
@@ -921,7 +960,7 @@ def _process_run_command(
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
+    _save_command(command, update_fields=["status", "processed_at"])
 
     return trainer_run_to_out(session)
 
@@ -1052,7 +1091,7 @@ def steer_prompt(
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
+    _save_command(command, update_fields=["status", "processed_at"])
     return _accepted(command)
 
 
@@ -1139,7 +1178,7 @@ def adjust_simulation(
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
+    _save_command(command, update_fields=["status", "processed_at"])
     return SimulationAdjustAck(
         command_id=str(command.id),
         status="accepted",
@@ -1649,7 +1688,7 @@ def _inject_event_core(
     if getattr(domain_event, "_duplicate_client_event", False):
         command.status = TrainerCommand.CommandStatus.PROCESSED
         command.processed_at = timezone.now()
-        command.save(update_fields=["status", "processed_at"])
+        _save_command(command, update_fields=["status", "processed_at"])
         return _accepted(command)
 
     event_type = {
@@ -1805,7 +1844,7 @@ def _inject_event_core(
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
+    _save_command(command, update_fields=["status", "processed_at"])
     if event_kind == "note" and session.status == SessionStatus.COMPLETED:
         refresh_completed_run_review(session=session, generated_by=user)
     return _accepted(command)

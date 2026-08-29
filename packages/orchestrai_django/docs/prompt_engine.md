@@ -8,8 +8,8 @@
 
 Instruction rendering is part of service execution:
 
-- Instruction classes are declared with `@orca.instruction(order=...)`.
-- Services compose instructions via inheritance.
+- Instruction classes are declared with `@orca.instruction(order=...)` or generated from YAML.
+- Services compose instructions with `instruction_refs` or legacy inheritance.
 - `BaseService.agent` registers one `agent.system_prompt()` callback per instruction class.
 - Static and dynamic instructions are both supported.
 
@@ -28,7 +28,7 @@ Instruction classes are collected with `collect_instructions(...)` and ordered b
 
 ## Dynamic vs Static
 
-- Static: define class attribute `instruction = "..."`
+- Static: define YAML instruction text or class attribute `instruction = "..."`
 - Dynamic: override `render_instruction(self) -> str | None` (sync or async)
 
 Returned empty/`None` values are ignored in task prompt materialization and normalize to empty text for agent callbacks.
@@ -62,3 +62,4 @@ class GenerateResponse(ContextInstruction, SafetyInstruction, DjangoBaseService)
 ## Migration Note
 
 Any references to `PromptEngine`, `prompt_plan`, or `PromptSection` should be replaced with instruction classes and service MRO composition.
+Prefer `instruction_refs` for new services. Keep static role/contract text in YAML and dynamic context in Python.
