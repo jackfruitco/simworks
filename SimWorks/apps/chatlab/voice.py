@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
+import json
 from typing import Any
 
 from django.conf import settings
@@ -13,8 +14,10 @@ from django.utils import timezone
 import httpx
 from ninja.errors import HttpError
 
-from apps.chatlab.models import VoiceSession
+from apps.chatlab.media_payloads import build_chat_message_event_payload
+from apps.chatlab.models import Message, RoleChoices, VoiceSession
 from apps.common.outbox import enqueue_event_sync, event_types as outbox_events, poke_drain_sync
+from apps.common.utils.accounts import get_or_create_system_user
 from apps.simcore.models import Simulation
 from config.logging import get_logger
 
@@ -48,6 +51,14 @@ def default_realtime_model() -> str:
 
 def default_voice_name() -> str:
     return getattr(settings, "VOICELAB_REALTIME_VOICE", "marin")
+
+
+def default_transcription_model() -> str:
+    return getattr(settings, "VOICELAB_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe")
+
+
+def context_message_limit() -> int:
+    return max(0, int(getattr(settings, "VOICELAB_CONTEXT_MESSAGE_LIMIT", 12)))
 
 
 def realtime_client_secrets_url() -> str:
@@ -89,6 +100,92 @@ def _redact_secret_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return redacted
 
 
+def _voice_tool_definitions() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "name": "patient_history",
+            "description": "Fetch known patient history and demographics for this simulation.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "patient_results",
+            "description": "Fetch available lab and imaging results for this simulation.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "simulation_metadata",
+            "description": "Fetch structured simulation metadata useful for clinical context.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "sign_lab_orders",
+            "description": (
+                "Submit lab orders requested by the learner. Use only when the learner "
+                "clearly asks to order tests."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orders": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1, "maxLength": 255},
+                        "minItems": 1,
+                        "maxItems": 50,
+                    }
+                },
+                "required": ["orders"],
+                "additionalProperties": False,
+            },
+        },
+    ]
+
+
+def _recent_conversation_context(conversation) -> str:
+    limit = context_message_limit()
+    if limit <= 0:
+        return ""
+
+    messages = list(
+        Message.objects.filter(
+            simulation_id=conversation.simulation_id,
+            conversation_id=conversation.pk,
+            is_deleted=False,
+            message_type=Message.MessageType.TEXT,
+        )
+        .exclude(content__isnull=True)
+        .exclude(content="")
+        .order_by("-pk")[:limit]
+    )
+    if not messages:
+        return ""
+
+    lines = []
+    for message in reversed(messages):
+        label = "Learner" if message.role == RoleChoices.USER else "Patient"
+        content = " ".join(str(message.content or "").split())
+        if content:
+            lines.append(f"{label}: {content}")
+    if not lines:
+        return ""
+    return "Recent text conversation for continuity:\n" + "\n".join(lines)
+
+
 def build_realtime_session_config(
     *,
     simulation: Simulation,
@@ -103,13 +200,20 @@ def build_realtime_session_config(
     )
     chief_complaint = simulation.chief_complaint or "the presenting concern"
     conversation_name = conversation.display_name or conversation.conversation_type.display_name
+    persona = getattr(conversation.conversation_type, "ai_persona", "") or "patient"
+    recent_context = _recent_conversation_context(conversation)
     instructions = (
         "You are running a MedSim ChatLab voice encounter. "
         f"Speak as {conversation_name}, the simulated patient, unless the configured "
-        "conversation persona says otherwise. Keep responses conversational, clinically "
+        f"conversation persona says otherwise. The configured persona is {persona}. "
+        "Keep responses conversational, clinically "
         "consistent, and concise enough for spoken turn-taking. "
-        f"The patient is {patient_name}; the chief complaint is {chief_complaint}."
+        f"The patient is {patient_name}; the chief complaint is {chief_complaint}. "
+        "Use available tools when patient history, results, simulation metadata, or lab "
+        "order submission is needed; do not invent unseen results."
     )
+    if recent_context:
+        instructions = f"{instructions}\n\n{recent_context}"
     return {
         "type": "realtime",
         "model": model,
@@ -119,11 +223,16 @@ def build_realtime_session_config(
                 "turn_detection": {
                     "type": "server_vad",
                 },
+                "transcription": {
+                    "model": default_transcription_model(),
+                },
             },
             "output": {
                 "voice": voice,
             },
         },
+        "tools": _voice_tool_definitions(),
+        "tool_choice": "auto",
         "metadata": {
             "simulation_id": str(simulation.pk),
             "conversation_id": str(conversation.pk),
@@ -349,3 +458,184 @@ def end_voice_session(
         correlation_id=correlation_id,
     )
     return voice_session
+
+
+def _require_active_voice_session(voice_session: VoiceSession) -> None:
+    if voice_session.status != VoiceSession.Status.ACTIVE:
+        raise HttpError(400, "Voice session is not active")
+    if voice_session.simulation.status != Simulation.SimulationStatus.IN_PROGRESS:
+        raise HttpError(400, "Voice session simulation is no longer in progress")
+    if voice_session.conversation.is_locked:
+        raise HttpError(400, "This conversation is locked")
+
+
+def _provider_message_id(
+    *,
+    provider_item_id: str | None,
+    provider_response_id: str | None,
+    provider_event_id: str | None,
+) -> str:
+    provider_id = provider_response_id or provider_item_id or provider_event_id or ""
+    return provider_id[:255]
+
+
+def _emit_message_created(message: Message, *, correlation_id: str | None) -> None:
+    event = enqueue_event_sync(
+        event_type=outbox_events.MESSAGE_CREATED,
+        simulation_id=message.simulation_id,
+        payload=build_chat_message_event_payload(
+            message,
+            conversation_type=message.conversation.conversation_type.slug,
+            status="completed",
+        ),
+        idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{message.id}",
+        correlation_id=correlation_id,
+    )
+    if event:
+        poke_drain_sync()
+
+
+def persist_voice_transcript(
+    *,
+    voice_session: VoiceSession,
+    user,
+    role: str,
+    transcript: str,
+    provider_item_id: str | None = None,
+    provider_response_id: str | None = None,
+    provider_event_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
+) -> tuple[Message, bool]:
+    """Persist a final VoiceLab transcript as a normal ChatLab message."""
+
+    _require_active_voice_session(voice_session)
+    content = " ".join(transcript.split())
+    if not content:
+        raise HttpError(400, "transcript must contain non-empty text")
+
+    provider_id = _provider_message_id(
+        provider_item_id=provider_item_id,
+        provider_response_id=provider_response_id,
+        provider_event_id=provider_event_id,
+    )
+    if provider_id:
+        existing = (
+            Message.objects.filter(
+                simulation=voice_session.simulation,
+                conversation=voice_session.conversation,
+                provider_response_id=provider_id,
+            )
+            .select_related("conversation__conversation_type")
+            .first()
+        )
+        if existing:
+            return existing, False
+
+    is_assistant = role == "assistant"
+    sender = get_or_create_system_user() if is_assistant else user
+    if is_assistant:
+        display_name = (
+            voice_session.conversation.display_name
+            or voice_session.simulation.sim_patient_display_name
+            or "AI"
+        )
+    else:
+        display_name = user.get_full_name() or user.email
+
+    message = Message(
+        simulation=voice_session.simulation,
+        conversation=voice_session.conversation,
+        sender=sender,
+        content=content,
+        role=RoleChoices.ASSISTANT if is_assistant else RoleChoices.USER,
+        message_type=Message.MessageType.TEXT,
+        is_from_ai=is_assistant,
+        delivery_status=Message.DeliveryStatus.DELIVERED,
+        delivery_retryable=False,
+        provider_response_id=provider_id or None,
+        display_name=display_name,
+    )
+    message._outbox_correlation_id = correlation_id
+    message.save()
+
+    if is_assistant:
+        _emit_message_created(message, correlation_id=correlation_id)
+    return message, True
+
+
+def execute_voice_tool_call(
+    *,
+    voice_session: VoiceSession,
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    """Execute a server-authoritative tool call forwarded from a Realtime session."""
+
+    _require_active_voice_session(voice_session)
+    arguments = arguments or {}
+    normalized_name = name.strip()
+
+    if normalized_name == "sign_lab_orders":
+        from api.v1.endpoints._lab_order_submission import submit_lab_orders_for_simulation
+
+        raw_orders = arguments.get("orders") or arguments.get("submitted_orders") or []
+        if not isinstance(raw_orders, list):
+            raise HttpError(400, "orders must be a list")
+        result = submit_lab_orders_for_simulation(
+            simulation=voice_session.simulation,
+            raw_orders=[str(order) for order in raw_orders],
+            correlation_id=correlation_id,
+        )
+        return {
+            "name": normalized_name,
+            "output": result.model_dump(mode="json"),
+        }
+
+    from apps.simcore.tools import get_tool
+
+    tool = get_tool(normalized_name)
+    if tool is None:
+        raise HttpError(404, f"Voice tool not found: {normalized_name}")
+
+    output = tool(voice_session.simulation).to_dict()
+    return {
+        "name": normalized_name,
+        "output": json.loads(json.dumps(output, default=str)),
+    }
+
+
+def cached_voice_tool_call_result(
+    *,
+    voice_session: VoiceSession,
+    tool_call_id: str,
+) -> dict[str, Any] | None:
+    """Return a cached tool-call result for duplicate provider events."""
+
+    provider_metadata = voice_session.provider_metadata or {}
+    cached_results = provider_metadata.get("tool_call_results")
+    if not isinstance(cached_results, dict):
+        return None
+    cached = cached_results.get(tool_call_id)
+    return cached if isinstance(cached, dict) else None
+
+
+def record_voice_tool_call_result(
+    *,
+    voice_session: VoiceSession,
+    tool_call_id: str,
+    result: dict[str, Any],
+) -> None:
+    """Cache a completed tool-call result on the VoiceSession."""
+
+    provider_metadata = dict(voice_session.provider_metadata or {})
+    cached_results = provider_metadata.get("tool_call_results")
+    if not isinstance(cached_results, dict):
+        cached_results = {}
+    cached_results[tool_call_id] = result
+    if len(cached_results) > 50:
+        cached_results = dict(list(cached_results.items())[-50:])
+    provider_metadata["tool_call_results"] = cached_results
+    voice_session.provider_metadata = provider_metadata
+    voice_session.save(update_fields=["provider_metadata", "updated_at"])

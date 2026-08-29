@@ -1863,6 +1863,130 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/voice/sessions/{voice_session_uuid}/transcripts/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_create_voice_transcript",
+        "summary": "Persist a VoiceLab transcript",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "voice_session_uuid",
+            "schema": {
+              "title": "Voice Session Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceTranscriptOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceTranscriptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Persists a final Realtime transcript as a normal ChatLab message so message history and durable event catch-up remain authoritative.",
+        "tags": [
+          "voice"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceTranscriptCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/voice/sessions/{voice_session_uuid}/tool-calls/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_execute_voice_tool_call_endpoint",
+        "summary": "Execute a VoiceLab tool call",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "voice_session_uuid",
+            "schema": {
+              "title": "Voice Session Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceToolCallOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Executes a Realtime function call against backend-authoritative ChatLab tools and returns JSON output for iOS to send back to the provider.",
+        "tags": [
+          "voice"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceToolCallCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/chatlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
@@ -6987,6 +7111,174 @@
           }
         },
         "title": "VoiceSessionCreate",
+        "type": "object"
+      },
+      "VoiceTranscriptOut": {
+        "description": "Result of persisting a final VoiceLab transcript.",
+        "properties": {
+          "persisted": {
+            "description": "True when a new message was created",
+            "title": "Persisted",
+            "type": "boolean"
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageOut",
+            "description": "Persisted ChatLab message"
+          }
+        },
+        "required": [
+          "persisted",
+          "message"
+        ],
+        "title": "VoiceTranscriptOut",
+        "type": "object"
+      },
+      "VoiceTranscriptCreate": {
+        "description": "Final Realtime transcript to persist into ChatLab history.",
+        "properties": {
+          "role": {
+            "description": "Speaker role for the transcript",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "transcript": {
+            "description": "Final transcript text from the Realtime session.",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Transcript",
+            "type": "string"
+          },
+          "status": {
+            "default": "final",
+            "description": "Final transcript status; partial transcripts are not persisted.",
+            "enum": [
+              "final",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_item_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider conversation item ID used for idempotency.",
+            "title": "Provider Item Id"
+          },
+          "provider_response_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider response ID used for idempotency.",
+            "title": "Provider Response Id"
+          },
+          "provider_event_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider event ID used as a fallback idempotency key.",
+            "title": "Provider Event Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Non-sensitive provider/client transcript metadata.",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "role",
+          "transcript"
+        ],
+        "title": "VoiceTranscriptCreate",
+        "type": "object"
+      },
+      "VoiceToolCallOut": {
+        "description": "Backend tool execution result for the iOS client to return to Realtime.",
+        "properties": {
+          "tool_call_id": {
+            "description": "Provider tool/function call ID",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool/function name",
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "description": "Execution status",
+            "title": "Status",
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "description": "JSON-serializable tool output",
+            "title": "Output",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "name",
+          "output"
+        ],
+        "title": "VoiceToolCallOut",
+        "type": "object"
+      },
+      "VoiceToolCallCreate": {
+        "description": "Realtime tool call forwarded by the iOS client for backend execution.",
+        "properties": {
+          "tool_call_id": {
+            "description": "Provider tool/function call ID.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool/function name requested by the Realtime model.",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "Parsed JSON arguments for the tool call.",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "name"
+        ],
+        "title": "VoiceToolCallCreate",
         "type": "object"
       },
       "LabAccessOut": {

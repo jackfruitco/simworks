@@ -5,8 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from api.v1.schemas.messages import MessageOut, message_to_out
+
 VoiceSessionStatus = Literal["configuring", "active", "ended", "failed"]
 VoiceTransport = Literal["webrtc", "websocket"]
+VoiceTranscriptRole = Literal["user", "assistant"]
+VoiceTranscriptStatus = Literal["final", "completed"]
 
 
 class VoiceSessionCreate(BaseModel):
@@ -71,6 +75,78 @@ class VoiceSessionOut(BaseModel):
     )
 
 
+class VoiceTranscriptCreate(BaseModel):
+    """Final Realtime transcript to persist into ChatLab history."""
+
+    role: VoiceTranscriptRole = Field(..., description="Speaker role for the transcript")
+    transcript: str = Field(
+        ...,
+        min_length=1,
+        max_length=20000,
+        description="Final transcript text from the Realtime session.",
+    )
+    status: VoiceTranscriptStatus = Field(
+        default="final",
+        description="Final transcript status; partial transcripts are not persisted.",
+    )
+    provider_item_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Provider conversation item ID used for idempotency.",
+    )
+    provider_response_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Provider response ID used for idempotency.",
+    )
+    provider_event_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Provider event ID used as a fallback idempotency key.",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Non-sensitive provider/client transcript metadata.",
+    )
+
+
+class VoiceTranscriptOut(BaseModel):
+    """Result of persisting a final VoiceLab transcript."""
+
+    persisted: bool = Field(..., description="True when a new message was created")
+    message: MessageOut = Field(..., description="Persisted ChatLab message")
+
+
+class VoiceToolCallCreate(BaseModel):
+    """Realtime tool call forwarded by the iOS client for backend execution."""
+
+    tool_call_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Provider tool/function call ID.",
+    )
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Tool/function name requested by the Realtime model.",
+    )
+    arguments: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Parsed JSON arguments for the tool call.",
+    )
+
+
+class VoiceToolCallOut(BaseModel):
+    """Backend tool execution result for the iOS client to return to Realtime."""
+
+    tool_call_id: str = Field(..., description="Provider tool/function call ID")
+    name: str = Field(..., description="Tool/function name")
+    status: Literal["completed"] = Field(default="completed", description="Execution status")
+    output: dict[str, Any] = Field(..., description="JSON-serializable tool output")
+
+
 def voice_session_to_out(voice_session, start=None) -> VoiceSessionOut:
     """Convert a VoiceSession model into API output."""
 
@@ -93,4 +169,13 @@ def voice_session_to_out(voice_session, start=None) -> VoiceSessionOut:
         calls_url=getattr(start, "calls_url", None),
         client_secret=getattr(start, "client_secret", None),
         session_config=getattr(start, "session_config", None),
+    )
+
+
+def voice_transcript_to_out(message, *, persisted: bool, request=None) -> VoiceTranscriptOut:
+    """Convert a persisted voice transcript message into API output."""
+
+    return VoiceTranscriptOut(
+        persisted=persisted,
+        message=message_to_out(message, request=request),
     )

@@ -1,7 +1,7 @@
 """Tests for VoiceLab session broker endpoints."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.test import Client, override_settings
 import pytest
@@ -113,8 +113,68 @@ def _provider_start(expires_at=None):
     )
 
 
+def _active_voice_session(simulation, conversation, test_user):
+    from apps.chatlab.models import VoiceSession
+
+    return VoiceSession.objects.create(
+        simulation=simulation,
+        conversation=conversation,
+        created_by=test_user,
+        status=VoiceSession.Status.ACTIVE,
+        transport=VoiceSession.Transport.WEBRTC,
+        model_name="gpt-realtime-test",
+        voice_name="verse",
+    )
+
+
 @pytest.mark.django_db
 class TestVoiceSessions:
+    def test_realtime_session_config_includes_context_transcription_and_tools(
+        self,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.chatlab.voice import build_realtime_session_config
+
+        Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="I have pain in my chest.",
+            role=RoleChoices.USER,
+            display_name="Learner",
+        )
+        Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="Can you describe the pain?",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            display_name="Jane Doe",
+        )
+
+        config = build_realtime_session_config(
+            simulation=simulation,
+            conversation=conversation,
+            model="gpt-realtime-test",
+            voice="verse",
+        )
+
+        assert config["audio"]["input"]["transcription"]["model"]
+        assert config["audio"]["output"]["voice"] == "verse"
+        assert "Recent text conversation for continuity" in config["instructions"]
+        assert "Learner: I have pain in my chest." in config["instructions"]
+        assert "Patient: Can you describe the pain?" in config["instructions"]
+        assert {tool["name"] for tool in config["tools"]} >= {
+            "patient_history",
+            "patient_results",
+            "simulation_metadata",
+            "sign_lab_orders",
+        }
+
     def test_start_voice_session_returns_ephemeral_connection_material(
         self,
         auth_client,
@@ -270,3 +330,227 @@ class TestVoiceSessions:
             payload__voice_session_id=voice_session.pk,
             payload__status="ended",
         ).exists()
+
+    def test_persist_user_voice_transcript_creates_chat_message(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox import event_types
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/transcripts/",
+            data={
+                "role": "user",
+                "transcript": "  I feel short of breath.  ",
+                "provider_item_id": "item-user-1",
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["persisted"] is True
+        assert data["message"]["role"] == "user"
+        assert data["message"]["content"] == "I feel short of breath."
+
+        message = Message.objects.get(pk=data["message"]["id"])
+        assert message.role == RoleChoices.USER
+        assert message.is_from_ai is False
+        assert message.provider_response_id == "item-user-1"
+        assert OutboxEvent.objects.filter(
+            simulation_id=simulation.pk,
+            event_type=event_types.MESSAGE_CREATED,
+            payload__message_id=message.pk,
+        ).exists()
+
+    def test_persist_assistant_voice_transcript_emits_chat_message_event(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox import event_types
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/transcripts/",
+            data={
+                "role": "assistant",
+                "transcript": "It started about an hour ago.",
+                "provider_response_id": "response-assistant-1",
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["message"]["role"] == "assistant"
+
+        message = Message.objects.get(pk=data["message"]["id"])
+        assert message.role == RoleChoices.ASSISTANT
+        assert message.is_from_ai is True
+        assert message.provider_response_id == "response-assistant-1"
+        assert OutboxEvent.objects.filter(
+            simulation_id=simulation.pk,
+            event_type=event_types.MESSAGE_CREATED,
+            payload__message_id=message.pk,
+            payload__status="completed",
+        ).exists()
+
+    def test_persist_voice_transcript_is_idempotent_for_provider_item(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import Message
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+        url = (
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/transcripts/"
+        )
+
+        first = auth_client.post(
+            url,
+            data={
+                "role": "user",
+                "transcript": "The pain is sharp.",
+                "provider_item_id": "item-duplicate-1",
+            },
+            content_type="application/json",
+        )
+        second = auth_client.post(
+            url,
+            data={
+                "role": "user",
+                "transcript": "The pain is sharp.",
+                "provider_item_id": "item-duplicate-1",
+            },
+            content_type="application/json",
+        )
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.json()["persisted"] is False
+        assert first.json()["message"]["id"] == second.json()["message"]["id"]
+        assert Message.objects.filter(provider_response_id="item-duplicate-1").count() == 1
+
+    def test_persist_voice_transcript_requires_active_session(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import VoiceSession
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+        voice_session.status = VoiceSession.Status.ENDED
+        voice_session.save(update_fields=["status"])
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/transcripts/",
+            data={"role": "user", "transcript": "Hello"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Voice session is not active"
+
+    def test_execute_voice_tool_call_returns_patient_history(
+        self,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.simcore.models import PatientHistory
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+        PatientHistory.objects.create(
+            simulation=simulation,
+            key="asthma",
+            value="Childhood asthma",
+        )
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/tool-calls/",
+            data={
+                "tool_call_id": "call-history-1",
+                "name": "patient_history",
+                "arguments": {},
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tool_call_id"] == "call-history-1"
+        assert data["name"] == "patient_history"
+        assert data["output"]["name"] == "patient_history"
+        assert data["output"]["data"][0]["value"] == "Childhood asthma"
+
+    @patch("apps.chatlab.orca.services.lab_orders.GenerateLabResults.task")
+    def test_execute_voice_tool_call_submits_lab_orders(
+        self,
+        mock_lab_results_task,
+        auth_client,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        mock_enqueue = MagicMock()
+        mock_enqueue.aenqueue = AsyncMock(return_value="call-id-voice-1")
+        mock_lab_results_task.using.return_value = mock_enqueue
+
+        voice_session = _active_voice_session(simulation, conversation, test_user)
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/tool-calls/",
+            data={
+                "tool_call_id": "call-orders-1",
+                "name": "sign_lab_orders",
+                "arguments": {"orders": [" CBC ", "CBC", "CMP"]},
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tool_call_id"] == "call-orders-1"
+        assert data["name"] == "sign_lab_orders"
+        assert data["output"] == {
+            "status": "accepted",
+            "call_id": "call-id-voice-1",
+            "orders": ["CBC", "CMP"],
+        }
+        context = mock_lab_results_task.using.call_args.kwargs["context"]
+        assert context["simulation_id"] == simulation.id
+        assert context["orders"] == ["CBC", "CMP"]
+        assert context["correlation_id"]
+
+        duplicate = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/voice/sessions/{voice_session.uuid}/tool-calls/",
+            data={
+                "tool_call_id": "call-orders-1",
+                "name": "sign_lab_orders",
+                "arguments": {"orders": ["CBC"]},
+            },
+            content_type="application/json",
+        )
+
+        assert duplicate.status_code == 200
+        assert duplicate.json()["output"] == data["output"]
+        assert mock_lab_results_task.using.call_count == 1
