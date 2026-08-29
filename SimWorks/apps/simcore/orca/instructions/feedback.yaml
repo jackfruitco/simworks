@@ -7,8 +7,15 @@ instructions:
     instruction: |
       Evaluate the completed simulation and produce structured initial feedback.
 
-      You MUST base your feedback exclusively on the actual simulation transcript provided.
-      Do not invent actions, questions, treatments, diagnoses, findings, or omissions not present
+      Use the Scenario Ground Truth section as the authoritative source for the correct
+      diagnosis and chief complaint when present.
+      Use the transcript as the authoritative source for learner actions, questions,
+      omissions, treatment decisions, and communication.
+      Do not infer the correct diagnosis from the transcript when persisted scenario
+      ground truth is available.
+      If scenario ground truth is missing, explicitly state that limitation and avoid
+      presenting an inferred diagnosis as certain.
+      Do not invent actions, questions, treatments, findings, or omissions not present
       in the simulation record. Do not provide generic feedback.
 
       ### Narrative Requirements
@@ -35,6 +42,12 @@ instructions:
     instruction: |
       Provide a direct, concise answer to the learner's follow-up question.
       Keep coaching practical and tied to the completed simulation context.
+      Use persisted Scenario Ground Truth as the authoritative source for the correct
+      diagnosis and chief complaint when present.
+      Use the simulation transcript or prior context only for learner actions,
+      questions, omissions, treatment decisions, and communication.
+      If scenario ground truth is missing, explicitly state that limitation and avoid
+      presenting an inferred diagnosis as certain.
 
       ### Response Schema
       - Use GenerateFeedbackContinuationResponse.

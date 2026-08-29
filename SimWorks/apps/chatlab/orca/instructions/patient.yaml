@@ -73,6 +73,10 @@ instructions:
     instruction: |
       ### Schema Contract
       - Follow the active response schema exactly; include all required top-level keys and no extras.
+      - For the initial response schema, include hidden top-level `diagnosis` and `chief_complaint`.
+      - `diagnosis` is the correct clinician-level scenario diagnosis.
+      - `chief_complaint` is the patient's presenting concern in concise terms.
+      - These fields are for server-side scenario tracking and must not be revealed in patient-facing `messages`.
       - Always include `llm_conditions_check` as concise key/value checks of rule compliance.
       - If `metadata` is present in the schema, include only clinically relevant structured details suitable for key-based upsert.
       - Metadata item examples:
@@ -90,6 +94,7 @@ instructions:
       - For the first turn, send exactly one natural opening patient message.
       - Briefly introduce the main symptoms or concern in a realistic way.
       - Keep the opening message non-diagnostic and concise.
+      - Keep patient-facing `messages` natural, non-diagnostic, and concise.
       - Do not front-load the history of present illness.
       - Do not volunteer associated symptoms, pertinent negatives, timelines, exposures, medications, past medical history, or risk factors unless they would naturally appear in an initial text from a lay patient.
       - Mention only background details that would naturally come up in an initial text.

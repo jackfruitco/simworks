@@ -12,7 +12,10 @@ import types
 
 import pytest
 
-from apps.simcore.orca.services.feedback import GenerateInitialFeedback
+from apps.simcore.orca.services.feedback import (
+    GenerateFeedbackContinuationReply,
+    GenerateInitialFeedback,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -27,10 +30,16 @@ def _make_history(*pairs):
     ]
 
 
-def _make_mock_sim(history_data):
+def _make_mock_sim(
+    history_data,
+    diagnosis="Acute coronary syndrome",
+    chief_complaint="Chest pain",
+):
     """Return a lightweight mock simulation object."""
     sim = types.SimpleNamespace()
     sim.history = lambda _format=None: history_data
+    sim.diagnosis = diagnosis
+    sim.chief_complaint = chief_complaint
     return sim
 
 
@@ -107,6 +116,31 @@ class TestPrepareTranscriptContext:
         assert "simulation" in user_msg or "transcript" in user_msg
 
     @pytest.mark.asyncio
+    async def test_user_message_separates_ground_truth_from_transcript(self, monkeypatch):
+        history = _make_history(
+            ("A", "Patient", "My stomach hurts."),
+            ("U", "Learner", "Where is the pain?"),
+        )
+        sim = _make_mock_sim(
+            history,
+            diagnosis="Acute appendicitis",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateInitialFeedback(context={"simulation_id": 42})
+        await service._aprepare_context()
+
+        user_msg = service.context.get("user_message", "")
+        assert "### Scenario Ground Truth" in user_msg
+        assert "Chief complaint: Right lower quadrant abdominal pain" in user_msg
+        assert "Correct diagnosis: Acute appendicitis" in user_msg
+        assert "### Simulation Transcript" in user_msg
+        assert "Where is the pain?" in user_msg
+        assert service.context["scenario_diagnosis"] == "Acute appendicitis"
+        assert service.context["scenario_chief_complaint"] == "Right lower quadrant abdominal pain"
+
+    @pytest.mark.asyncio
     async def test_messages_are_chronologically_included(self, monkeypatch):
         history = _make_history(
             ("U", "Learner", "First message"),
@@ -165,6 +199,47 @@ class TestEmptyTranscriptFallback:
         user_msg = service.context.get("user_message", "").lower()
         assert "unavailable" in user_msg or "no messages" in user_msg or "incomplete" in user_msg
 
+    @pytest.mark.asyncio
+    async def test_missing_ground_truth_sets_limitation(self, monkeypatch):
+        history = _make_history(
+            ("A", "Patient", "My stomach hurts."),
+            ("U", "Learner", "Any vomiting?"),
+        )
+        sim = _make_mock_sim(history, diagnosis="", chief_complaint="")
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateInitialFeedback(context={"simulation_id": 99})
+        await service._aprepare_context()
+
+        user_msg = service.context.get("user_message", "")
+        assert "Chief complaint: unavailable" in user_msg
+        assert "Correct diagnosis: unavailable" in user_msg
+        assert "Persisted scenario ground truth is incomplete" in user_msg
+        assert "do not infer any unavailable authoritative case answer as certain" in user_msg
+        assert "Any vomiting?" in user_msg
+
+    @pytest.mark.asyncio
+    async def test_partial_ground_truth_marks_missing_diagnosis_unavailable(self, monkeypatch):
+        history = _make_history(
+            ("A", "Patient", "My stomach hurts."),
+            ("U", "Learner", "Any vomiting?"),
+        )
+        sim = _make_mock_sim(
+            history,
+            diagnosis="",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateInitialFeedback(context={"simulation_id": 99})
+        await service._aprepare_context()
+
+        user_msg = service.context.get("user_message", "")
+        assert "Chief complaint: Right lower quadrant abdominal pain" in user_msg
+        assert "Correct diagnosis: unavailable" in user_msg
+        assert "Persisted scenario ground truth is incomplete" in user_msg
+        assert "do not infer any unavailable authoritative case answer as certain" in user_msg
+
 
 # ---------------------------------------------------------------------------
 # Test C — Grounding regression: actual transcript content reaches user_message
@@ -201,6 +276,46 @@ class TestGroundingRegression:
         assert service.context["user_message"] == caller_msg
 
 
+class TestContinuationGroundTruthContext:
+    @pytest.mark.asyncio
+    async def test_continuation_user_message_includes_ground_truth_and_question(
+        self,
+        monkeypatch,
+    ):
+        sim = _make_mock_sim(
+            _make_history(("A", "Patient", "My stomach hurts.")),
+            diagnosis="Acute appendicitis",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateFeedbackContinuationReply(
+            context={
+                "simulation_id": 7,
+                "question": "Was my diagnosis correct?",
+            }
+        )
+        await service._aprepare_context()
+
+        user_msg = service.context.get("user_message", "")
+        assert "### Scenario Ground Truth" in user_msg
+        assert "Correct diagnosis: Acute appendicitis" in user_msg
+        assert "### Learner Question" in user_msg
+        assert "Was my diagnosis correct?" in user_msg
+
+    @pytest.mark.asyncio
+    async def test_continuation_preserves_caller_user_message(self, monkeypatch):
+        sim = _make_mock_sim(_make_history(("A", "Patient", "Hello.")))
+        _patch_simulation(monkeypatch, sim)
+
+        service = GenerateFeedbackContinuationReply(
+            context={"simulation_id": 7, "user_message": "Already prepared."}
+        )
+        await service._aprepare_context()
+
+        assert service.context["user_message"] == "Already prepared."
+
+
 # ---------------------------------------------------------------------------
 # Test D — Instruction regression: grounding language present in YAML
 # ---------------------------------------------------------------------------
@@ -219,6 +334,17 @@ class TestInstructionGroundingLanguage:
         assert "simulation transcript" in text.lower(), (
             "FeedbackInitialInstruction must reference 'simulation transcript'"
         )
+
+    def test_instruction_uses_scenario_ground_truth_for_diagnosis(self):
+        text = self._load_instruction_text()
+        assert "scenario ground truth" in text.lower()
+        assert "authoritative source for the correct" in text.lower()
+
+    def test_instruction_uses_transcript_for_learner_actions(self):
+        text = self._load_instruction_text()
+        assert "learner actions" in text.lower()
+        assert "questions" in text.lower()
+        assert "omissions" in text.lower()
 
     def test_instruction_prohibits_invention(self):
         text = self._load_instruction_text()

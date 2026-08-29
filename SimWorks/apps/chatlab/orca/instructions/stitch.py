@@ -73,6 +73,45 @@ class StitchRoleInstruction(BaseInstruction):
     )
 
 
+@orca.instruction(order=55)
+class StitchScenarioGroundTruthInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+
+    async def render_instruction(self) -> str:
+        simulation_id = self.context.get("simulation_id")
+
+        try:
+            sim = await Simulation.objects.aget(pk=simulation_id)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            return ""
+
+        diagnosis = (sim.diagnosis or "").strip()
+        chief_complaint = (sim.chief_complaint or "").strip()
+
+        if not diagnosis and not chief_complaint:
+            return (
+                "### Scenario Ground Truth\n"
+                "Persisted scenario ground truth is unavailable. "
+                "Do not present an inferred diagnosis as certain."
+            )
+
+        lines = ["### Scenario Ground Truth"]
+        lines.append(f"- Chief complaint: {chief_complaint or 'unavailable'}")
+        lines.append(f"- Correct diagnosis: {diagnosis or 'unavailable'}")
+        if not diagnosis or not chief_complaint:
+            lines.append(
+                "- Persisted scenario ground truth is incomplete. Do not present an "
+                "unavailable inferred diagnosis or chief complaint as certain."
+            )
+        lines.append(
+            "- Use this as the authoritative case answer when responding to learner "
+            "questions about diagnosis or case intent."
+        )
+        lines.append("- Use conversation history only for what the learner asked, said, or did.")
+        return "\n".join(lines)
+
+
 @orca.instruction(order=90)
 class StitchDebriefInstruction(BaseInstruction):
     namespace = "chatlab"

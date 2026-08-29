@@ -1,5 +1,6 @@
 """Integration tests for chatlab Stitch services."""
 
+from asgiref.sync import sync_to_async
 import pytest
 
 from apps.chatlab.orca.instructions import (
@@ -7,6 +8,7 @@ from apps.chatlab.orca.instructions import (
     StitchPersonaInstruction,
     StitchReplyDetailInstruction,
     StitchRoleInstruction,
+    StitchScenarioGroundTruthInstruction,
     StitchSchemaContractInstruction,
     StitchToneInstruction,
 )
@@ -28,6 +30,7 @@ class TestGenerateStitchReplyService:
         service = GenerateStitchReply(context={"simulation_id": 1, "conversation_id": 2})
         assert StitchPersonaInstruction in service._instruction_classes
         assert StitchRoleInstruction in service._instruction_classes
+        assert StitchScenarioGroundTruthInstruction in service._instruction_classes
         assert StitchConversationContextInstruction in service._instruction_classes
         assert StitchReplyDetailInstruction in service._instruction_classes
         assert StitchSchemaContractInstruction in service._instruction_classes
@@ -38,6 +41,12 @@ class TestGenerateStitchReplyService:
         names = [cls.__name__ for cls in service._instruction_classes]
 
         assert names.index("StitchPersonaInstruction") < names.index("StitchRoleInstruction")
+        assert names.index("StitchRoleInstruction") < names.index(
+            "StitchScenarioGroundTruthInstruction"
+        )
+        assert names.index("StitchScenarioGroundTruthInstruction") < names.index(
+            "StitchConversationContextInstruction"
+        )
         assert names.index("StitchRoleInstruction") < names.index(
             "StitchConversationContextInstruction"
         )
@@ -79,3 +88,78 @@ class TestGenerateStitchReplyService:
 
         assert service.context["previous_response_id"] == "resp_prev_123"
         assert service.context["previous_provider_response_id"] == "resp_prev_123"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestStitchScenarioGroundTruthInstruction:
+    async def test_renders_persisted_ground_truth(self, django_user_model):
+        from apps.accounts.models import UserRole
+        from apps.simcore.models import Simulation
+
+        role = await UserRole.objects.acreate(title="Stitch Ground Truth")
+        user = await sync_to_async(django_user_model.objects.create_user)(
+            email="stitch-ground-truth@example.com",
+            password="testpass123",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(
+            user=user,
+            diagnosis="Acute appendicitis",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+
+        instruction = StitchScenarioGroundTruthInstruction()
+        instruction.context = {"simulation_id": sim.id}
+        rendered = await instruction.render_instruction()
+
+        assert "### Scenario Ground Truth" in rendered
+        assert "- Chief complaint: Right lower quadrant abdominal pain" in rendered
+        assert "- Correct diagnosis: Acute appendicitis" in rendered
+        assert "authoritative case answer" in rendered
+        assert "Use conversation history only" in rendered
+
+    async def test_renders_limitation_when_ground_truth_missing(self, django_user_model):
+        from apps.accounts.models import UserRole
+        from apps.simcore.models import Simulation
+
+        role = await UserRole.objects.acreate(title="Stitch Missing Ground Truth")
+        user = await sync_to_async(django_user_model.objects.create_user)(
+            email="stitch-missing-ground-truth@example.com",
+            password="testpass123",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(user=user)
+
+        instruction = StitchScenarioGroundTruthInstruction()
+        instruction.context = {"simulation_id": sim.id}
+        rendered = await instruction.render_instruction()
+
+        assert "### Scenario Ground Truth" in rendered
+        assert "Persisted scenario ground truth is unavailable" in rendered
+        assert "Do not present an inferred diagnosis as certain" in rendered
+
+    async def test_renders_partial_ground_truth_limitation(self, django_user_model):
+        from apps.accounts.models import UserRole
+        from apps.simcore.models import Simulation
+
+        role = await UserRole.objects.acreate(title="Stitch Partial Ground Truth")
+        user = await sync_to_async(django_user_model.objects.create_user)(
+            email="stitch-partial-ground-truth@example.com",
+            password="testpass123",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(
+            user=user,
+            diagnosis="",
+            chief_complaint="Right lower quadrant abdominal pain",
+        )
+
+        instruction = StitchScenarioGroundTruthInstruction()
+        instruction.context = {"simulation_id": sim.id}
+        rendered = await instruction.render_instruction()
+
+        assert "- Chief complaint: Right lower quadrant abdominal pain" in rendered
+        assert "- Correct diagnosis: unavailable" in rendered
+        assert "Persisted scenario ground truth is incomplete" in rendered
+        assert "unavailable inferred diagnosis" in rendered

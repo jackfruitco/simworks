@@ -276,6 +276,8 @@ class TestSchemaSerializability:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [],
             "llm_conditions_check": [],
         }
