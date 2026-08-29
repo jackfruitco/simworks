@@ -23,6 +23,7 @@ CANONICAL_DOMAINS = (
     "message",
     "assessment",
     "guard",
+    "voice",
 )
 EVENT_TYPE_PATTERN = re.compile(
     r"^[a-z]+\.[a-z]+\.(created|updated|removed|triggered|completed|failed)$"
@@ -88,6 +89,8 @@ PATIENT_PULSE_CREATED = "patient.pulse.created"
 PATIENT_PULSE_UPDATED = "patient.pulse.updated"
 GUARD_STATE_UPDATED = "guard.state.updated"
 GUARD_WARNING_UPDATED = "guard.warning.updated"
+VOICE_SESSION_CREATED = "voice.session.created"
+VOICE_SESSION_UPDATED = "voice.session.updated"
 
 
 EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
@@ -335,6 +338,16 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
         GUARD_WARNING_UPDATED,
         "Guard warning issued (inactivity warning, nearing limit).",
         aliases=("guard.warning_sent",),
+    ),
+    EventTypeSpec(
+        VOICE_SESSION_CREATED,
+        "A VoiceLab session was created.",
+        aliases=(),
+    ),
+    EventTypeSpec(
+        VOICE_SESSION_UPDATED,
+        "A VoiceLab session lifecycle state changed.",
+        aliases=(),
     ),
 )
 

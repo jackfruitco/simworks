@@ -1,5 +1,6 @@
 # chatlab/models.py
 from typing import ClassVar
+import uuid
 
 from django.conf import settings
 from django.db import models
@@ -20,6 +21,80 @@ class ChatSession(BaseSession):
     Represents a session within ChatLab that extends a shared Simulation instance.
     Additional chat-specific behaviors or fields can be added here.
     """
+
+
+class VoiceSession(PersistModel):
+    """Provider-backed live voice session for a ChatLab simulation."""
+
+    class Status(models.TextChoices):
+        CONFIGURING = "configuring", "Configuring"
+        ACTIVE = "active", "Active"
+        ENDED = "ended", "Ended"
+        FAILED = "failed", "Failed"
+
+    class Transport(models.TextChoices):
+        WEBRTC = "webrtc", "WebRTC"
+        WEBSOCKET = "websocket", "WebSocket"
+
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    ended_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+
+    simulation = models.ForeignKey(
+        Simulation,
+        on_delete=models.CASCADE,
+        related_name="voice_sessions",
+    )
+    conversation = models.ForeignKey(
+        "simcore.Conversation",
+        on_delete=models.CASCADE,
+        related_name="voice_sessions",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chatlab_voice_sessions",
+    )
+
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.CONFIGURING,
+        db_index=True,
+    )
+    transport = models.CharField(
+        max_length=16,
+        choices=Transport.choices,
+        default=Transport.WEBRTC,
+    )
+    provider = models.CharField(max_length=32, default="openai")
+    provider_session_id = models.CharField(max_length=255, blank=True, default="")
+    model_name = models.CharField(max_length=100, blank=True, default="")
+    voice_name = models.CharField(max_length=100, blank=True, default="")
+    client_metadata = models.JSONField(blank=True, default=dict)
+    provider_metadata = models.JSONField(blank=True, default=dict)
+    last_error_code = models.CharField(max_length=100, blank=True, default="")
+    last_error_text = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering: ClassVar = ["-created_at", "-pk"]
+        indexes: ClassVar = [
+            models.Index(
+                fields=["simulation", "status", "created_at"],
+                name="chatlab_voice_sim_status_idx",
+            ),
+            models.Index(
+                fields=["created_by", "created_at"],
+                name="chatlab_voice_actor_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ChatLab VoiceSession#{self.pk} sim#{self.simulation_id} {self.status}"
 
 
 class Message(PersistModel):
