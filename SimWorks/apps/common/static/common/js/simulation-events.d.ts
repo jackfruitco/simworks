@@ -73,7 +73,9 @@ export type CanonicalOutboxEventType =
     | 'simulation.command.updated'
     | 'simulation.patch.completed'
     | 'guard.state.updated'
-    | 'guard.warning.updated';
+    | 'guard.warning.updated'
+    | 'voice.session.created'
+    | 'voice.session.updated';
 
 /**
  * Canonical outbox contract plus transient socket-only events.
@@ -276,6 +278,20 @@ export interface GuardWarningUpdatedEvent extends BaseEvent {
     type: 'guard.warning.updated';
     guard_state: string;
     seconds_until_pause?: number;
+}
+
+export interface VoiceSessionEvent extends BaseEvent {
+    type: 'voice.session.created' | 'voice.session.updated';
+    voice_session_id: number;
+    voice_session_uuid: string;
+    simulation_id: number;
+    conversation_id: number;
+    status: 'configuring' | 'active' | 'ended' | 'failed';
+    transport: 'webrtc' | 'websocket';
+    provider: string;
+    model?: string;
+    voice?: string;
+    expires_at?: string | null;
 }
 
 /**
@@ -848,6 +864,7 @@ export type SimulationEvent =
     | FeedbackCreatedEvent
     | GuardStateUpdatedEvent
     | GuardWarningUpdatedEvent
+    | VoiceSessionEvent
     | MetadataResultsCreatedEvent
     | TrainerLabInjuryCreatedEvent
     | TrainerLabIllnessCreatedEvent

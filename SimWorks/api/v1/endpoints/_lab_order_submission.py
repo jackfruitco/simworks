@@ -12,18 +12,16 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 
-def submit_lab_orders_request(
-    request: HttpRequest,
-    simulation_id: int,
+def submit_lab_orders_for_simulation(
+    *,
+    simulation,
     raw_orders: list[str],
+    correlation_id: str | None = None,
 ) -> LabOrdersOut:
-    """Validate, normalize, and enqueue lab-order generation."""
+    """Normalize and enqueue lab-order generation for an authorized simulation."""
     from apps.chatlab.orca.services.lab_orders import GenerateLabResults
     from apps.simcore.models import Simulation
 
-    require_chatlab_access(request.auth, request=request)
-
-    simulation = get_chatlab_simulation_for_user(simulation_id, request.auth, request=request)
     if simulation.status != Simulation.SimulationStatus.IN_PROGRESS:
         raise HttpError(400, "Lab orders can only be submitted for in-progress simulations")
 
@@ -31,28 +29,42 @@ def submit_lab_orders_request(
     if not orders:
         raise HttpError(400, "orders must contain at least one non-empty item")
 
+    context = {
+        "simulation_id": simulation.id,
+        "orders": orders,
+    }
+    if correlation_id:
+        context["correlation_id"] = correlation_id
+
     async def _enqueue():
-        return await GenerateLabResults.task.using(
-            context={
-                "simulation_id": simulation.id,
-                "orders": orders,
-            }
-        ).aenqueue()
+        return await GenerateLabResults.task.using(context=context).aenqueue()
 
     try:
         call_id = async_to_sync(_enqueue)()
         logger.info(
             "lab_orders.enqueued",
-            simulation_id=simulation_id,
+            simulation_id=simulation.id,
             order_count=len(orders),
             call_id=call_id,
         )
     except Exception as exc:
         logger.exception(
             "lab_orders.enqueue_failed",
-            simulation_id=simulation_id,
+            simulation_id=simulation.id,
             order_count=len(orders),
         )
         raise HttpError(500, "Failed to enqueue lab order processing. Please try again.") from exc
 
     return LabOrdersOut(status="accepted", call_id=call_id, orders=orders)
+
+
+def submit_lab_orders_request(
+    request: HttpRequest,
+    simulation_id: int,
+    raw_orders: list[str],
+) -> LabOrdersOut:
+    """Validate, normalize, and enqueue lab-order generation."""
+    require_chatlab_access(request.auth, request=request)
+
+    simulation = get_chatlab_simulation_for_user(simulation_id, request.auth, request=request)
+    return submit_lab_orders_for_simulation(simulation=simulation, raw_orders=raw_orders)

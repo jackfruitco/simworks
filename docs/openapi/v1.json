@@ -1768,6 +1768,235 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/voice/session/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_start_voice_session",
+        "summary": "Start a VoiceLab session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a provider-backed live voice session for an in-progress ChatLab simulation and returns ephemeral connection material for iOS.",
+        "tags": [
+          "voice"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/voice/sessions/{voice_session_uuid}/end/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_end_voice_session_endpoint",
+        "summary": "End a VoiceLab session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "voice_session_uuid",
+            "schema": {
+              "title": "Voice Session Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Marks a VoiceLab session ended and emits a durable lifecycle event.",
+        "tags": [
+          "voice"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/voice/sessions/{voice_session_uuid}/transcripts/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_create_voice_transcript",
+        "summary": "Persist a VoiceLab transcript",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "voice_session_uuid",
+            "schema": {
+              "title": "Voice Session Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceTranscriptOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceTranscriptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Persists a final Realtime transcript as a normal ChatLab message so message history and durable event catch-up remain authoritative.",
+        "tags": [
+          "voice"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceTranscriptCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/voice/sessions/{voice_session_uuid}/tool-calls/": {
+      "post": {
+        "operationId": "api_v1_endpoints_voice_execute_voice_tool_call_endpoint",
+        "summary": "Execute a VoiceLab tool call",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "voice_session_uuid",
+            "schema": {
+              "title": "Voice Session Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceToolCallOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Executes a Realtime function call against backend-authoritative ChatLab tools and returns JSON output for iOS to send back to the provider.",
+        "tags": [
+          "voice"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceToolCallCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/chatlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
@@ -5765,7 +5994,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``assessment``, and ``guard``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``assessment.item.created`` - A rubric-backed assessment was created\n- ``assessment.generation.failed`` / ``assessment.generation.updated`` - Assessment generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``assessment.item.created``:\n- ``assessment_id`` (str): Assessment UUID (string form)\n- ``rubric_slug`` (str): Slug of the rubric used (e.g., chatlab_initial_feedback)\n- ``rubric_version`` (int): Rubric version\n- ``assessment_type`` (str): e.g. ``initial_feedback`` or ``continuation_feedback``\n- ``lab_type`` (str): e.g. ``chatlab``\n- ``overall_score`` (float | None): Normalized 0..1 overall score, if computed",
+        "description": "Canonical event envelope \u2014 identical across every transport.\n\nThis schema is the single source of truth for event serialization.\nThe same ``EventEnvelope`` is used by:\n\n* **ChatLab REST replay** (``GET /simulations/{id}/events/``)\n* **TrainerLab runtime SSE streaming** (``GET /trainerlab/simulations/{id}/events/stream/``)\n* **TrainerLab hub SSE streaming** (``GET /trainerlab/events/stream/``)\n* **WebSocket delivery** (outbox drain \u2192 channel layer)\n\nDelivery semantics\n------------------\n* **At-least-once**: duplicates are expected.  Clients must\n  deduplicate by ``event_id`` (which is the outbox row UUID and\n  therefore stable across retries).\n* **Cursor-based ordering**: events are ordered by\n  ``(created_at, id)`` with a stable tie-breaker.\n\nBootstrap integration\n---------------------\nBootstrap responses include a durable event anchor field:\n\n* **ChatLab**: ``SimulationOut.latest_event_id`` (``GET /simulations/{id}/``),\n  which is the newest replayable ChatLab durable event ID\n* **TrainerLab**: ``TrainerRestViewModelOut.runtime_snapshot.latest_event_cursor``\n  (``GET /trainerlab/simulations/{id}/state/``)\n\nChatLab clients use ``last_event_id`` during the WebSocket\n``session.hello`` / ``session.resume`` handshake for durable replay.\nTrainerLab runtime clients pass ``latest_event_cursor`` to the\nsimulation-scoped SSE stream. TrainerLab hub clients use\n``GET /trainerlab/events/stream/`` with the same durable cursor semantics\nand ``GET /trainerlab/simulations/`` as the polling/resync fallback.\n\nCanonical outbox event types follow a strict three-segment contract:\n``domain.subject.action``.\nDomains are limited to ``simulation``, ``patient``, ``message``,\n``assessment``, ``guard``, and ``voice``.\nCanonical API output emits only those registry-defined names.\n\n**Supported Event Types**:\n- ``message.item.created`` - New chat message from patient or user\n- ``message.delivery.updated`` - Outgoing message status changed (sent/delivered/failed)\n- ``patient.metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``patient.results.updated`` - Patient results panel content refreshed\n- ``assessment.item.created`` - A rubric-backed assessment was created\n- ``assessment.generation.failed`` / ``assessment.generation.updated`` - Assessment generation lifecycle events\n- ``simulation.status.updated`` - Simulation status changed\n- ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed\n- ``voice.session.created`` / ``voice.session.updated`` - VoiceLab session lifecycle events\n- ``patient.*`` - Patient domain object lifecycle events\n\n**Event Payload Structures**:\n\n``message.item.created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n\n``patient.metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``assessment.item.created``:\n- ``assessment_id`` (str): Assessment UUID (string form)\n- ``rubric_slug`` (str): Slug of the rubric used (e.g., chatlab_initial_feedback)\n- ``rubric_version`` (int): Rubric version\n- ``assessment_type`` (str): e.g. ``initial_feedback`` or ``continuation_feedback``\n- ``lab_type`` (str): e.g. ``chatlab``\n- ``overall_score`` (float | None): Normalized 0..1 overall score, if computed",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -5776,7 +6005,7 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, assessment.item.created, assessment.generation.failed, assessment.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
+            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, assessment.item.created, assessment.generation.failed, assessment.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated, voice.session.created, voice.session.updated",
             "examples": [
               "message.item.created",
               "message.delivery.updated",
@@ -6662,6 +6891,430 @@
           }
         },
         "title": "HeartbeatIn",
+        "type": "object"
+      },
+      "VoiceSessionOut": {
+        "description": "VoiceLab session broker response.",
+        "properties": {
+          "id": {
+            "description": "VoiceSession database ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "uuid": {
+            "description": "Stable VoiceSession UUID",
+            "title": "Uuid",
+            "type": "string"
+          },
+          "simulation_id": {
+            "description": "Simulation ID",
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "description": "Conversation ID",
+            "title": "Conversation Id",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Voice session lifecycle status",
+            "enum": [
+              "configuring",
+              "active",
+              "ended",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "transport": {
+            "description": "Realtime transport",
+            "enum": [
+              "webrtc",
+              "websocket"
+            ],
+            "title": "Transport",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Realtime provider",
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_session_id": {
+            "default": "",
+            "description": "Provider session identifier",
+            "title": "Provider Session Id",
+            "type": "string"
+          },
+          "model": {
+            "description": "Realtime model",
+            "title": "Model",
+            "type": "string"
+          },
+          "voice": {
+            "description": "Realtime voice",
+            "title": "Voice",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "When the VoiceSession was created",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When the VoiceSession was last updated",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the VoiceSession ended",
+            "title": "Ended At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the client secret expires",
+            "title": "Expires At"
+          },
+          "realtime_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider endpoint used to mint the client secret.",
+            "title": "Realtime Url"
+          },
+          "calls_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider WebRTC SDP endpoint for the client.",
+            "title": "Calls Url"
+          },
+          "websocket_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider WebSocket endpoint for the client.",
+            "title": "Websocket Url"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ephemeral provider client secret. Returned only when starting a session.",
+            "title": "Client Secret"
+          },
+          "session_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider session config used to mint the client secret.",
+            "title": "Session Config"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "simulation_id",
+          "conversation_id",
+          "status",
+          "transport",
+          "provider",
+          "model",
+          "voice",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VoiceSessionOut",
+        "type": "object"
+      },
+      "VoiceSessionCreate": {
+        "description": "Input schema for starting a VoiceLab session.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target conversation ID. Defaults to the simulated patient conversation.",
+            "title": "Conversation Id"
+          },
+          "transport": {
+            "default": "webrtc",
+            "description": "Realtime audio transport requested by the client.",
+            "enum": [
+              "webrtc",
+              "websocket"
+            ],
+            "title": "Transport",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional provider realtime model override.",
+            "title": "Model"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional provider voice override.",
+            "title": "Voice"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client-generated key used to make voice session start safe to retry.",
+            "title": "Idempotency Key"
+          },
+          "client_metadata": {
+            "additionalProperties": true,
+            "description": "Non-sensitive client details for diagnostics and lifecycle tracking.",
+            "title": "Client Metadata",
+            "type": "object"
+          }
+        },
+        "title": "VoiceSessionCreate",
+        "type": "object"
+      },
+      "VoiceTranscriptOut": {
+        "description": "Result of persisting a final VoiceLab transcript.",
+        "properties": {
+          "persisted": {
+            "description": "True when a new message was created",
+            "title": "Persisted",
+            "type": "boolean"
+          },
+          "message": {
+            "$ref": "#/components/schemas/MessageOut",
+            "description": "Persisted ChatLab message"
+          }
+        },
+        "required": [
+          "persisted",
+          "message"
+        ],
+        "title": "VoiceTranscriptOut",
+        "type": "object"
+      },
+      "VoiceTranscriptCreate": {
+        "description": "Final Realtime transcript to persist into ChatLab history.",
+        "properties": {
+          "role": {
+            "description": "Speaker role for the transcript",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "transcript": {
+            "description": "Final transcript text from the Realtime session.",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Transcript",
+            "type": "string"
+          },
+          "status": {
+            "default": "final",
+            "description": "Final transcript status; partial transcripts are not persisted.",
+            "enum": [
+              "final",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_item_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider conversation item ID used for idempotency.",
+            "title": "Provider Item Id"
+          },
+          "provider_response_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider response ID used for idempotency.",
+            "title": "Provider Response Id"
+          },
+          "provider_event_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider event ID used as a fallback idempotency key.",
+            "title": "Provider Event Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Non-sensitive provider/client transcript metadata.",
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "role",
+          "transcript"
+        ],
+        "title": "VoiceTranscriptCreate",
+        "type": "object"
+      },
+      "VoiceToolCallOut": {
+        "description": "Backend tool execution result for the iOS client to return to Realtime.",
+        "properties": {
+          "tool_call_id": {
+            "description": "Provider tool/function call ID",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool/function name",
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "description": "Execution status",
+            "title": "Status",
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "description": "JSON-serializable tool output",
+            "title": "Output",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "name",
+          "output"
+        ],
+        "title": "VoiceToolCallOut",
+        "type": "object"
+      },
+      "VoiceToolCallCreate": {
+        "description": "Realtime tool call forwarded by the iOS client for backend execution.",
+        "properties": {
+          "tool_call_id": {
+            "description": "Provider tool/function call ID.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tool/function name requested by the Realtime model.",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "Parsed JSON arguments for the tool call.",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "name"
+        ],
+        "title": "VoiceToolCallCreate",
         "type": "object"
       },
       "LabAccessOut": {

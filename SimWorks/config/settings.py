@@ -226,6 +226,17 @@ ORCHESTRAI = {
 ORCA_MAX_ATTEMPTS = int_from_env("ORCA_MAX_ATTEMPTS", default=4, minimum=1)
 ORCA_RETRY_BACKOFF_BASE = int_from_env("ORCA_RETRY_BACKOFF_BASE", default=5, minimum=1)
 ORCA_RETRY_BACKOFF_MAX = int_from_env("ORCA_RETRY_BACKOFF_MAX", default=60, minimum=1)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+VOICELAB_REALTIME_MODEL = os.getenv("VOICELAB_REALTIME_MODEL", "gpt-realtime-2.1")
+VOICELAB_REALTIME_VOICE = os.getenv("VOICELAB_REALTIME_VOICE", "marin")
+VOICELAB_OPENAI_CLIENT_SECRETS_URL = os.getenv(
+    "VOICELAB_OPENAI_CLIENT_SECRETS_URL",
+    "https://api.openai.com/v1/realtime/client_secrets",
+)
+VOICELAB_OPENAI_CALLS_URL = os.getenv(
+    "VOICELAB_OPENAI_CALLS_URL",
+    "https://api.openai.com/v1/realtime/calls",
+)
 TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS = int_from_env(
     "TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS",
     default=7000,
