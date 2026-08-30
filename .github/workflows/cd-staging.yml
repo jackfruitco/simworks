@@ -110,6 +110,8 @@ jobs:
           context: .
           file: docker/Dockerfile.prod
           push: true
+          build-args: |
+            POSTGRES_CLIENT_MAJOR=18
           cache-from: type=gha,mode=max,scope=runtime-image
           cache-to: type=gha,mode=max,scope=runtime-image
           tags: |
@@ -121,6 +123,12 @@ jobs:
             org.opencontainers.image.version=v${{ steps.pyproject.outputs.version }}
             org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
             org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
+
+      - name: Verify PostgreSQL client version
+        run: |
+          set -euo pipefail
+          docker run --rm "${IMAGE}:sha-${GITHUB_SHA}" pg_dump --version | tee /tmp/pg_dump_version.txt
+          grep -E 'PostgreSQL 18\.' /tmp/pg_dump_version.txt
 
       - name: Scan pushed image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
