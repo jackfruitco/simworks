@@ -78,6 +78,22 @@ class VoiceSession(PersistModel):
     client_idempotency_key = models.CharField(max_length=255, blank=True, default="")
     client_metadata = models.JSONField(blank=True, default=dict)
     provider_metadata = models.JSONField(blank=True, default=dict)
+    responses_sync_cursor = models.PositiveBigIntegerField(
+        blank=True,
+        null=True,
+        help_text="Canonical Message ID known to be in Responses when this voice session branched.",
+    )
+    responses_sync_status = models.CharField(
+        max_length=16,
+        choices=[
+            ("pending", "Pending"),
+            ("synced", "Synced"),
+            ("failed", "Failed"),
+        ],
+        default="pending",
+        db_index=True,
+    )
+    responses_sync_error = models.TextField(blank=True, default="")
     last_error_code = models.CharField(max_length=100, blank=True, default="")
     last_error_text = models.TextField(blank=True, default="")
 
@@ -345,3 +361,35 @@ class MessageMediaLink(PersistModel):
 
     class Meta:
         unique_together = ("message", "media")
+
+
+class ProviderConversationItem(PersistModel):
+    """Idempotency receipt for a canonical message appended to a provider conversation."""
+
+    conversation = models.ForeignKey(
+        "simcore.Conversation",
+        on_delete=models.CASCADE,
+        related_name="provider_items",
+    )
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="provider_conversation_items",
+    )
+    provider_conversation_id = models.CharField(max_length=255)
+    provider_item_id = models.CharField(max_length=255)
+    item_type = models.CharField(max_length=32, default="message")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering: ClassVar = ["message_id", "pk"]
+        constraints: ClassVar[list] = [
+            models.UniqueConstraint(
+                fields=["conversation", "message", "provider_conversation_id"],
+                name="chatlab_unique_provider_message_sync",
+            ),
+            models.UniqueConstraint(
+                fields=["provider_conversation_id", "provider_item_id"],
+                name="chatlab_unique_provider_item_id",
+            ),
+        ]

@@ -134,6 +134,11 @@ async def persist_messages(messages: list[ResultMessageItem], ctx: PersistContex
         except Exception as exc:
             logger.warning("Failed to load ServiceCallAttempt %s: %s", attempt_id, exc)
     provider_response_id = extra.get("provider_response_id")
+    conversation = None
+    if conversation_id and provider_response_id:
+        from apps.simcore.models import Conversation
+
+        conversation = await Conversation.objects.aget(pk=conversation_id)
     for msg in messages:
         text = _extract_text(msg)
         if not text:
@@ -152,6 +157,17 @@ async def persist_messages(messages: list[ResultMessageItem], ctx: PersistContex
             provider_response_id=provider_response_id,
         )
         created.append(m)
+
+        if conversation is not None:
+            from asgiref.sync import sync_to_async
+
+            from apps.chatlab.ai.conversations import mark_message_synced_to_provider
+
+            await sync_to_async(mark_message_synced_to_provider)(
+                conversation=conversation,
+                message=m,
+                provider_item_id=f"responses:{provider_response_id}:output:{m.pk}",
+            )
 
     return created
 

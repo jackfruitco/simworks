@@ -14,6 +14,12 @@ from django.utils import timezone
 import httpx
 from ninja.errors import HttpError
 
+from apps.chatlab.ai.context import build_patient_runtime_context_sync
+from apps.chatlab.ai.conversations import (
+    ProviderConversationError,
+    sync_voice_session_to_provider,
+)
+from apps.chatlab.ai.instructions import render_voice_patient_instructions
 from apps.chatlab.media_payloads import build_chat_message_event_payload
 from apps.chatlab.models import (
     Message,
@@ -51,6 +57,7 @@ class VoiceSessionStart:
     expires_at: datetime | None = None
     provider_session_id: str = ""
     provider_metadata: dict[str, Any] | None = None
+    bootstrap_items: list[dict[str, Any]] | None = None
 
 
 def default_realtime_model() -> str:
@@ -63,10 +70,6 @@ def default_voice_name() -> str:
 
 def default_transcription_model() -> str:
     return getattr(settings, "VOICELAB_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe")
-
-
-def context_message_limit() -> int:
-    return max(0, int(getattr(settings, "VOICELAB_CONTEXT_MESSAGE_LIMIT", 12)))
 
 
 def realtime_client_secrets_url() -> str:
@@ -176,10 +179,13 @@ def _voice_tool_definitions() -> list[dict[str, Any]]:
     ]
 
 
-def _recent_conversation_context(conversation) -> str:
-    limit = context_message_limit()
-    if limit <= 0:
-        return ""
+def build_realtime_bootstrap_items(conversation) -> list[dict[str, Any]]:
+    """Build ordered Realtime input items from canonical MedSim text messages.
+
+    The default is the complete current text history. Deployments that need an
+    explicit context budget may set ``VOICELAB_BOOTSTRAP_MAX_CHARS``; selection
+    then remains deterministic and is surfaced to the client as a system item.
+    """
 
     messages = list(
         Message.objects.filter(
@@ -190,20 +196,49 @@ def _recent_conversation_context(conversation) -> str:
         )
         .exclude(content__isnull=True)
         .exclude(content="")
-        .order_by("-pk")[:limit]
+        .order_by("pk")
     )
-    if not messages:
-        return ""
+    max_chars = max(0, int(getattr(settings, "VOICELAB_BOOTSTRAP_MAX_CHARS", 0)))
+    selected = messages
+    omitted = 0
+    if max_chars:
+        total = 0
+        selected = []
+        for message in reversed(messages):
+            content = " ".join(str(message.content or "").split())
+            if selected and total + len(content) > max_chars:
+                break
+            selected.append(message)
+            total += len(content)
+        selected.reverse()
+        omitted = len(messages) - len(selected)
 
-    lines = []
-    for message in reversed(messages):
-        label = "Learner" if message.role == RoleChoices.USER else "Patient"
-        content = " ".join(str(message.content or "").split())
-        if content:
-            lines.append(f"{label}: {content}")
-    if not lines:
-        return ""
-    return "Recent text conversation for continuity:\n" + "\n".join(lines)
+    items: list[dict[str, Any]] = []
+    if omitted:
+        items.append(
+            {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            f"{omitted} earlier canonical MedSim messages are omitted from this "
+                            "voice bootstrap; use only the messages that follow."
+                        ),
+                    }
+                ],
+            }
+        )
+    for message in selected:
+        items.append(
+            {
+                "type": "message",
+                "role": "assistant" if message.role == RoleChoices.ASSISTANT else "user",
+                "content": [{"type": "input_text", "text": str(message.content or "")}],
+            }
+        )
+    return items
 
 
 def build_realtime_session_config(
@@ -215,25 +250,11 @@ def build_realtime_session_config(
 ) -> dict[str, Any]:
     """Build the provider session config sent when minting an ephemeral secret."""
 
-    patient_name = (
-        simulation.sim_patient_display_name or simulation.sim_patient_full_name or "the patient"
+    runtime_context = build_patient_runtime_context_sync(
+        simulation=simulation,
+        conversation=conversation,
     )
-    chief_complaint = simulation.chief_complaint or "the presenting concern"
-    conversation_name = conversation.display_name or conversation.conversation_type.display_name
-    persona = getattr(conversation.conversation_type, "ai_persona", "") or "patient"
-    recent_context = _recent_conversation_context(conversation)
-    instructions = (
-        "You are running a MedSim ChatLab voice encounter. "
-        f"Speak as {conversation_name}, the simulated patient, unless the configured "
-        f"conversation persona says otherwise. The configured persona is {persona}. "
-        "Keep responses conversational, clinically "
-        "consistent, and concise enough for spoken turn-taking. "
-        f"The patient is {patient_name}; the chief complaint is {chief_complaint}. "
-        "Use available tools when patient history, results, simulation metadata, or lab "
-        "order submission is needed; do not invent unseen results."
-    )
-    if recent_context:
-        instructions = f"{instructions}\n\n{recent_context}"
+    instructions = render_voice_patient_instructions(runtime_context)
     return {
         "type": "realtime",
         "model": model,
@@ -350,6 +371,7 @@ class OpenAIRealtimeSessionBroker:
             expires_at=expires_at,
             provider_session_id=provider_session_id,
             provider_metadata=_redact_secret_payload(payload),
+            bootstrap_items=build_realtime_bootstrap_items(conversation),
         )
 
 
@@ -463,6 +485,7 @@ def create_voice_session(
                     voice_name=selected_voice,
                     client_idempotency_key=normalized_key,
                     client_metadata=client_metadata or {},
+                    responses_sync_cursor=conversation.provider_sync_cursor,
                 )
                 created = True
     except IntegrityError:
@@ -556,6 +579,16 @@ def end_voice_session(
 
     if voice_session.status == VoiceSession.Status.ENDED:
         return voice_session
+    try:
+        sync_voice_session_to_provider(voice_session)
+    except ProviderConversationError:
+        # Ending the transport must remain possible when the provider is down;
+        # the durable pending marker lets the next text boundary retry sync.
+        logger.warning(
+            "voicelab.responses_sync_pending voice_session=%s",
+            voice_session.pk,
+            exc_info=True,
+        )
     voice_session.status = VoiceSession.Status.ENDED
     voice_session.ended_at = timezone.now()
     voice_session.save(update_fields=["status", "ended_at", "updated_at"])

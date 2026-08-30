@@ -83,6 +83,13 @@ class VoiceSessionOut(BaseModel):
         default=None,
         description="Provider session config used to mint the client secret.",
     )
+    bootstrap_items: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Ordered Realtime conversation.item.create payloads derived from canonical "
+            "MedSim history. Insert these before enabling live voice interaction."
+        ),
+    )
 
 
 class VoiceTranscriptCreate(BaseModel):
@@ -180,6 +187,7 @@ def voice_session_to_out(voice_session, start=None) -> VoiceSessionOut:
         websocket_url=getattr(start, "websocket_url", None),
         client_secret=getattr(start, "client_secret", None),
         session_config=getattr(start, "session_config", None),
+        bootstrap_items=getattr(start, "bootstrap_items", None),
     )
 
 
