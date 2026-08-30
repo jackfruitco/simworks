@@ -267,6 +267,38 @@ class TestVoiceSessions:
         assert start.calls_url is None
         assert start.websocket_url == "wss://api.openai.test/v1/realtime"
 
+    @override_settings(OPENAI_API_KEY=None)
+    def test_realtime_broker_uses_configured_orchestrai_openai_key(
+        self,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import VoiceSession
+        from apps.chatlab.voice import OpenAIRealtimeSessionBroker
+
+        response = MagicMock()
+        response.json.return_value = {
+            "id": "realtime_session_123",
+            "client_secret": {"value": "ek_test"},
+        }
+        response.raise_for_status.return_value = None
+
+        with (
+            patch("apps.chatlab.voice.get_api_key", return_value="sk-orca-test"),
+            patch("apps.chatlab.voice.httpx.post", return_value=response) as post,
+        ):
+            OpenAIRealtimeSessionBroker().start_session(
+                user=test_user,
+                simulation=simulation,
+                conversation=conversation,
+                transport=VoiceSession.Transport.WEBRTC,
+                model="gpt-realtime-test",
+                voice="verse",
+            )
+
+        assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-orca-test"
+
     def test_start_voice_session_is_idempotent_for_client_key(
         self,
         auth_client,

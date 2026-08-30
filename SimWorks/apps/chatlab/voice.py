@@ -26,6 +26,7 @@ from apps.common.outbox import enqueue_event_sync, event_types as outbox_events,
 from apps.common.utils.accounts import get_or_create_system_user
 from apps.simcore.models import Simulation
 from config.logging import get_logger
+from orchestrai.utils.env_utils import get_api_key
 
 logger = get_logger(__name__)
 
@@ -90,6 +91,10 @@ def realtime_websocket_url() -> str:
         "VOICELAB_OPENAI_WEBSOCKET_URL",
         "wss://api.openai.com/v1/realtime",
     )
+
+
+def _openai_realtime_api_key() -> str | None:
+    return getattr(settings, "OPENAI_API_KEY", None) or get_api_key("openai")
 
 
 def _stable_safety_identifier(user) -> str:
@@ -272,7 +277,7 @@ class OpenAIRealtimeSessionBroker:
         model: str,
         voice: str,
     ) -> VoiceSessionStart:
-        api_key = getattr(settings, "OPENAI_API_KEY", None)
+        api_key = _openai_realtime_api_key()
         if not api_key:
             raise VoiceProviderConfigurationError(
                 "OpenAI Realtime voice provider is not configured"

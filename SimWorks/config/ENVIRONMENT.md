@@ -87,7 +87,16 @@ Sender identity defaults may be omitted if the defaults are acceptable:
 - `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`
 
 ## OrchestrAI / Observability
+- `ORCA_OPENAI_API_KEY` (preferred namespaced OpenAI key for OrchestrAI-backed app features)
+- `OPENAI_API_KEY` (optional standard SDK-style alias; used when set, with `ORCA_OPENAI_API_KEY` as the fallback)
 - `ORCA_DEFAULT_MODEL`
+- `VOICELAB_REALTIME_MODEL` (default `gpt-realtime-2.1`)
+- `VOICELAB_REALTIME_VOICE` (default `marin`)
+- `VOICELAB_TRANSCRIPTION_MODEL` (default `gpt-4o-mini-transcribe`)
+- `VOICELAB_CONTEXT_MESSAGE_LIMIT` (default `12`)
+- `VOICELAB_OPENAI_CLIENT_SECRETS_URL` (default `https://api.openai.com/v1/realtime/client_secrets`)
+- `VOICELAB_OPENAI_CALLS_URL` (default `https://api.openai.com/v1/realtime/calls`)
+- `VOICELAB_OPENAI_WEBSOCKET_URL` (default `wss://api.openai.com/v1/realtime`)
 - `TRAINERLAB_RUNTIME_DEBOUNCE_SECONDS` (default `2.0`): batches rapid user interventions into one runtime turn request.
 - `TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS` (default `8.0`): prevents run/tick and scheduled progression triggers from spamming runtime turns.
 - `TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS` (default `2`): caps immediate recursive runtime follow-ups while preserving pending work with a delayed continuation.
