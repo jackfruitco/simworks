@@ -110,8 +110,8 @@ jobs:
           context: .
           file: docker/Dockerfile.prod
           push: true
-          cache-from: type=gha,mode=max,scope=runtime-image
-          cache-to: type=gha,mode=max,scope=runtime-image
+          cache-from: type=gha,mode=max,scope=runtime-image-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          cache-to: type=gha,mode=max,scope=runtime-image-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           tags: |
             ${{ env.IMAGE }}:sha-${{ github.sha }}
             ${{ env.IMAGE }}:staging
