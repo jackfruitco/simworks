@@ -51,6 +51,8 @@ class _PatientProviderConversationMixin:
             conversation,
             through_message_id=(int(user_message_id) - 1 if user_message_id else None),
         )
+        await conversation.arefresh_from_db(fields=["provider_conversation_id"])
+        provider_conversation = await sync_to_async(ensure_provider_conversation)(conversation)
         self.context["conversation_id"] = conversation.pk
         self.context["patient_runtime_context"] = runtime_context.as_dict()
         model_settings = dict(self.context.get("model_settings") or {})
@@ -98,7 +100,9 @@ class _PatientProviderConversationMixin:
 
         if hasattr(super(), "on_failure"):
             await super().on_failure(context, error)
-        if "not found" not in str(error).lower() or not context.get("conversation_id"):
+        from apps.chatlab.ai.conversations import is_provider_conversation_missing_error
+
+        if not is_provider_conversation_missing_error(error) or not context.get("conversation_id"):
             return
 
         from apps.chatlab.ai.conversations import rebuild_provider_conversation
@@ -121,6 +125,7 @@ class GenerateInitialResponse(_PatientProviderConversationMixin, DjangoBaseServi
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.patient.PatientNameInstruction",
         "chatlab.patient.PatientModifierInstruction",
+        "chatlab.patient.PatientRuntimeContextInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
         "chatlab.patient.PatientInformationDisclosureInstruction",
@@ -142,6 +147,7 @@ class GenerateReplyResponse(_PatientProviderConversationMixin, DjangoBaseService
 
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.patient.PatientNameInstruction",
+        "chatlab.patient.PatientRuntimeContextInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
         "chatlab.patient.PatientInformationDisclosureInstruction",

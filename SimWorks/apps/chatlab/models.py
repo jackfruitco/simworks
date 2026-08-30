@@ -185,6 +185,7 @@ class VoiceTranscriptReceipt(PersistModel):
         on_delete=models.CASCADE,
         related_name="voice_transcript_receipts",
     )
+    metadata = models.JSONField(blank=True, default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

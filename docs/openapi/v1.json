@@ -7056,6 +7056,22 @@
             ],
             "description": "Provider session config used to mint the client secret.",
             "title": "Session Config"
+          },
+          "bootstrap_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ordered Realtime conversation.item.create events derived from canonical MedSim history. Send these after session.update and before enabling live voice.",
+            "title": "Bootstrap Items"
           }
         },
         "required": [

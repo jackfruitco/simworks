@@ -99,6 +99,27 @@ class TestProviderConversationSync:
         conversation.refresh_from_db()
         assert conversation.provider_conversation_id == "conv_123"
 
+    def test_message_mapping_uses_output_shape_for_assistant(self, conversation, test_user):
+        from apps.chatlab.ai.conversations import medsim_message_to_response_item
+        from apps.chatlab.models import Message, RoleChoices
+
+        message = Message.objects.create(
+            simulation=conversation.simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="I have felt dizzy.",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+        )
+
+        assert medsim_message_to_response_item(message) == {
+            "type": "message",
+            "id": f"medsim-assistant-{message.pk}",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": "I have felt dizzy."}],
+        }
+
     def test_sync_appends_ordered_messages_once(self, conversation, test_user):
         from apps.chatlab.ai.conversations import sync_messages_to_provider
         from apps.chatlab.models import Message, ProviderConversationItem, RoleChoices
@@ -138,6 +159,7 @@ class TestProviderConversationSync:
             "user",
             "assistant",
         ]
+        assert append_calls[1].kwargs["json"]["items"][0]["content"][0]["type"] == ("output_text")
 
     def test_voice_boundary_sync_uses_branch_cursor(self, conversation, test_user):
         from apps.chatlab.ai.conversations import sync_voice_session_to_provider

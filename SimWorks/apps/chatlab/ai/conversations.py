@@ -25,6 +25,19 @@ class ProviderConversationNotFound(ProviderConversationError):
     """The provider conversation was deleted or is otherwise unrecoverable."""
 
 
+def is_provider_conversation_missing_error(error: BaseException) -> bool:
+    """Recognize deleted provider conversations across SDK and HTTP error shapes."""
+
+    status_code = getattr(error, "status_code", None)
+    if status_code is None:
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None)
+    if status_code == 404:
+        return True
+    text = str(error).lower()
+    return "conversation not found" in text or "conversation does not exist" in text
+
+
 @dataclass(frozen=True)
 class ProviderConversation:
     id: str
@@ -177,10 +190,17 @@ def rebuild_provider_conversation(conversation) -> ProviderConversation:
 def medsim_message_to_response_item(message: Message) -> dict[str, Any]:
     """Map one canonical text message to a Responses Conversation item."""
 
-    role = "assistant" if message.role == RoleChoices.ASSISTANT else "user"
+    if message.role == RoleChoices.ASSISTANT:
+        return {
+            "type": "message",
+            "id": f"medsim-assistant-{message.pk}",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": str(message.content or "")}],
+        }
     return {
         "type": "message",
-        "role": role,
+        "role": "user",
         "content": [{"type": "input_text", "text": str(message.content or "")}],
     }
 
@@ -204,7 +224,12 @@ def _append_provider_item(*, provider_conversation_id: str, message: Message) ->
 
 
 def _record_synced_item(
-    *, conversation, message: Message, provider_conversation_id: str, provider_item_id: str
+    *,
+    conversation,
+    message: Message,
+    provider_conversation_id: str,
+    provider_item_id: str,
+    item_type: str = "message",
 ) -> None:
     try:
         ProviderConversationItem.objects.create(
@@ -212,7 +237,7 @@ def _record_synced_item(
             message=message,
             provider_conversation_id=provider_conversation_id,
             provider_item_id=provider_item_id,
-            item_type="message",
+            item_type=item_type,
         )
     except IntegrityError:
         if not ProviderConversationItem.objects.filter(
@@ -236,55 +261,67 @@ def sync_messages_to_provider(
     remains pending and is retried by the next text or voice boundary.
     """
 
-    provider_conversation = ensure_provider_conversation(conversation)
-    lower_bound = (
-        after_message_id if after_message_id is not None else conversation.provider_sync_cursor
-    )
-    messages = (
-        Message.objects.filter(
-            conversation_id=conversation.pk,
-            simulation_id=conversation.simulation_id,
-            is_deleted=False,
-            message_type=Message.MessageType.TEXT,
-            pk__gt=lower_bound or 0,
-        )
-        .exclude(content__isnull=True)
-        .exclude(content="")
-        .order_by("pk")
-    )
-    if through_message_id is not None:
-        messages = messages.filter(pk__lte=through_message_id)
-
-    last_message_id = lower_bound
     try:
-        for message in messages:
-            receipt = ProviderConversationItem.objects.filter(
-                conversation=conversation,
-                message=message,
-                provider_conversation_id=provider_conversation.id,
-            ).first()
-            if receipt is None:
-                provider_item_id = _append_provider_item(
-                    provider_conversation_id=provider_conversation.id,
-                    message=message,
-                )
-                _record_synced_item(
-                    conversation=conversation,
-                    message=message,
-                    provider_conversation_id=provider_conversation.id,
-                    provider_item_id=provider_item_id,
-                )
-            last_message_id = message.pk
-            conversation.provider_sync_cursor = message.pk
-            conversation.provider_sync_status = "synced"
-            conversation.provider_sync_error = ""
-            conversation.save(
-                update_fields=[
-                    "provider_sync_cursor",
-                    "provider_sync_status",
-                    "provider_sync_error",
-                ]
+        with transaction.atomic():
+            locked_conversation = (
+                type(conversation).objects.select_for_update().get(pk=conversation.pk)
             )
+            provider_conversation = ensure_provider_conversation(locked_conversation)
+            lower_bound = (
+                after_message_id
+                if after_message_id is not None
+                else locked_conversation.provider_sync_cursor
+            )
+            messages = (
+                Message.objects.filter(
+                    conversation_id=locked_conversation.pk,
+                    simulation_id=locked_conversation.simulation_id,
+                    is_deleted=False,
+                    message_type=Message.MessageType.TEXT,
+                    pk__gt=lower_bound or 0,
+                )
+                .exclude(content__isnull=True)
+                .exclude(content="")
+                .order_by("pk")
+            )
+            if through_message_id is not None:
+                messages = messages.filter(pk__lte=through_message_id)
+
+            last_message_id = lower_bound
+            for message in messages:
+                receipt = ProviderConversationItem.objects.filter(
+                    conversation=locked_conversation,
+                    message=message,
+                    provider_conversation_id=provider_conversation.id,
+                ).first()
+                if receipt is None:
+                    provider_item_id = _append_provider_item(
+                        provider_conversation_id=provider_conversation.id,
+                        message=message,
+                    )
+                    _record_synced_item(
+                        conversation=locked_conversation,
+                        message=message,
+                        provider_conversation_id=provider_conversation.id,
+                        provider_item_id=provider_item_id,
+                    )
+                last_message_id = message.pk
+                locked_conversation.provider_sync_cursor = message.pk
+                locked_conversation.provider_sync_status = "synced"
+                locked_conversation.provider_sync_error = ""
+                locked_conversation.save(
+                    update_fields=[
+                        "provider_sync_cursor",
+                        "provider_sync_status",
+                        "provider_sync_error",
+                    ]
+                )
+            if last_message_id is None:
+                locked_conversation.provider_sync_status = "synced"
+                locked_conversation.provider_sync_error = ""
+                locked_conversation.save(
+                    update_fields=["provider_sync_status", "provider_sync_error"]
+                )
     except ProviderConversationNotFound:
         logger.warning(
             "chatlab.provider_conversation_missing conversation=%s; rebuilding",
@@ -297,15 +334,11 @@ def sync_messages_to_provider(
             through_message_id=through_message_id,
         )
     except ProviderConversationError as exc:
-        conversation.provider_sync_status = "failed"
-        conversation.provider_sync_error = str(exc)[:2000]
-        conversation.save(update_fields=["provider_sync_status", "provider_sync_error"])
+        type(conversation).objects.filter(pk=conversation.pk).update(
+            provider_sync_status="failed",
+            provider_sync_error=str(exc)[:2000],
+        )
         raise
-
-    if last_message_id is None:
-        conversation.provider_sync_status = "synced"
-        conversation.provider_sync_error = ""
-        conversation.save(update_fields=["provider_sync_status", "provider_sync_error"])
     return last_message_id
 
 
@@ -344,27 +377,32 @@ def mark_message_synced_to_provider(
 ) -> None:
     """Record a message already appended by a Responses request."""
 
-    provider_conversation_id = conversation.provider_conversation_id
-    if not provider_conversation_id:
-        return
-    _record_synced_item(
-        conversation=conversation,
-        message=message,
-        provider_conversation_id=provider_conversation_id,
-        provider_item_id=provider_item_id,
-        item_type=item_type,
-    )
-    if conversation.provider_sync_cursor is None or message.pk > conversation.provider_sync_cursor:
-        conversation.provider_sync_cursor = message.pk
-    conversation.provider_sync_status = "synced"
-    conversation.provider_sync_error = ""
-    conversation.save(
-        update_fields=[
-            "provider_sync_cursor",
-            "provider_sync_status",
-            "provider_sync_error",
-        ]
-    )
+    with transaction.atomic():
+        locked_conversation = type(conversation).objects.select_for_update().get(pk=conversation.pk)
+        provider_conversation_id = locked_conversation.provider_conversation_id
+        if not provider_conversation_id:
+            return
+        _record_synced_item(
+            conversation=locked_conversation,
+            message=message,
+            provider_conversation_id=provider_conversation_id,
+            provider_item_id=provider_item_id,
+            item_type=item_type,
+        )
+        if (
+            locked_conversation.provider_sync_cursor is None
+            or message.pk > locked_conversation.provider_sync_cursor
+        ):
+            locked_conversation.provider_sync_cursor = message.pk
+        locked_conversation.provider_sync_status = "synced"
+        locked_conversation.provider_sync_error = ""
+        locked_conversation.save(
+            update_fields=[
+                "provider_sync_cursor",
+                "provider_sync_status",
+                "provider_sync_error",
+            ]
+        )
 
 
 __all__ = [
@@ -373,6 +411,7 @@ __all__ = [
     "ProviderConversationNotFound",
     "create_provider_conversation",
     "ensure_provider_conversation",
+    "is_provider_conversation_missing_error",
     "mark_message_synced_to_provider",
     "medsim_message_to_response_item",
     "rebuild_provider_conversation",

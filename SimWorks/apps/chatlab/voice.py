@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
+import math
 from typing import Any
 
 from django.conf import settings
@@ -182,9 +183,10 @@ def _voice_tool_definitions() -> list[dict[str, Any]]:
 def build_realtime_bootstrap_items(conversation) -> list[dict[str, Any]]:
     """Build ordered Realtime input items from canonical MedSim text messages.
 
-    The default is the complete current text history. Deployments that need an
-    explicit context budget may set ``VOICELAB_BOOTSTRAP_MAX_CHARS``; selection
-    then remains deterministic and is surfaced to the client as a system item.
+    The newest messages are selected deterministically against an approximate
+    token budget. If older messages are omitted, a compact server-generated
+    summary item preserves the fact that earlier canonical history exists.
+    Returned values are client event payloads, ready to send after ``session.update``.
     """
 
     messages = list(
@@ -198,44 +200,63 @@ def build_realtime_bootstrap_items(conversation) -> list[dict[str, Any]]:
         .exclude(content="")
         .order_by("pk")
     )
-    max_chars = max(0, int(getattr(settings, "VOICELAB_BOOTSTRAP_MAX_CHARS", 0)))
+    max_tokens = max(256, int(getattr(settings, "VOICELAB_BOOTSTRAP_MAX_TOKENS", 6000)))
     selected = messages
     omitted = 0
-    if max_chars:
-        total = 0
+    if messages:
+        total_tokens = 0
         selected = []
         for message in reversed(messages):
             content = " ".join(str(message.content or "").split())
-            if selected and total + len(content) > max_chars:
+            estimated_tokens = max(1, math.ceil(len(content) / 4)) + 4
+            if selected and total_tokens + estimated_tokens > max_tokens:
                 break
             selected.append(message)
-            total += len(content)
+            total_tokens += estimated_tokens
         selected.reverse()
         omitted = len(messages) - len(selected)
 
     items: list[dict[str, Any]] = []
     if omitted:
+        summary_parts = []
+        for message in messages[:omitted]:
+            role = "patient" if message.role == RoleChoices.ASSISTANT else "learner"
+            content = " ".join(str(message.content or "").split())
+            summary_parts.append(f"{role}: {content[:160]}")
+        summary = "; ".join(summary_parts)[:1200]
         items.append(
             {
-                "type": "message",
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            f"{omitted} earlier canonical MedSim messages are omitted from this "
-                            "voice bootstrap; use only the messages that follow."
-                        ),
-                    }
-                ],
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                f"Earlier canonical MedSim history ({omitted} messages) is "
+                                f"summarized here: {summary}"
+                            ),
+                        }
+                    ],
+                },
             }
         )
     for message in selected:
+        is_assistant = message.role == RoleChoices.ASSISTANT
         items.append(
             {
-                "type": "message",
-                "role": "assistant" if message.role == RoleChoices.ASSISTANT else "user",
-                "content": [{"type": "input_text", "text": str(message.content or "")}],
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "assistant" if is_assistant else "user",
+                    "content": [
+                        {
+                            "type": "text" if is_assistant else "input_text",
+                            "text": str(message.content or ""),
+                        }
+                    ],
+                },
             }
         )
     return items
@@ -615,7 +636,7 @@ def _provider_message_id(
     provider_response_id: str | None,
     provider_event_id: str | None,
 ) -> str:
-    provider_id = provider_response_id or provider_item_id or provider_event_id or ""
+    provider_id = provider_item_id or provider_event_id or provider_response_id or ""
     return provider_id[:255]
 
 
@@ -693,7 +714,7 @@ def persist_voice_transcript(
                 is_from_ai=is_assistant,
                 delivery_status=Message.DeliveryStatus.DELIVERED,
                 delivery_retryable=False,
-                provider_response_id=provider_id or None,
+                provider_response_id=provider_response_id or None,
                 display_name=display_name,
             )
             message._outbox_correlation_id = correlation_id
@@ -703,6 +724,14 @@ def persist_voice_transcript(
                     voice_session=voice_session,
                     provider_message_id=provider_id,
                     message=message,
+                    metadata={
+                        **(metadata or {}),
+                        "source": "voice",
+                        "voice_session_id": voice_session.pk,
+                        "provider_item_id": provider_item_id,
+                        "provider_response_id": provider_response_id,
+                        "provider_event_id": provider_event_id,
+                    },
                 )
     except IntegrityError:
         if not provider_id:

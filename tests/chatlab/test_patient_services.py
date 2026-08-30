@@ -36,6 +36,7 @@ STATIC_PATIENT_INSTRUCTION_NAMES = (
 EXPECTED_INITIAL_INSTRUCTION_NAMES = (
     "PatientNameInstruction",
     "PatientModifierInstruction",
+    "PatientRuntimeContextInstruction",
     "PatientSafetyBoundariesInstruction",
     "PatientConversationBehaviorInstruction",
     "PatientInformationDisclosureInstruction",
@@ -46,6 +47,7 @@ EXPECTED_INITIAL_INSTRUCTION_NAMES = (
 
 EXPECTED_REPLY_INSTRUCTION_NAMES = (
     "PatientNameInstruction",
+    "PatientRuntimeContextInstruction",
     "PatientSafetyBoundariesInstruction",
     "PatientConversationBehaviorInstruction",
     "PatientInformationDisclosureInstruction",

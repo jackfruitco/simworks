@@ -86,8 +86,8 @@ class VoiceSessionOut(BaseModel):
     bootstrap_items: list[dict[str, Any]] | None = Field(
         default=None,
         description=(
-            "Ordered Realtime conversation.item.create payloads derived from canonical "
-            "MedSim history. Insert these before enabling live voice interaction."
+            "Ordered Realtime conversation.item.create events derived from canonical "
+            "MedSim history. Send these after session.update and before enabling live voice."
         ),
     )
 

@@ -47,12 +47,25 @@ def _dynamic_context(context: PatientRuntimeContext) -> str:
     return "\n".join(lines)
 
 
-def render_text_patient_instructions(context: PatientRuntimeContext) -> str:
+def render_text_patient_instructions(
+    context: PatientRuntimeContext,
+    *,
+    include_shared: bool = True,
+    include_schema: bool = True,
+    include_reply_detail: bool = True,
+) -> str:
     """Render shared patient behavior plus text-only schema requirements."""
 
     instructions = _patient_yaml_instructions()
-    sections = [_dynamic_context(context), *_shared_static_instructions()]
-    for name in ("PatientSchemaContractInstruction", "PatientReplyDetailInstruction"):
+    sections = [_dynamic_context(context)]
+    if include_shared:
+        sections.extend(_shared_static_instructions())
+    text_only_names = []
+    if include_schema:
+        text_only_names.append("PatientSchemaContractInstruction")
+    if include_reply_detail:
+        text_only_names.append("PatientReplyDetailInstruction")
+    for name in text_only_names:
         if instructions.get(name):
             sections.append(instructions[name])
     return "\n\n".join(section for section in sections if section)

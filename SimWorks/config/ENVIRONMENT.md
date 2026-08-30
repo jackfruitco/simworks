@@ -93,7 +93,7 @@ Sender identity defaults may be omitted if the defaults are acceptable:
 - `VOICELAB_REALTIME_MODEL` (default `gpt-realtime-2.1`)
 - `VOICELAB_REALTIME_VOICE` (default `marin`)
 - `VOICELAB_TRANSCRIPTION_MODEL` (default `gpt-4o-mini-transcribe`)
-- `VOICELAB_BOOTSTRAP_MAX_CHARS` (default `0`, meaning all current canonical text messages)
+- `VOICELAB_BOOTSTRAP_MAX_TOKENS` (default `6000`; deterministic newest-history selection with a compact summary for omitted messages)
 - `OPENAI_API_BASE_URL` (default `https://api.openai.com/v1`)
 - `OPENAI_CONVERSATION_TIMEOUT_SECONDS` (default `10`)
 - `VOICELAB_OPENAI_CLIENT_SECRETS_URL` (default `https://api.openai.com/v1/realtime/client_secrets`)
