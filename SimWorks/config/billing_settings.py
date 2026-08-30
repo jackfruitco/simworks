@@ -25,6 +25,10 @@ BILLING_STRIPE_PRICE_PLAN_MAP = _json_object_from_env(
     "BILLING_STRIPE_PRICE_PLAN_MAP",
     default={},
 )
+BILLING_STRIPE_PROMO_COUPON_MAP = _json_object_from_env(
+    "BILLING_STRIPE_PROMO_COUPON_MAP",
+    default={},
+)
 BILLING_APPLE_PRODUCT_PLAN_MAP = _json_object_from_env(
     "BILLING_APPLE_PRODUCT_PLAN_MAP",
     default={},
