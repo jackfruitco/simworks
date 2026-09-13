@@ -27,8 +27,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-dev --no-editable --compile-bytecode && \
-    uv pip install --upgrade "setuptools>=78.1.1" && \
-    uv pip uninstall pip && \
     uv pip list
 
 # === Runtime Stage ===
@@ -41,6 +39,18 @@ WORKDIR /app
 
 # Copy Python deps from builder
 COPY --from=builder /usr/local /usr/local
+
+# COPY merges into the base image's /usr/local, so a builder-stage uninstall
+# cannot remove what this image ships. Remove it here instead. Neither is used
+# at runtime -- uv is the only package manager this build uses, and it stays in
+# the builder. pip also vendors its own msgpack and pkg_resources, which image
+# scanners read from pip/_vendor/bom.cdx.json.
+RUN rm -rf /usr/local/lib/python*/site-packages/pip \
+           /usr/local/lib/python*/site-packages/pip-*.dist-info \
+           /usr/local/lib/python*/site-packages/setuptools \
+           /usr/local/lib/python*/site-packages/setuptools-*.dist-info \
+           /usr/local/lib/python*/site-packages/pkg_resources \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
 
 # Create user and folders
 ARG UID=10001

@@ -103,13 +103,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build and push staging image
+      - name: Build staging image
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           file: docker/Dockerfile.prod
-          push: true
+          load: true
           cache-from: type=gha,mode=max,scope=runtime-image-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           cache-to: type=gha,mode=max,scope=runtime-image-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           tags: |
@@ -122,7 +122,7 @@ jobs:
             org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
             org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
 
-      - name: Scan pushed image
+      - name: Scan image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: image
@@ -151,11 +151,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Push staging image
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          push: true
+          cache-from: type=gha,mode=max,scope=runtime-image-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:staging
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=v${{ steps.pyproject.outputs.version }}
+            org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
+            org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
       - name: Install Cosign
@@ -163,7 +181,7 @@ jobs:
 
       - name: Sign image digest with keyless OIDC
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           set -euo pipefail
           cosign sign --yes "${IMAGE}@${DIGEST}"
