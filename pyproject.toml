@@ -22,17 +22,13 @@ dependencies = [
     "openai>=2.33.0",
     "opentelemetry-instrumentation-httpx>=0.58b0",
     "pillow>=12.3.0",
-    "pre-commit>=4.6.0",
     "psycopg>=3.3.3",
     "psycopg-binary>=3.3.3",
     "pyjwt>=2.11.0",
     "pyyaml>=6.0",
     "pydantic>=2.13",
     "pydantic-django>=0.1.1",
-    "pytest>=9.0.2",
-    "pytest-django>=4.12.0",
     "redis>=7.2.0",
-    "ruff>=0.15",
     "sqlparse>=0.6.0",
     "typing-extensions>=4.15.0",
     "python-slugify>=8.0.4",
@@ -41,11 +37,8 @@ dependencies = [
     "django>=6.0.4",
     "structlog>=25.5.0",
     "django-cors-headers>=4.9.0",
-    "pytest-cov>=7.0.0",
-    "pytest-xdist>=3.8.0",
     "urllib3>=2.6.3",
     "pydantic-ai-slim>=1.65.0",
-    "celery-types>=0.26.0",
     "stripe>=15.1.0",
     "boto3>=1.42.0",
 ]
@@ -91,8 +84,16 @@ dev = [
     # runtime dependency: uvicorn serves both HTTP and WebSockets in every
     # image, and daphne is no longer in INSTALLED_APPS.
     "channels[daphne]>=4.3.2",
+    # Test framework and lint/type tooling. These were in [project.dependencies]
+    # and therefore installed into the production image by `uv sync`.
+    "celery-types>=0.26.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "ruff>=0.14.10",
+    "pytest-cov>=7.0.0",
+    "pytest-django>=4.12.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.15",
 ]
 
 [tool.coverage.run]
