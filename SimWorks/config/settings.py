@@ -77,6 +77,7 @@ from .security_settings import (
 )
 from .settings_parsers import bool_from_env, float_from_env, int_from_env, optional_int_from_env
 from .task_settings import (
+    CACHES,
     CELERY_ACCEPT_CONTENT,
     CELERY_BEAT_SCHEDULER,
     CELERY_BROKER_URL,

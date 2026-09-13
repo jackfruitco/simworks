@@ -89,6 +89,11 @@ PRIVACY_DELETE_EXPORT_TOKEN_TTL_SECONDS = 600
 # Channels configuration for WebSocket tests
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
+# Tests never reach Redis. This module does not import config.settings, so it
+# would already default to locmem; state it explicitly so the intent survives
+# any future refactor that starts sharing settings with config.task_settings.
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
 # Mirror production allauth behavior for email-only user model.
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
