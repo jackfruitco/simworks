@@ -8,6 +8,13 @@
  * scoping and the jckfrt-* brand palette. Tailwind v4 discovers source files
  * automatically by walking the CLI working directory, which django-tailwind-cli
  * sets to settings.BASE_DIR (SimWorks/).
+ *
+ * That walk includes .py files, which is deliberate: apps/feedback/forms.py and
+ * apps/accounts/forms.py set Tailwind classes in widget attrs, and the old v3
+ * `content` globs (templates and .js only) never scanned them. The trade-off is
+ * that editing Python can change this stylesheet - even prose in a comment, if
+ * it happens to spell a utility - so rebuild and commit tailwind.css when CI
+ * says it is stale, the same as for a template change.
  */
 /* Tailwind's own layer order. `utilities` is imported WITHOUT layer() on
  * purpose: this project loads ~93KB of hand-written, unlayered CSS (base.css,
