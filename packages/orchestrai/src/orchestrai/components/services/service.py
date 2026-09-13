@@ -78,49 +78,79 @@ T = TypeVar("T", bound=BaseModel)
 # ---------------------------------------------------------------------------
 
 
+def _missing_provider(provider: str, extra: str) -> ImportError:
+    """Build an ImportError naming the extra that installs *provider*.
+
+    Without this, a provider whose SDK is not installed surfaces as a bare
+    ModuleNotFoundError raised from somewhere inside pydantic-ai, which says
+    nothing about how to fix it.
+    """
+    return ImportError(
+        f"{provider} support requires the '{extra}' extra: pip install orchestrai[{extra}]"
+    )
+
+
 def _make_openai_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.openai import OpenAIResponsesModel
-    from pydantic_ai.providers.openai import OpenAIProvider
+    try:
+        from pydantic_ai.models.openai import OpenAIResponsesModel
+        from pydantic_ai.providers.openai import OpenAIProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("OpenAI", "openai") from exc
 
     logger.info("Creating OpenAI model '%s'", model_name)
     return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
 
 
 def _make_anthropic_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.anthropic import AnthropicModel
-    from pydantic_ai.providers.anthropic import AnthropicProvider
+    try:
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("Anthropic", "anthropic") from exc
 
     logger.info("Creating Anthropic model '%s'", model_name)
     return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
 
 
 def _make_gemini_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.gemini import GeminiModel
-    from pydantic_ai.providers.google import GoogleProvider
+    try:
+        from pydantic_ai.models.gemini import GeminiModel
+        from pydantic_ai.providers.google import GoogleProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("Google (Gemini)", "google") from exc
 
     logger.info("Creating Gemini model '%s'", model_name)
     return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
 
 
 def _make_groq_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.groq import GroqModel
-    from pydantic_ai.providers.groq import GroqProvider
+    try:
+        from pydantic_ai.models.groq import GroqModel
+        from pydantic_ai.providers.groq import GroqProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("Groq", "groq") from exc
 
     logger.info("Creating Groq model '%s'", model_name)
     return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
 
 
 def _make_mistral_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.mistral import MistralModel
-    from pydantic_ai.providers.mistral import MistralProvider
+    try:
+        from pydantic_ai.models.mistral import MistralModel
+        from pydantic_ai.providers.mistral import MistralProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("Mistral", "mistral") from exc
 
     logger.info("Creating Mistral model '%s'", model_name)
     return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
 
 
 def _make_cohere_model(model_name: str, api_key: str | None) -> Any:
-    from pydantic_ai.models.cohere import CohereModel
-    from pydantic_ai.providers.cohere import CohereProvider
+    try:
+        from pydantic_ai.models.cohere import CohereModel
+        from pydantic_ai.providers.cohere import CohereProvider
+    except ImportError as exc:  # pragma: no cover - depends on installed extras
+        raise _missing_provider("Cohere", "cohere") from exc
 
     logger.info("Creating Cohere model '%s'", model_name)
     return CohereModel(model_name, provider=CohereProvider(api_key=api_key))

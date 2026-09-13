@@ -1299,7 +1299,7 @@ dependencies = [
     { name = "logfire", extra = ["django"] },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-httpx" },
-    { name = "orchestrai" },
+    { name = "orchestrai", extra = ["openai"] },
     { name = "orchestrai-django" },
     { name = "pillow" },
     { name = "pre-commit" },
@@ -1354,7 +1354,7 @@ requires-dist = [
     { name = "logfire", extras = ["django"], specifier = ">=4.29.0" },
     { name = "openai", specifier = ">=2.33.0" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.58b0" },
-    { name = "orchestrai", editable = "packages/orchestrai" },
+    { name = "orchestrai", extras = ["openai"], editable = "packages/orchestrai" },
     { name = "orchestrai-django", editable = "packages/orchestrai_django" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pre-commit", specifier = ">=4.6.0" },
@@ -1710,30 +1710,58 @@ source = { editable = "packages/orchestrai" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "pydantic" },
-    { name = "pydantic-ai-slim", extra = ["anthropic", "cohere", "google", "groq", "mistral", "openai"] },
+    { name = "pydantic-ai-slim" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "pydantic-ai-slim", extra = ["anthropic", "cohere", "google", "groq", "mistral", "openai"] },
+]
+anthropic = [
+    { name = "pydantic-ai-slim", extra = ["anthropic"] },
+]
+cohere = [
+    { name = "pydantic-ai-slim", extra = ["cohere"] },
+]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
+]
+google = [
+    { name = "pydantic-ai-slim", extra = ["google"] },
+]
+groq = [
+    { name = "pydantic-ai-slim", extra = ["groq"] },
+]
+mistral = [
+    { name = "pydantic-ai-slim", extra = ["mistral"] },
+]
+openai = [
+    { name = "pydantic-ai-slim", extra = ["openai"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "opentelemetry-api", specifier = ">=1.31" },
+    { name = "orchestrai", extras = ["openai", "anthropic", "google", "groq", "mistral", "cohere"], marker = "extra == 'all'", editable = "packages/orchestrai" },
     { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "pydantic-ai-slim", extras = ["openai", "anthropic", "google", "groq", "mistral", "cohere"], specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["anthropic"], marker = "extra == 'anthropic'", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["cohere"], marker = "extra == 'cohere'", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["google"], marker = "extra == 'google'", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["groq"], marker = "extra == 'groq'", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["mistral"], marker = "extra == 'mistral'", specifier = ">=1.65.0" },
+    { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'openai'", specifier = ">=1.65.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "typing-extensions", specifier = ">=4.12" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["openai", "anthropic", "google", "groq", "mistral", "cohere", "all", "dev"]
 
 [[package]]
 name = "orchestrai-django"
