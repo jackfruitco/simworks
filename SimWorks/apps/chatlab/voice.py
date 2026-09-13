@@ -116,6 +116,25 @@ def _parse_unix_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def _provider_error_summary(response: httpx.Response, *, limit: int = 500) -> str:
+    """Summarize a provider error response for logs.
+
+    Prefers the structured ``error`` object so the log names the offending field
+    (e.g. "unknown_parameter: session.metadata") instead of a bare status code.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text[:limit]
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return str(payload)[:limit]
+
+    parts = [str(error.get(key)) for key in ("code", "param", "message") if error.get(key)]
+    return " | ".join(parts)[:limit] if parts else str(error)[:limit]
+
+
 def _redact_secret_payload(payload: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(payload)
     if isinstance(redacted.get("value"), str):
@@ -239,6 +258,9 @@ def build_realtime_session_config(
     )
     if recent_context:
         instructions = f"{instructions}\n\n{recent_context}"
+    # Keep this to fields the client_secrets endpoint accepts; it rejects unknown
+    # session keys outright (session.metadata returned 400 unknown_parameter).
+    # Simulation and conversation linkage lives on VoiceSession, not the provider.
     return {
         "type": "realtime",
         "model": model,
@@ -258,11 +280,6 @@ def build_realtime_session_config(
         },
         "tools": _voice_tool_definitions(),
         "tool_choice": "auto",
-        "metadata": {
-            "simulation_id": str(simulation.pk),
-            "conversation_id": str(conversation.pk),
-            "lab": "voicelab",
-        },
     }
 
 
@@ -330,6 +347,7 @@ class OpenAIRealtimeSessionBroker:
                 "voicelab.provider_rejected",
                 status_code=exc.response.status_code,
                 simulation_id=simulation.pk,
+                provider_error=_provider_error_summary(exc.response),
             )
             raise VoiceProviderError("Realtime provider rejected the session request") from exc
         except (httpx.HTTPError, ValueError) as exc:
