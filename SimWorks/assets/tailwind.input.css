@@ -1,0 +1,23 @@
+/* Tailwind CSS entry point.
+ *
+ * Kept outside STATICFILES_DIRS on purpose: a source CSS inside a static dir
+ * is picked up by collectstatic, which breaks manifest storage backends and
+ * trips the django_tailwind_cli.W001 system check.
+ *
+ * @config loads the repo-root tailwind.config.js for the `important: '.tw-root'`
+ * scoping and the jckfrt-* brand palette. Tailwind v4 discovers source files
+ * automatically by walking the CLI working directory, which django-tailwind-cli
+ * sets to settings.BASE_DIR (SimWorks/).
+ */
+/* Tailwind's own layer order. `utilities` is imported WITHOUT layer() on
+ * purpose: this project loads ~93KB of hand-written, unlayered CSS (base.css,
+ * notification.css, ...) AFTER tailwind.css, and unlayered rules beat every
+ * layered rule regardless of specificity. Leaving utilities unlayered keeps
+ * the v3 behaviour, where `important: '.tw-root'` raised utility specificity
+ * to (0,2,0) and that decided against plain element selectors such as
+ * base.css's `a { color: inherit }`. */
+@layer theme, base, components;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+@config "../../tailwind.config.js";

@@ -50,6 +50,21 @@ uv run python SimWorks/manage.py runserver
 uv run pytest
 ```
 
+**Tailwind CSS.** There is no Node toolchain. `django-tailwind-cli` downloads and
+drives the official standalone Tailwind binary, so the build runs through
+`manage.py` like any other management command:
+
+```bash
+# Rebuild SimWorks/static/css/tailwind.css (commit the result - CI checks it)
+uv run python SimWorks/manage.py tailwind build
+
+# Rebuild continuously while editing templates
+uv run python SimWorks/manage.py tailwind watch
+```
+
+The generated `SimWorks/static/css/tailwind.css` is committed, and CI fails if it
+is out of date with the templates.
+
 See [`docs/quick-start.md`](docs/quick-start.md) for environment variable reference and full setup details.
 
 **Optional Docker/Make workflow:**
