@@ -97,6 +97,11 @@ def _openai_realtime_api_key() -> str | None:
     return getattr(settings, "OPENAI_API_KEY", None) or get_api_key("openai")
 
 
+def realtime_provider_configured() -> bool:
+    """Return True when VoiceLab can mint provider client secrets."""
+    return bool(_openai_realtime_api_key())
+
+
 def _stable_safety_identifier(user) -> str:
     raw = f"{settings.SECRET_KEY}:voice:{getattr(user, 'pk', '')}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -279,6 +284,12 @@ class OpenAIRealtimeSessionBroker:
     ) -> VoiceSessionStart:
         api_key = _openai_realtime_api_key()
         if not api_key:
+            logger.warning(
+                "voicelab.provider_not_configured",
+                simulation_id=simulation.pk,
+                reason="missing_api_key",
+                hint="Set ORCA_OPENAI_API_KEY (or OPENAI_API_KEY) for the server process.",
+            )
             raise VoiceProviderConfigurationError(
                 "OpenAI Realtime voice provider is not configured"
             )
@@ -287,6 +298,12 @@ class OpenAIRealtimeSessionBroker:
             VoiceSession.Transport.WEBSOCKET,
         }
         if transport not in supported_transports:
+            logger.warning(
+                "voicelab.provider_not_configured",
+                simulation_id=simulation.pk,
+                reason="unsupported_transport",
+                transport=transport,
+            )
             raise VoiceProviderConfigurationError("Requested voice transport is not supported")
 
         session_config = build_realtime_session_config(

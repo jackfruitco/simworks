@@ -87,7 +87,7 @@ Sender identity defaults may be omitted if the defaults are acceptable:
 - `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`
 
 ## OrchestrAI / Observability
-- `ORCA_OPENAI_API_KEY` (preferred namespaced OpenAI key for OrchestrAI-backed app features)
+- `ORCA_OPENAI_API_KEY` (preferred namespaced OpenAI key for OrchestrAI-backed app features; also required for VoiceLab Realtime sessions, which fail with `503` without it)
 - `OPENAI_API_KEY` (optional standard SDK-style alias; used when set, with `ORCA_OPENAI_API_KEY` as the fallback)
 - `ORCA_DEFAULT_MODEL`
 - `VOICELAB_REALTIME_MODEL` (default `gpt-realtime-2.1`)
@@ -101,3 +101,9 @@ Sender identity defaults may be omitted if the defaults are acceptable:
 - `TRAINERLAB_RUNTIME_MIN_INTERVAL_SECONDS` (default `8.0`): prevents run/tick and scheduled progression triggers from spamming runtime turns.
 - `TRAINERLAB_RUNTIME_MAX_CHAINED_TURNS` (default `2`): caps immediate recursive runtime follow-ups while preserving pending work with a delayed continuation.
 - `LOGFIRE_TOKEN`
+
+## Docker deployments
+Compose passes an explicit environment allowlist (`x-app-env` in
+`docker/compose.yaml`) rather than the whole `.env` file, so a variable listed
+above must also be forwarded there or containers never see it. Blank values are
+treated as unset, so an unset variable falls back to the default shown above.
