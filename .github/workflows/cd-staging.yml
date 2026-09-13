@@ -168,18 +168,35 @@ jobs:
           set -euo pipefail
           cosign sign --yes "${IMAGE}@${DIGEST}"
 
-      - name: Trigger Portainer staging redeploy
+      - name: Trigger Dockhand staging redeploy
         env:
-          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+          DOCKHAND_WEBHOOK_URL: ${{ secrets.DOCKHAND_WEBHOOK_URL }}
+          DOCKHAND_WEBHOOK_SECRET: ${{ secrets.DOCKHAND_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
 
-          if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
-            echo "PORTAINER_WEBHOOK secret is not set; skipping redeploy."
-            exit 0
+          if [ -z "${DOCKHAND_WEBHOOK_URL:-}" ] || [ -z "${DOCKHAND_WEBHOOK_SECRET:-}" ]; then
+            echo "Dockhand webhook configuration is missing."
+            exit 1
           fi
 
-          curl -fsSL -X POST "${PORTAINER_WEBHOOK}"
+          PAYLOAD='{}'
+
+          SIGNATURE="sha256=$(printf '%s' "$PAYLOAD" \
+            | openssl dgst -sha256 -hmac "$DOCKHAND_WEBHOOK_SECRET" \
+            | awk '{print $NF}')"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 3 \
+            --retry-all-errors \
+            -X POST \
+            "$DOCKHAND_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIGNATURE" \
+            -d "$PAYLOAD"
 
       - name: Mark deployment success
         if: ${{ success() }}

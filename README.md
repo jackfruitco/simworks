@@ -101,7 +101,7 @@ uv run pytest tests -m "not slow" --cov=SimWorks --cov-report=xml:coverage-simwo
 
 - `ci` runs on every pull request and on pushes to `main`.
 - `security` runs for pull requests targeting `main` and on a weekly schedule.
-- `cd-staging` runs on every push to `main`, builds the runtime image once, publishes `sha-<gitsha>` and `staging`, and triggers staging Portainer redeploy when configured.
+- `cd-staging` runs on every push to `main`, builds the runtime image once, publishes `sha-<gitsha>` and `staging`, and triggers the configured Dockhand staging Git-stack webhook.
 - `cd-release` runs when a GitHub Release is published (and optional manual dispatch by `release_tag`), verifies and promotes an existing immutable image digest to `vX.Y.Z` and `stable`, and optionally triggers production Portainer redeploy.
 
 See deployment tag conventions and workflow details in [`docs/DEPLOYMENT_TAGS.md`](docs/DEPLOYMENT_TAGS.md).
