@@ -118,6 +118,11 @@ INSTALLED_APPS = [
     "channels",
     "apps.accounts",
     "apps.billing",
+    # Disabled, not dead: django_celery_beat does not yet support
+    # Django 6.0 / Python 3.14. Re-enable this entry once upstream support
+    # lands - the dependency is deliberately kept in pyproject.toml. Note that
+    # config/task_settings.py still sets CELERY_BEAT_SCHEDULER to this app's
+    # DatabaseScheduler, so `celery beat` would fail until it is re-enabled.
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
