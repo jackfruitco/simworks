@@ -10,6 +10,7 @@ from .patient import (
     PatientModifierInstruction,
     PatientNameInstruction,
     PatientRecentScenarioHistoryInstruction,
+    PatientRuntimeContextInstruction,
 )
 from .stitch import (
     StitchConversationContextInstruction,
@@ -23,6 +24,7 @@ __all__ = [
     "PatientModifierInstruction",
     "PatientNameInstruction",
     "PatientRecentScenarioHistoryInstruction",
+    "PatientRuntimeContextInstruction",
     "StitchConversationContextInstruction",
     "StitchPersonaInstruction",
     "StitchScenarioGroundTruthInstruction",

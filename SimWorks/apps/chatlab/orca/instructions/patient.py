@@ -101,6 +101,34 @@ class PatientModifierInstruction(BaseInstruction):
         return f"### Scenario Modifier Constraints\n{prompt}"
 
 
+@orca.instruction(order=10)
+class PatientRuntimeContextInstruction(BaseInstruction):
+    """Inject the canonical patient context into text responses."""
+
+    namespace = "chatlab"
+    group = "patient"
+
+    async def render_instruction(self) -> str:
+        runtime_context = self.context.get("patient_runtime_context")
+        if not isinstance(runtime_context, dict):
+            return ""
+
+        from apps.chatlab.ai.context import PatientRuntimeContext
+        from apps.chatlab.ai.instructions import render_text_patient_instructions
+
+        try:
+            context = PatientRuntimeContext(**runtime_context)
+        except (TypeError, ValueError):
+            logger.warning("Invalid canonical patient runtime context", exc_info=True)
+            return ""
+        return render_text_patient_instructions(
+            context,
+            include_shared=False,
+            include_schema=False,
+            include_reply_detail=False,
+        )
+
+
 @orca.instruction(order=80)
 class PatientRecentScenarioHistoryInstruction(BaseInstruction):
     namespace = "chatlab"

@@ -13,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
@@ -244,6 +245,35 @@ class Conversation(PersistModel):
     )
     display_name = models.CharField(max_length=100, blank=True)
     display_initials = models.CharField(max_length=5, blank=True)
+    provider = models.CharField(
+        max_length=32,
+        blank=True,
+        default="openai",
+        help_text="Provider owning the optional durable runtime conversation.",
+    )
+    provider_conversation_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Provider conversation identifier; canonical history remains in MedSim.",
+    )
+    provider_sync_status = models.CharField(
+        max_length=16,
+        choices=[
+            ("pending", "Pending"),
+            ("synced", "Synced"),
+            ("failed", "Failed"),
+        ],
+        default="pending",
+        db_index=True,
+    )
+    provider_sync_cursor = models.PositiveBigIntegerField(
+        blank=True,
+        null=True,
+        help_text="Highest canonical Message ID known to be present in the provider conversation.",
+    )
+    provider_sync_error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     is_archived = models.BooleanField(default=False)
 
@@ -258,6 +288,11 @@ class Conversation(PersistModel):
             models.UniqueConstraint(
                 fields=["simulation", "conversation_type"],
                 name="uniq_conversation_simulation_type",
+            ),
+            models.UniqueConstraint(
+                fields=["provider", "provider_conversation_id"],
+                condition=Q(provider_conversation_id__gt=""),
+                name="uniq_conversation_provider_runtime_id",
             ),
         ]
         ordering = ["created_at"]

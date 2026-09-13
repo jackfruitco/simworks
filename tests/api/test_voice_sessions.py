@@ -136,7 +136,7 @@ def _active_voice_session(simulation, conversation, test_user):
 
 @pytest.mark.django_db
 class TestVoiceSessions:
-    def test_realtime_session_config_includes_context_transcription_and_tools(
+    def test_realtime_session_config_uses_shared_voice_instructions_and_tools(
         self,
         simulation,
         conversation,
@@ -172,15 +172,51 @@ class TestVoiceSessions:
 
         assert config["audio"]["input"]["transcription"]["model"]
         assert config["audio"]["output"]["voice"] == "verse"
-        assert "Recent text conversation for continuity" in config["instructions"]
-        assert "Learner: I have pain in my chest." in config["instructions"]
-        assert "Patient: Can you describe the pain?" in config["instructions"]
+        assert "Recent text conversation for continuity" not in config["instructions"]
+        assert "I have pain in my chest." not in config["instructions"]
+        assert "Voice Turn Behavior" in config["instructions"]
+        assert "Do not reveal or name the diagnosis" in config["instructions"]
         assert {tool["name"] for tool in config["tools"]} >= {
             "patient_history",
             "patient_results",
             "simulation_metadata",
             "sign_lab_orders",
         }
+
+    def test_realtime_bootstrap_items_preserve_canonical_message_order(
+        self,
+        simulation,
+        conversation,
+        test_user,
+    ):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.chatlab.voice import build_realtime_bootstrap_items
+
+        Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="I have pain in my chest.",
+            role=RoleChoices.USER,
+        )
+        Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="Tell me more about it.",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+        )
+
+        items = build_realtime_bootstrap_items(conversation)
+
+        assert [item["item"]["role"] for item in items] == ["user", "assistant"]
+        assert [item["item"]["content"][0]["text"] for item in items] == [
+            "I have pain in my chest.",
+            "Tell me more about it.",
+        ]
+        assert items[0]["type"] == "conversation.item.create"
+        assert items[1]["item"]["content"][0]["type"] == "text"
 
     def test_start_voice_session_returns_ephemeral_connection_material(
         self,
@@ -509,6 +545,8 @@ class TestVoiceSessions:
                 "role": "user",
                 "transcript": "  I feel short of breath.  ",
                 "provider_item_id": "item-user-1",
+                "provider_response_id": "response-user-1",
+                "metadata": {"turn": 3},
             },
             content_type="application/json",
         )
@@ -522,7 +560,16 @@ class TestVoiceSessions:
         message = Message.objects.get(pk=data["message"]["id"])
         assert message.role == RoleChoices.USER
         assert message.is_from_ai is False
-        assert message.provider_response_id == "item-user-1"
+        assert message.provider_response_id == "response-user-1"
+        receipt = voice_session.transcript_receipts.get(message=message)
+        assert receipt.metadata == {
+            "turn": 3,
+            "source": "voice",
+            "voice_session_id": voice_session.pk,
+            "provider_item_id": "item-user-1",
+            "provider_response_id": "response-user-1",
+            "provider_event_id": None,
+        }
         assert OutboxEvent.objects.filter(
             simulation_id=simulation.pk,
             event_type=event_types.MESSAGE_CREATED,
@@ -604,7 +651,7 @@ class TestVoiceSessions:
         assert second.status_code == 200
         assert second.json()["persisted"] is False
         assert first.json()["message"]["id"] == second.json()["message"]["id"]
-        assert Message.objects.filter(provider_response_id="item-duplicate-1").count() == 1
+        assert Message.objects.filter(provider_response_id="item-duplicate-1").count() == 0
         assert (
             VoiceTranscriptReceipt.objects.filter(
                 voice_session=voice_session,
