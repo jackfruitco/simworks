@@ -12,6 +12,7 @@ from django.utils import timezone
 import pytest
 
 from apps.accounts.models import Account, Invitation, User, UserRole
+from apps.common.backups import restore as restore_module
 from apps.common.backups.config import get_postgres_connection_info
 from apps.common.backups.inventory import (
     CORE_BACKUP_TABLES,
@@ -26,10 +27,8 @@ from apps.common.backups.manifest import (
 from apps.common.backups.postgres import backup_advisory_lock, pg_dump
 from apps.common.backups.restore import (
     FullRestoreTableCheck,
-    check_database_empty_for_full_restore,
     check_no_business_data,
     expire_pending_invitations_after_restore,
-    reseed_table_sequences,
 )
 from apps.common.backups.storage import R2Storage
 
@@ -239,9 +238,9 @@ def test_full_restore_empty_check_refuses_existing_public_tables_even_if_empty(m
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setattr("apps.common.backups.restore.connection", FakeConnection())
+    monkeypatch.setattr(restore_module, "connection", FakeConnection())
 
-    result = check_database_empty_for_full_restore()
+    result = restore_module.check_database_empty_for_full_restore()
 
     assert not result.is_empty
     assert result.conflicting_tables == ("django_content_type", "auth_permission")
@@ -265,9 +264,9 @@ def test_full_restore_empty_check_allows_no_public_tables(monkeypatch):
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setattr("apps.common.backups.restore.connection", FakeConnection())
+    monkeypatch.setattr(restore_module, "connection", FakeConnection())
 
-    result = check_database_empty_for_full_restore()
+    result = restore_module.check_database_empty_for_full_restore()
 
     assert result.is_empty
     assert result.conflicting_tables == ()
@@ -387,12 +386,10 @@ def test_reseed_table_sequences_sets_sequence_from_restored_values(monkeypatch):
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setattr("apps.common.backups.restore.connection", FakeConnection())
-    monkeypatch.setattr(
-        "apps.common.backups.restore.sequence_columns_for_table", lambda table: ("id",)
-    )
+    monkeypatch.setattr(restore_module, "connection", FakeConnection())
+    monkeypatch.setattr(restore_module, "sequence_columns_for_table", lambda table: ("id",))
 
-    reseed_table_sequences(("accounts_user",))
+    restore_module.reseed_table_sequences(("accounts_user",))
 
     assert executed[0] == ("SELECT pg_get_serial_sequence(%s, %s)", ["public.accounts_user", "id"])
     assert "setval" in executed[1][0]

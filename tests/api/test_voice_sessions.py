@@ -182,6 +182,35 @@ class TestVoiceSessions:
             "sign_lab_orders",
         }
 
+    def test_realtime_session_config_omits_unsupported_session_keys(
+        self,
+        simulation,
+        conversation,
+    ):
+        """The client_secrets endpoint 400s on unknown session keys.
+
+        session.metadata was rejected with `unknown_parameter`, taking every voice
+        session down with a 502; keep the payload to fields the endpoint accepts.
+        """
+        from apps.chatlab.voice import build_realtime_session_config
+
+        config = build_realtime_session_config(
+            simulation=simulation,
+            conversation=conversation,
+            model="gpt-realtime-test",
+            voice="verse",
+        )
+
+        assert "metadata" not in config
+        assert set(config) == {
+            "type",
+            "model",
+            "instructions",
+            "audio",
+            "tools",
+            "tool_choice",
+        }
+
     def test_start_voice_session_returns_ephemeral_connection_material(
         self,
         auth_client,
@@ -266,6 +295,37 @@ class TestVoiceSessions:
         assert start.client_secret["value"] == "ek_test_ws"
         assert start.calls_url is None
         assert start.websocket_url == "wss://api.openai.test/v1/realtime"
+
+    def test_provider_error_summary_names_the_offending_field(self):
+        import httpx
+
+        from apps.chatlab.voice import _provider_error_summary
+
+        response = httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "Unknown parameter: 'session.metadata'.",
+                    "type": "invalid_request_error",
+                    "param": "session.metadata",
+                    "code": "unknown_parameter",
+                }
+            },
+        )
+
+        summary = _provider_error_summary(response)
+
+        assert "unknown_parameter" in summary
+        assert "session.metadata" in summary
+
+    def test_provider_error_summary_handles_non_json_body(self):
+        import httpx
+
+        from apps.chatlab.voice import _provider_error_summary
+
+        response = httpx.Response(502, text="<html>bad gateway</html>")
+
+        assert _provider_error_summary(response) == "<html>bad gateway</html>"
 
     @override_settings(OPENAI_API_KEY=None)
     def test_realtime_broker_uses_configured_orchestrai_openai_key(

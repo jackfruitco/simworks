@@ -43,7 +43,8 @@ def test_app_env_anchor_forwards_required_var(var_name):
         f"{var_name} is read by the application but is not forwarded in "
         "docker/compose.yaml x-app-env, so containers never see it."
     )
-    assert app_env[var_name] == "${" + var_name + "}"
+    # Either the required form ${VAR} or the optional form ${VAR:-}.
+    assert app_env[var_name] in ("${" + var_name + "}", "${" + var_name + ":-}")
 
 
 @pytest.mark.parametrize("service_name", APP_SERVICES)
@@ -52,6 +53,23 @@ def test_app_services_receive_required_var(service_name, var_name):
     compose = _load_compose()
     environment = compose["services"][service_name]["environment"]
     assert var_name in environment, f"{service_name} is missing {var_name}"
+
+
+def test_no_interpolation_default_is_quoted():
+    """`${VAR:-"x"}` renders the quotes literally, as '"x"'.
+
+    Verified against docker compose config: a quoted default silently ships the
+    quote characters into the container (EMAIL_BACKEND would become an
+    unimportable dotted path, POSTGRES_DB would stop matching the healthcheck).
+    """
+    offenders = [
+        f"{path}:{number}"
+        for path in (COMPOSE_PATH, REPO_ROOT / "docker" / "compose.dev.yaml")
+        if path.exists()
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if ':-"' in line and not line.lstrip().startswith("#")
+    ]
+    assert not offenders, f"quoted interpolation defaults: {offenders}"
 
 
 @pytest.mark.parametrize("var_name", REQUIRED_APP_ENV_VARS)
