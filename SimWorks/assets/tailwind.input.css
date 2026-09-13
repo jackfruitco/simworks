@@ -28,3 +28,25 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css";
 @config "../../tailwind.config.js";
+
+/* Never scan the Tailwind CLI working directory. django-tailwind-cli downloads
+ * the ~120MB standalone binary into TAILWIND_CLI_PATH (default
+ * <BASE_DIR>/.django_tailwind_cli), and that binary is Bun-built: it embeds
+ * Bun's and its templates' own class strings, which Tailwind then extracts as
+ * if they were ours. Left alone it adds ~50KB of dead utilities - bg-[#fbf0df],
+ * data-[slot=select-value], --radix-select-trigger-height and friends - and,
+ * because the directory only exists after the first download, it makes the
+ * build non-reproducible: CI downloads the binary and then disagrees with the
+ * committed stylesheet. The .gitignore the package drops in there does not
+ * prevent this.
+ */
+@source not "../.django_tailwind_cli";
+
+/* Nor the stylesheet this file generates. It lives under STATICFILES_DIRS,
+ * inside the scan root, so Tailwind reads its own previous output back in and
+ * the build stops being a pure function of the sources: starting from a stale
+ * or polluted tailwind.css yields a different tailwind.css. Excluding it makes
+ * `tailwind build` reproducible from any prior state, which is what the CI
+ * `git diff --exit-code` check actually asserts.
+ */
+@source not "../static/css/tailwind.css";
