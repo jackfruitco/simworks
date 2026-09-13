@@ -75,7 +75,14 @@ from .security_settings import (
     SESSION_COOKIE_SECURE,
     USE_X_FORWARDED_HOST,
 )
-from .settings_parsers import bool_from_env, float_from_env, int_from_env, optional_int_from_env
+from .settings_parsers import (
+    bool_from_env,
+    float_from_env,
+    int_from_env,
+    optional_int_from_env,
+    optional_str_from_env,
+    str_from_env,
+)
 from .task_settings import (
     CACHES,
     CELERY_ACCEPT_CONTENT,
@@ -232,17 +239,30 @@ ORCHESTRAI = {
 ORCA_MAX_ATTEMPTS = int_from_env("ORCA_MAX_ATTEMPTS", default=4, minimum=1)
 ORCA_RETRY_BACKOFF_BASE = int_from_env("ORCA_RETRY_BACKOFF_BASE", default=5, minimum=1)
 ORCA_RETRY_BACKOFF_MAX = int_from_env("ORCA_RETRY_BACKOFF_MAX", default=60, minimum=1)
-ORCA_OPENAI_API_KEY = os.getenv("ORCA_OPENAI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or ORCA_OPENAI_API_KEY
-VOICELAB_REALTIME_MODEL = os.getenv("VOICELAB_REALTIME_MODEL", "gpt-realtime-2.1")
-VOICELAB_REALTIME_VOICE = os.getenv("VOICELAB_REALTIME_VOICE", "marin")
-VOICELAB_OPENAI_CLIENT_SECRETS_URL = os.getenv(
+ORCA_OPENAI_API_KEY = optional_str_from_env("ORCA_OPENAI_API_KEY")
+OPENAI_API_KEY = optional_str_from_env("OPENAI_API_KEY") or ORCA_OPENAI_API_KEY
+VOICELAB_REALTIME_MODEL = str_from_env("VOICELAB_REALTIME_MODEL", "gpt-realtime-2.1")
+VOICELAB_REALTIME_VOICE = str_from_env("VOICELAB_REALTIME_VOICE", "marin")
+VOICELAB_TRANSCRIPTION_MODEL = str_from_env(
+    "VOICELAB_TRANSCRIPTION_MODEL",
+    "gpt-4o-mini-transcribe",
+)
+VOICELAB_CONTEXT_MESSAGE_LIMIT = int_from_env(
+    "VOICELAB_CONTEXT_MESSAGE_LIMIT",
+    default=12,
+    minimum=0,
+)
+VOICELAB_OPENAI_CLIENT_SECRETS_URL = str_from_env(
     "VOICELAB_OPENAI_CLIENT_SECRETS_URL",
     "https://api.openai.com/v1/realtime/client_secrets",
 )
-VOICELAB_OPENAI_CALLS_URL = os.getenv(
+VOICELAB_OPENAI_CALLS_URL = str_from_env(
     "VOICELAB_OPENAI_CALLS_URL",
     "https://api.openai.com/v1/realtime/calls",
+)
+VOICELAB_OPENAI_WEBSOCKET_URL = str_from_env(
+    "VOICELAB_OPENAI_WEBSOCKET_URL",
+    "wss://api.openai.com/v1/realtime",
 )
 TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS = int_from_env(
     "TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS",
