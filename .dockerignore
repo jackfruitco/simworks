@@ -20,6 +20,11 @@ build
 dist
 *.egg-info
 
+# Tailwind CLI working dir: holds the ~120MB standalone binary that
+# django-tailwind-cli downloads. The built tailwind.css is committed and
+# copied in with SimWorks/, so the binary must never reach an image.
+.django_tailwind_cli
+
 # Test outputs
 .pytest_cache
 

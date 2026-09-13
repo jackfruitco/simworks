@@ -6,17 +6,6 @@ ARG PYTHON_VERSION=3.14
 # === UV Stage ===
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
-# === Frontend Assets Stage ===
-FROM node:26-bookworm-slim AS assets
-
-WORKDIR /app
-
-COPY package.json package-lock.json* postcss.config.js tailwind.config.js ./
-RUN npm ci --no-audit --no-fund --cache /tmp/.npm
-
-COPY SimWorks /app/SimWorks
-RUN npm run build:css
-
 # === Builder Stage ===
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 
@@ -37,7 +26,7 @@ COPY packages ./packages
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-editable --compile-bytecode && \
+    uv sync --frozen --no-dev --no-editable --compile-bytecode && \
     uv pip install --upgrade "setuptools>=78.1.1" && \
     uv pip list
 
@@ -72,7 +61,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
 USER appuser
 
 COPY SimWorks /app/SimWorks
-COPY --from=assets /app/SimWorks/static/css/tailwind.css /app/SimWorks/static/css/tailwind.css
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/run-backup-cron.sh /app/docker/run-backup-cron.sh

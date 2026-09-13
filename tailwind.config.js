@@ -1,11 +1,11 @@
 /** @type {import('tailwindcss').Config} */
+// Loaded by SimWorks/assets/tailwind.input.css via `@config`.
+//
+// No `content` key: Tailwind v4 ignores it and discovers source files by
+// walking the CLI working directory, which django-tailwind-cli sets to
+// settings.BASE_DIR (SimWorks/). Only `important`, `theme` and `plugins`
+// are still honoured through @config.
 module.exports = {
-  content: [
-    './SimWorks/templates/**/*.html',
-    './SimWorks/apps/**/templates/**/*.html',
-    './SimWorks/apps/**/static/**/*.js',
-    './SimWorks/static/**/*.js'
-  ],
   important: '.tw-root',
   theme: {
     extend: {

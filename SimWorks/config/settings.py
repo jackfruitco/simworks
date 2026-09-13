@@ -77,6 +77,7 @@ from .security_settings import (
 )
 from .settings_parsers import bool_from_env, float_from_env, int_from_env, optional_int_from_env
 from .task_settings import (
+    CACHES,
     CELERY_ACCEPT_CONTENT,
     CELERY_BEAT_SCHEDULER,
     CELERY_BROKER_URL,
@@ -114,10 +115,14 @@ AUTH_USER_MODEL = "accounts.User"
 
 # Application definition
 INSTALLED_APPS = [
-    "daphne",
     "channels",
     "apps.accounts",
     "apps.billing",
+    # Disabled, not dead: django_celery_beat does not yet support
+    # Django 6.0 / Python 3.14. Re-enable this entry once upstream support
+    # lands - the dependency is deliberately kept in pyproject.toml. Note that
+    # config/task_settings.py still sets CELERY_BEAT_SCHEDULER to this app's
+    # DatabaseScheduler, so `celery beat` would fail until it is re-enabled.
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -134,6 +139,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.apple",
     "allauth.socialaccount.providers.google",
     "django_htmx",
+    "django_tailwind_cli",
     "apps.common",
     "apps.simcore",
     "apps.assessments",
@@ -291,6 +297,21 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR.parent / "static"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+
+# Tailwind CSS (django-tailwind-cli drives the standalone binary; no Node).
+# Pinned rather than tracking "latest" so CI and local builds agree.
+TAILWIND_CLI_VERSION = "4.1.18"
+# Relative to BASE_DIR. Deliberately outside STATICFILES_DIRS: a source CSS
+# inside a static dir is collected by collectstatic and trips W001.
+TAILWIND_CLI_SRC_CSS = "assets/tailwind.input.css"
+# Where the standalone binary lives. Overridable so the dev container can keep
+# it outside the bind-mounted SimWorks/ tree (see docker/Dockerfile.dev).
+TAILWIND_CLI_PATH = os.getenv("TAILWIND_CLI_PATH", ".django_tailwind_cli")
+# Output path, relative to STATICFILES_DIRS[0]. The default resolves to
+# SimWorks/static/css/tailwind.css - the path base.html links and CI diffs.
+# Overridable so the dev container's watcher can write straight into the
+# shared static volume nginx serves (see docker/compose.dev.yaml).
+TAILWIND_CLI_DIST_CSS = os.getenv("TAILWIND_CLI_DIST_CSS", "css/tailwind.css")
 
 # Media files (uploaded by users)
 MEDIA_URL = "media/"

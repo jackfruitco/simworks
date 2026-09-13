@@ -43,12 +43,31 @@ uv sync
 # Apply migrations
 uv run python SimWorks/manage.py migrate
 
-# Run Django dev server
-uv run python SimWorks/manage.py runserver
+# Run Django dev server (from SimWorks/, so `config` is importable)
+cd SimWorks && uv run uvicorn config.asgi:application --reload --host 127.0.0.1 --port 8000
 
 # Run complete test suite
 uv run pytest
 ```
+
+**Tailwind CSS.** There is no Node toolchain. `django-tailwind-cli` downloads and
+drives the official standalone Tailwind binary, so the build runs through
+`manage.py` like any other management command:
+
+```bash
+# Rebuild SimWorks/static/css/tailwind.css (commit the result - CI checks it)
+uv run python SimWorks/manage.py tailwind build
+
+# Rebuild continuously while editing templates
+uv run python SimWorks/manage.py tailwind watch
+```
+
+The generated `SimWorks/static/css/tailwind.css` is committed, and CI fails if it
+is out of date with the templates.
+
+> **Use uvicorn, not `runserver`.** The project serves WebSockets through
+> `config/asgi.py` (the `chatlab` and `common` routes). `manage.py runserver`
+> serves HTTP only, so those routes will not connect under it.
 
 See [`docs/quick-start.md`](docs/quick-start.md) for environment variable reference and full setup details.
 
