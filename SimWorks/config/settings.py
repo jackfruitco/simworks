@@ -114,7 +114,6 @@ AUTH_USER_MODEL = "accounts.User"
 
 # Application definition
 INSTALLED_APPS = [
-    "daphne",
     "channels",
     "apps.accounts",
     "apps.billing",

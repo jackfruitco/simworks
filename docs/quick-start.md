@@ -36,8 +36,11 @@ uv run python SimWorks/manage.py migrate
 ## 4) Start the app
 
 ```bash
-uv run python SimWorks/manage.py runserver 0.0.0.0:8000
+cd SimWorks && uv run uvicorn config.asgi:application --reload --host 0.0.0.0 --port 8000
 ```
+
+`manage.py runserver` serves HTTP only and will not handle the WebSocket routes
+declared in `config/asgi.py`, so use uvicorn for anything touching ChatLab.
 
 ## 5) Run tests
 

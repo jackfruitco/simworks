@@ -83,11 +83,6 @@ LOGGING = {
             "level": UVICORN_LOG_LEVEL or LOG_LEVEL,
             "propagate": False,
         },
-        "daphne": {
-            "handlers": ["console", "logfire"],
-            "level": check_env("DAPHNE_LOG_LEVEL", None) or LOG_LEVEL,
-            "propagate": False,
-        },
         "py.warnings": {
             "handlers": ["console", "logfire"],
             "level": "WARNING",
