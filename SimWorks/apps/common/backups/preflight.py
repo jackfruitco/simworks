@@ -14,9 +14,7 @@ PG_DUMP_VERSION_RE = re.compile(r"pg_dump\s+\(PostgreSQL\)\s+(\d+)(?:\.|\b)")
 def parse_pg_dump_major(version_output: str) -> int:
     match = PG_DUMP_VERSION_RE.search(version_output.strip())
     if not match:
-        raise CommandError(
-            f"Could not parse pg_dump major version from output: {version_output!r}"
-        )
+        raise CommandError(f"Could not parse pg_dump major version from output: {version_output!r}")
     return int(match.group(1))
 
 
@@ -71,5 +69,5 @@ def validate_pg_dump_server_compatibility() -> None:
             f"server major version is {server_major}, "
             f"but pg_dump major version is {pg_dump_major}. "
             f"Install postgresql-client-{server_major} in the backup runner image "
-            f"or set POSTGRES_CLIENT_MAJOR={server_major}."
+            f"or rebuild it with --build-arg POSTGRES_CLIENT_MAJOR={server_major}."
         )

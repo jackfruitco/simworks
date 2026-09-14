@@ -6,17 +6,6 @@ ARG PYTHON_VERSION=3.14
 # === UV Stage ===
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
-# === Frontend Assets Stage ===
-FROM node:25-bookworm-slim AS assets
-
-WORKDIR /app
-
-COPY package.json package-lock.json* postcss.config.js tailwind.config.js ./
-RUN npm ci --no-audit --no-fund --cache /tmp/.npm
-
-COPY SimWorks /app/SimWorks
-RUN npm run build:css
-
 # === Builder Stage ===
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 
@@ -37,7 +26,7 @@ COPY packages ./packages
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-editable --compile-bytecode && \
+    uv sync --frozen --no-dev --no-editable --compile-bytecode && \
     uv pip list
 
 # === Runtime Stage ===
@@ -53,6 +42,18 @@ WORKDIR /app
 # Copy Python deps from builder
 COPY --from=builder /usr/local /usr/local
 
+# COPY merges into the base image's /usr/local, so a builder-stage uninstall
+# cannot remove what this image ships. Remove it here instead. Neither is used
+# at runtime -- uv is the only package manager this build uses, and it stays in
+# the builder. pip also vendors its own msgpack and pkg_resources, which image
+# scanners read from pip/_vendor/bom.cdx.json.
+RUN rm -rf /usr/local/lib/python*/site-packages/pip \
+           /usr/local/lib/python*/site-packages/pip-*.dist-info \
+           /usr/local/lib/python*/site-packages/setuptools \
+           /usr/local/lib/python*/site-packages/setuptools-*.dist-info \
+           /usr/local/lib/python*/site-packages/pkg_resources \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
+
 # Create user and folders
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
@@ -62,7 +63,7 @@ RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         age \
         ca-certificates \
         cron \
@@ -82,7 +83,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
 USER appuser
 
 COPY SimWorks /app/SimWorks
-COPY --from=assets /app/SimWorks/static/css/tailwind.css /app/SimWorks/static/css/tailwind.css
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/run-backup-cron.sh /app/docker/run-backup-cron.sh

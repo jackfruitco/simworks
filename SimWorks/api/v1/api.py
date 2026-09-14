@@ -26,6 +26,7 @@ from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.endpoints.tools import router as tools_router
 from api.v1.endpoints.trainerlab import router as trainerlab_router
+from api.v1.endpoints.voice import router as voice_router
 from api.v1.errors import GuardDeniedError
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 from apps.common.ratelimit import RateLimitExceeded
@@ -234,6 +235,7 @@ api.add_router(
 api.add_router("/simulations", lab_orders_router)  # Lab order submission nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)
 api.add_router("/simulations", guards_router)  # Guard heartbeat/state nested under simulations
+api.add_router("/simulations", voice_router)  # VoiceLab sessions nested under simulations
 api.add_router("/chatlab", chatlab_router)
 api.add_router("/trainerlab", trainerlab_router)
 api.add_router("/feedback", feedback_router)

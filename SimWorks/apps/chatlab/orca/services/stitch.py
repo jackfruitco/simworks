@@ -17,6 +17,7 @@ class GenerateStitchReply(PreviousResponseMixin, DjangoBaseService):
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.stitch.StitchPersonaInstruction",
         "chatlab.stitch.StitchRoleInstruction",
+        "chatlab.stitch.StitchScenarioGroundTruthInstruction",
         "chatlab.stitch.StitchConversationContextInstruction",
         "chatlab.stitch.StitchDebriefInstruction",
         "chatlab.stitch.StitchSchemaContractInstruction",

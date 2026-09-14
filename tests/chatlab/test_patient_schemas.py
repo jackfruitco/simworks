@@ -39,8 +39,12 @@ class TestPatientInitialSchema:
 
         # Validate required fields present
         assert "messages" in schema_json["properties"]
+        assert "diagnosis" in schema_json["properties"]
+        assert "chief_complaint" in schema_json["properties"]
         assert "metadata" in schema_json["properties"]
         assert "llm_conditions_check" in schema_json["properties"]
+        assert "diagnosis" in schema_json["required"]
+        assert "chief_complaint" in schema_json["required"]
 
         # Validate messages is array with min 1
         messages_prop = schema_json["properties"]["messages"]
@@ -78,6 +82,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             # PatientInitialOutputSchema.metadata is list[MetadataItem] (polymorphic union)
             "metadata": [
                 {"kind": "patient_demographics", "key": "age", "value": "45"},
@@ -92,6 +98,9 @@ class TestPatientInitialSchema:
         # Verify messages structure
         assert len(parsed.messages) == 1
         assert parsed.messages[0].content[0].text == "Hello, I'm the patient."
+        assert parsed.diagnosis == "Acute appendicitis"
+        assert parsed.chief_complaint == "Right lower quadrant abdominal pain"
+        assert parsed.diagnosis not in parsed.messages[0].content[0].text
 
         # Verify metadata as list[MetadataItem] (polymorphic)
         assert len(parsed.metadata) == 2
@@ -117,6 +126,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [],
             "llm_conditions_check": [],
             "extra_field": "should_fail",  # Extra field
@@ -131,6 +142,8 @@ class TestPatientInitialSchema:
         """Verify messages field requires at least one item."""
         invalid_output = {
             "messages": [],  # Empty - should fail
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [],
             "llm_conditions_check": [],
         }
@@ -152,6 +165,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [
                 {
                     "kind": "lab_result",
@@ -191,6 +206,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [
                 {
                     "kind": "rad_result",
@@ -222,6 +239,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [
                 {
                     "kind": "patient_history",
@@ -255,6 +274,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [
                 {"kind": "patient_demographics", "key": "age", "value": "65"},
                 {
@@ -305,6 +326,8 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
+            "diagnosis": "Acute appendicitis",
+            "chief_complaint": "Right lower quadrant abdominal pain",
             "metadata": [
                 {
                     "kind": "invalid_kind",  # Invalid discriminator
@@ -320,6 +343,46 @@ class TestPatientInitialSchema:
 
         error_str = str(exc_info.value).lower()
         assert "discriminator" in error_str or "kind" in error_str
+
+    def test_schema_requires_diagnosis(self):
+        """Initial schema requires hidden ground-truth diagnosis."""
+        invalid_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "My stomach hurts."}],
+                    "item_meta": [],
+                }
+            ],
+            "chief_complaint": "Right lower quadrant abdominal pain",
+            "metadata": [],
+            "llm_conditions_check": [],
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            PatientInitialOutputSchema.model_validate(invalid_output)
+
+        assert "diagnosis" in str(exc_info.value).lower()
+
+    def test_schema_requires_chief_complaint(self):
+        """Initial schema requires hidden ground-truth chief complaint."""
+        invalid_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "My stomach hurts."}],
+                    "item_meta": [],
+                }
+            ],
+            "diagnosis": "Acute appendicitis",
+            "metadata": [],
+            "llm_conditions_check": [],
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            PatientInitialOutputSchema.model_validate(invalid_output)
+
+        assert "chief_complaint" in str(exc_info.value).lower()
 
 
 class TestPatientReplySchema:

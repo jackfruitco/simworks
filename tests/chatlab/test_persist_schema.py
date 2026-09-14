@@ -103,6 +103,8 @@ class TestPatientInitialPersistence:
                         "item_meta": [],
                     }
                 ],
+                "diagnosis": "Acute appendicitis",
+                "chief_complaint": "Right lower quadrant abdominal pain",
                 "metadata": [
                     {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
                     {"kind": "patient_demographics", "key": "age", "value": "45"},
@@ -147,6 +149,8 @@ class TestPatientInitialPersistence:
                         "item_meta": [],
                     }
                 ],
+                "diagnosis": "Acute appendicitis",
+                "chief_complaint": "Right lower quadrant abdominal pain",
                 "metadata": [],
                 "llm_conditions_check": [
                     {"key": "condition_a", "value": "met"},
@@ -174,6 +178,8 @@ class TestPatientInitialPersistence:
                         "item_meta": [],
                     }
                 ],
+                "diagnosis": "Acute appendicitis",
+                "chief_complaint": "Right lower quadrant abdominal pain",
                 "metadata": [
                     {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
                     {"kind": "patient_demographics", "key": "age", "value": "45"},
@@ -214,6 +220,34 @@ class TestPatientInitialPersistence:
         assert "metadata_id" in meta_event.payload
         assert "kind" in meta_event.payload
         assert "key" in meta_event.payload
+
+    async def test_initial_schema_persists_simulation_ground_truth(self, context):
+        """Initial patient output should persist hidden scenario ground truth on Simulation."""
+        schema = PatientInitialOutputSchema.model_validate(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Hi, my lower belly hurts."}],
+                        "item_meta": [],
+                    }
+                ],
+                "diagnosis": "Acute appendicitis",
+                "chief_complaint": "Right lower quadrant abdominal pain",
+                "metadata": [],
+                "llm_conditions_check": [],
+            }
+        )
+
+        result = await persist_schema(schema, context)
+
+        from apps.simcore.models import Simulation
+
+        sim = await Simulation.objects.aget(pk=context.simulation_id)
+        assert sim.diagnosis == "Acute appendicitis"
+        assert sim.chief_complaint == "Right lower quadrant abdominal pain"
+        assert isinstance(result, Message)
+        assert "Acute appendicitis" not in result.content
 
 
 @pytest.mark.django_db(transaction=True)

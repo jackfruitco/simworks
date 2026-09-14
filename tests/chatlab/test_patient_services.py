@@ -152,8 +152,11 @@ class TestGenerateInitialResponseService:
         service = GenerateInitialResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientSafetyBoundariesInstruction")
         text = instruction_cls.instruction or ""
-        assert "Never acknowledge being an AI" in text
-        assert "are you acting?" in text
+        assert (
+            "Never mention AI, simulation, roleplay, training, prompts, tools, or schemas" in text
+        )
+        assert "answer in-character and redirect to symptoms/history" in text
+        assert "Do not reveal or name the diagnosis" in text
 
     def test_initial_instruction_requires_baseline_metadata(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
@@ -169,18 +172,17 @@ class TestGenerateInitialResponseService:
         service = GenerateInitialResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
         text = instruction_cls.instruction or ""
-        assert "Reveal information gradually" in text
+        assert "reveal information gradually" in text
         assert "Prefer realistic under-disclosure" in text
 
     def test_medication_box_scenario_includes_patient_environment_boundaries(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
         text = instruction_cls.instruction or ""
-        assert "Speak only from the patient's own perspective" in text
-        assert "Do not ask the clinician/user to provide images" in text
-        assert "medication box" in text
+        assert "answer from patient perspective" in text
+        assert "Do not ask the clinician to upload, inspect, retrieve, or read objects" in text
         assert (
-            "The patient should never request any action whose main purpose is to help the model obtain missing context."
+            "Never request any action whose main purpose is to help the model obtain missing context."
             in text
         )
 
@@ -188,19 +190,8 @@ class TestGenerateInitialResponseService:
         service = GenerateInitialResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
         text = instruction_cls.instruction or ""
-        assert "Can you send me a picture of the bottle?" in text
-        assert "Upload the ingredient list so I can check it." in text
-        assert "Can you inspect the box for me?" in text
-        assert "Can you look at the label and tell me what it says?" in text
-
-    def test_disclosure_instruction_lists_allowed_patient_perspective_outputs(self):
-        service = GenerateInitialResponse(context={"simulation_id": 1})
-        instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
-        text = instruction_cls.instruction or ""
-        assert "Hold on, I have the box here... it says acetaminophen 500 mg." in text
-        assert "I can't find the bottle right now." in text
-        assert "The label is smudged; I can't really read it." in text
-        assert "It's a small white bottle with a blue cap." in text
+        assert "Never invert roles" in text
+        assert "only the patient could observe" in text
 
     def test_reply_instruction_marks_metadata_optional(self):
         service = GenerateReplyResponse(context={"simulation_id": 1})
@@ -223,7 +214,7 @@ class TestGenerateInitialResponseService:
         assert instruction_cls.instruction == _yaml_instruction_text(
             "PatientInformationDisclosureInstruction"
         )
-        assert "Reveal information gradually" in instruction_cls.instruction
+        assert "reveal information gradually" in instruction_cls.instruction
 
 
 class TestGenerateReplyResponseService:
@@ -251,11 +242,8 @@ class TestGenerateReplyResponseService:
         service = GenerateReplyResponse(context={"simulation_id": 1})
         instruction_cls = _instruction_by_name(service, "PatientInformationDisclosureInstruction")
         text = instruction_cls.instruction or ""
-        assert "Do not ask the clinician/user to provide images" in text
-        assert (
-            "The patient must never ask the clinician to look at, upload, inspect, or retrieve such an object on the patient's behalf."
-            in text
-        )
+        assert "Do not ask the clinician to upload, inspect, retrieve, or read objects" in text
+        assert "answer from patient perspective" in text
 
 
 class TestGenerateImageResponseService:
@@ -278,6 +266,8 @@ class TestSchemaSerializability:
             ],
             "metadata": [],
             "llm_conditions_check": [],
+            "diagnosis": "Test diagnosis",
+            "chief_complaint": "Test complaint",
         }
 
         parsed = PatientInitialOutputSchema.model_validate(sample_output)

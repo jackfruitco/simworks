@@ -50,7 +50,7 @@ class EventEnvelope(BaseModel):
     Canonical outbox event types follow a strict three-segment contract:
     ``domain.subject.action``.
     Domains are limited to ``simulation``, ``patient``, ``message``,
-    ``assessment``, and ``guard``.
+    ``assessment``, ``guard``, and ``voice``.
     Canonical API output emits only those registry-defined names.
 
     **Supported Event Types**:
@@ -62,6 +62,7 @@ class EventEnvelope(BaseModel):
     - ``assessment.generation.failed`` / ``assessment.generation.updated`` - Assessment generation lifecycle events
     - ``simulation.status.updated`` - Simulation status changed
     - ``simulation.snapshot.updated`` - TrainerLab runtime snapshot changed
+    - ``voice.session.created`` / ``voice.session.updated`` - VoiceLab session lifecycle events
     - ``patient.*`` - Patient domain object lifecycle events
 
     **Event Payload Structures**:

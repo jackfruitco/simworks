@@ -34,6 +34,34 @@ CHANNEL_LAYERS = {
     }
 }
 
+# Redis database allocation (keep in sync with the docstring on
+# apps.common.ratelimit.get_redis_client):
+#   0 = channels layer        3 = API rate limiting
+#   1 = Celery broker         4 = Django cache (below)
+#   2 = Celery results
+#
+# Without a cache backend Django falls back to per-process locmem, which
+# quietly degrades everything built on it: allauth's ACCOUNT_RATE_LIMITS
+# become per-worker and reset on restart, Celery workers share no state with
+# web workers, and the sim_debug toggles are invisible across processes.
+#
+# REDIS_HOSTNAME defaults to "redis" but can be set empty to run without
+# Redis at all (see apps.common.ratelimit.get_redis_client), so fall back to
+# locmem in that case rather than failing at startup.
+if REDIS_HOSTNAME:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": f"{REDIS_BASE}/4",
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+
 CELERY_BROKER_URL = f"{REDIS_BASE}/1"
 CELERY_RESULT_BACKEND = f"{REDIS_BASE}/2"
 CELERY_ACCEPT_CONTENT = ["json"]

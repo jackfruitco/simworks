@@ -43,12 +43,31 @@ uv sync
 # Apply migrations
 uv run python SimWorks/manage.py migrate
 
-# Run Django dev server
-uv run python SimWorks/manage.py runserver
+# Run Django dev server (from SimWorks/, so `config` is importable)
+cd SimWorks && uv run uvicorn config.asgi:application --reload --host 127.0.0.1 --port 8000
 
 # Run complete test suite
 uv run pytest
 ```
+
+**Tailwind CSS.** There is no Node toolchain. `django-tailwind-cli` downloads and
+drives the official standalone Tailwind binary, so the build runs through
+`manage.py` like any other management command:
+
+```bash
+# Rebuild SimWorks/static/css/tailwind.css (commit the result - CI checks it)
+uv run python SimWorks/manage.py tailwind build
+
+# Rebuild continuously while editing templates
+uv run python SimWorks/manage.py tailwind watch
+```
+
+The generated `SimWorks/static/css/tailwind.css` is committed, and CI fails if it
+is out of date with the templates.
+
+> **Use uvicorn, not `runserver`.** The project serves WebSockets through
+> `config/asgi.py` (the `chatlab` and `common` routes). `manage.py runserver`
+> serves HTTP only, so those routes will not connect under it.
 
 See [`docs/quick-start.md`](docs/quick-start.md) for environment variable reference and full setup details.
 
@@ -82,7 +101,7 @@ uv run pytest tests -m "not slow" --cov=SimWorks --cov-report=xml:coverage-simwo
 
 - `ci` runs on every pull request and on pushes to `main`.
 - `security` runs for pull requests targeting `main` and on a weekly schedule.
-- `cd-staging` runs on every push to `main`, builds the runtime image once, publishes `sha-<gitsha>` and `staging`, and triggers staging Portainer redeploy when configured.
+- `cd-staging` runs on every push to `main`, builds the runtime image once, publishes `sha-<gitsha>` and `staging`, and triggers the configured Dockhand staging Git-stack webhook.
 - `cd-release` runs when a GitHub Release is published (and optional manual dispatch by `release_tag`), verifies and promotes an existing immutable image digest to `vX.Y.Z` and `stable`, and optionally triggers production Portainer redeploy.
 
 See deployment tag conventions and workflow details in [`docs/DEPLOYMENT_TAGS.md`](docs/DEPLOYMENT_TAGS.md).

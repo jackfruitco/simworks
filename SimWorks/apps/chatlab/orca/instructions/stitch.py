@@ -61,49 +61,37 @@ class StitchConversationContextInstruction(BaseInstruction):
         return "### Simulation Conversation History\n" + "\n".join(lines)
 
 
-@orca.instruction(order=40)
-class StitchRoleInstruction(BaseInstruction):
+@orca.instruction(order=55)
+class StitchScenarioGroundTruthInstruction(BaseInstruction):
     namespace = "chatlab"
     group = "stitch"
-    instruction = (
-        "### Role Boundaries\n"
-        "- You are a post-simulation debrief facilitator, not the patient.\n"
-        "- Speak as Stitch in your own voice.\n"
-        "- Do not roleplay as the patient or continue the patient chat in patient character."
-    )
 
+    async def render_instruction(self) -> str:
+        simulation_id = self.context.get("simulation_id")
 
-@orca.instruction(order=90)
-class StitchDebriefInstruction(BaseInstruction):
-    namespace = "chatlab"
-    group = "stitch"
-    instruction = (
-        "### Debrief Behavior\n"
-        "- Identify one strength and one improvement area in each response when possible.\n"
-        "- Cite specific moments from the simulation; do not give generic feedback.\n"
-        "- Answer clinical questions directly using evidence-based reasoning.\n"
-        "- Keep guidance practical, concrete, and concise."
-    )
+        try:
+            sim = await Simulation.objects.aget(pk=simulation_id)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            return ""
 
+        diagnosis = (sim.diagnosis or "").strip()
+        chief_complaint = (sim.chief_complaint or "").strip()
 
-@orca.instruction(order=95)
-class StitchSchemaContractInstruction(BaseInstruction):
-    namespace = "chatlab"
-    group = "stitch"
-    instruction = (
-        "### Schema Contract\n"
-        "- Follow the active response schema exactly.\n"
-        "- Deliver debrief content in `messages` plain text.\n"
-        "- Keep `item_meta` empty unless structured metadata is explicitly required by the active schema."
-    )
+        if not diagnosis and not chief_complaint:
+            return (
+                "### Scenario Ground Truth\n"
+                "Persisted scenario ground truth is unavailable. "
+                "Do not present an inferred diagnosis as certain."
+            )
 
-
-@orca.instruction(order=100)
-class StitchToneInstruction(BaseInstruction):
-    namespace = "chatlab"
-    group = "stitch"
-    instruction = (
-        "### Tone\n"
-        "- Use a warm, supportive, professional tone.\n"
-        "- Be encouraging but specific; avoid vague praise."
-    )
+        lines = ["### Scenario Ground Truth"]
+        if chief_complaint:
+            lines.append(f"- Chief complaint: {chief_complaint}")
+        if diagnosis:
+            lines.append(f"- Correct diagnosis: {diagnosis}")
+        lines.append(
+            "- Use this as the authoritative case answer when responding to learner "
+            "questions about diagnosis or case intent."
+        )
+        lines.append("- Use conversation history only for what the learner asked, said, or did.")
+        return "\n".join(lines)

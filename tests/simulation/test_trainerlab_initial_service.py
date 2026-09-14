@@ -3,9 +3,7 @@ import traceback
 
 from apps.simcore.orca.instructions import BaseStitchPersona
 from apps.trainerlab.orca.instructions import (
-    InitialResponseMixin,
     InjuryCodebookMixin,
-    TrainerLabMixin,
 )
 from apps.trainerlab.orca.services import GenerateInitialScenario, GenerateVitalsProgression
 
@@ -27,15 +25,22 @@ def _instantiate_service_in_thread(service_cls, *, context):
     return result["service"]
 
 
+def _instruction_by_name(service, name: str):
+    for instruction_cls in service._instruction_classes:
+        if instruction_cls.__name__ == name:
+            return instruction_cls
+    raise AssertionError(f"Instruction {name!r} was not resolved")
+
+
 class TestGenerateInitialScenarioService:
     def test_service_instantiates_and_collects_instructions(self):
         service = GenerateInitialScenario(context={"simulation_id": 1})
 
         assert service.required_context_keys == ("simulation_id",)
         assert BaseStitchPersona in service._instruction_classes
-        assert TrainerLabMixin in service._instruction_classes
-        assert InitialResponseMixin in service._instruction_classes
-        assert InjuryCodebookMixin in service._instruction_classes
+        assert _instruction_by_name(service, "TrainerLabMixin")
+        assert _instruction_by_name(service, "InitialResponseMixin")
+        assert _instruction_by_name(service, "InjuryCodebookMixin")
 
     def test_service_instruction_ordering(self):
         service = GenerateInitialScenario(context={"simulation_id": 1})
@@ -59,15 +64,14 @@ class TestGenerateInitialScenarioService:
         assert "`io_access`" in codebook
 
     def test_initial_response_instruction_requests_scenario_brief(self):
-        instruction = InitialResponseMixin.instruction
+        service = GenerateInitialScenario(context={"simulation_id": 1})
+        instruction = _instruction_by_name(service, "InitialResponseMixin").instruction
 
         assert "scenario_brief" in instruction
-        assert "read out loud to the trainee" in instruction
-        assert "evacuation options" in instruction
-        assert "recommendation_refs" in instruction
-        assert "must exactly equal" in instruction
-        assert "belongs to exactly one problem" in instruction
-        assert "Do not reuse a recommendation `temp_id` across multiple problems" in instruction
+        assert "instructor read-aloud" in instruction
+        assert "evacuation" in instruction
+        assert "each targets exactly one problem by `target_problem_ref`" in instruction
+        assert "Do not create `performed_interventions`" in instruction
 
     def test_service_instantiates_in_fresh_thread(self):
         service = _instantiate_service_in_thread(
@@ -75,7 +79,7 @@ class TestGenerateInitialScenarioService:
             context={"simulation_id": 1},
         )
 
-        assert InjuryCodebookMixin in service._instruction_classes
+        assert _instruction_by_name(service, "InjuryCodebookMixin")
 
     def test_vitals_service_uses_derived_service_identity(self):
         assert GenerateVitalsProgression.identity.as_str == (

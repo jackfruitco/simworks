@@ -18,7 +18,7 @@ Canonical outbox event types must follow this exact contract:
 - exactly 3 segments
 - lowercase letters with dot separators only
 - no underscores
-- domains limited to `simulation`, `patient`, `message`, `feedback`, `guard`
+- domains limited to `simulation`, `patient`, `message`, `assessment`, `guard`, `voice`
 - actions limited to `created`, `updated`, `removed`, `triggered`, `completed`, `failed`
 
 State transitions belong in payload metadata, not the event name.
@@ -27,7 +27,8 @@ Examples:
 
 - `simulation.status.updated` with payload `{ "status": "running", "from": "seeded", "to": "running" }`
 - `message.delivery.updated` with payload `{ "status": "delivered" }`
-- `feedback.generation.updated` with payload `{ "status": "retrying" }`
+- `assessment.generation.updated` with payload `{ "status": "retrying" }`
+- `voice.session.updated` with payload `{ "status": "ended" }`
 - `patient.intervention.updated` with payload `{ "assessment_status": "effective" }`
 
 ## Transport Envelope
@@ -61,11 +62,11 @@ For `*.status.updated` events, payload should include:
 - `message.item.created`
 - `message.delivery.updated`
 
-### `feedback`
+### `assessment`
 
-- `feedback.item.created`
-- `feedback.generation.updated`
-- `feedback.generation.failed`
+- `assessment.item.created`
+- `assessment.generation.updated`
+- `assessment.generation.failed`
 
 ### `simulation`
 
@@ -117,6 +118,11 @@ For `*.status.updated` events, payload should include:
 - `guard.state.updated`
 - `guard.warning.updated`
 
+### `voice`
+
+- `voice.session.created`
+- `voice.session.updated`
+
 ## Representative Payloads
 
 ### `message.item.created`
@@ -162,11 +168,11 @@ For `*.status.updated` events, payload should include:
 }
 ```
 
-### `feedback.generation.updated`
+### `assessment.generation.updated`
 
 ```json
 {
-  "event_type": "feedback.generation.updated",
+  "event_type": "assessment.generation.updated",
   "payload": {
     "simulation_id": 123,
     "status": "retrying",
@@ -196,6 +202,26 @@ For `*.status.updated` events, payload should include:
   "payload": {
     "guard_state": "paused_inactivity",
     "guard_reason": "inactivity"
+  }
+}
+```
+
+### `voice.session.created`
+
+```json
+{
+  "event_type": "voice.session.created",
+  "payload": {
+    "voice_session_id": 12,
+    "voice_session_uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "simulation_id": 123,
+    "conversation_id": 456,
+    "status": "active",
+    "transport": "webrtc",
+    "provider": "openai",
+    "model": "gpt-realtime-2.1",
+    "voice": "marin",
+    "expires_at": "2026-08-29T12:34:56Z"
   }
 }
 ```
