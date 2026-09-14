@@ -30,6 +30,7 @@ from apps.common.backups.postgres import (
     pg_dump,
     zstd_compress,
 )
+from apps.common.backups.preflight import validate_pg_dump_server_compatibility
 from apps.common.backups.storage import R2Storage
 
 
@@ -73,6 +74,9 @@ class Command(BaseCommand):
 
         if not options["encrypt"]:
             raise CommandError("Backups must be encrypted. Re-run with --encrypt.")
+
+        validate_pg_dump_server_compatibility()
+
         public_key = get_required_env("BACKUP_AGE_PUBLIC_KEY")
         storage = None
         if upload == "r2":

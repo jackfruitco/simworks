@@ -15,10 +15,10 @@ chmod 0600 /tmp/medsim-backup-env.sh
   echo "SHELL=/bin/bash"
   echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   if [ "${BACKUP_CRON_ENABLE_CORE}" = "true" ]; then
-    echo "${BACKUP_CORE_CRON} . /tmp/medsim-backup-env.sh; cd /app/SimWorks && python manage.py backup_database --mode core --upload r2 --encrypt --verify-upload >> /proc/1/fd/1 2>> /proc/1/fd/2"
+    echo "${BACKUP_CORE_CRON} . /tmp/medsim-backup-env.sh; cd /app/SimWorks && DJANGO_SKIP_READY=1 python manage.py backup_database --mode core --upload r2 --encrypt --verify-upload >> /proc/1/fd/1 2>> /proc/1/fd/2"
   fi
   if [ "${BACKUP_CRON_ENABLE_FULL}" = "true" ]; then
-    echo "${BACKUP_FULL_CRON} . /tmp/medsim-backup-env.sh; cd /app/SimWorks && python manage.py backup_database --mode full --upload r2 --encrypt --verify-upload >> /proc/1/fd/1 2>> /proc/1/fd/2"
+    echo "${BACKUP_FULL_CRON} . /tmp/medsim-backup-env.sh; cd /app/SimWorks && DJANGO_SKIP_READY=1 python manage.py backup_database --mode full --upload r2 --encrypt --verify-upload >> /proc/1/fd/1 2>> /proc/1/fd/2"
   fi
 } > /tmp/medsim-backup-crontab
 
