@@ -12,7 +12,11 @@ from django.utils import timezone
 import pytest
 
 from apps.accounts.models import Account, Invitation, User, UserRole
-from apps.common.backups import restore as restore_module
+from apps.common.backups import (
+    manifest as manifest_module,
+    postgres as postgres_module,
+    restore as restore_module,
+)
 from apps.common.backups.config import get_postgres_connection_info
 from apps.common.backups.inventory import (
     CORE_BACKUP_TABLES,
@@ -22,9 +26,8 @@ from apps.common.backups.manifest import (
     build_manifest,
     keys_for_backup,
     sha256_file,
-    validate_migration_compatibility,
 )
-from apps.common.backups.postgres import backup_advisory_lock, pg_dump
+from apps.common.backups.postgres import pg_dump
 from apps.common.backups.restore import (
     FullRestoreTableCheck,
     check_no_business_data,
@@ -420,32 +423,34 @@ def test_core_migration_compatibility_ignores_unrelated_app_mismatch(monkeypatch
         "migration_heads": {"accounts": "0001_initial", "trainerlab": "9999_future"},
     }
     monkeypatch.setattr(
-        "apps.common.backups.manifest.get_migration_heads",
+        manifest_module,
+        "get_migration_heads",
         lambda: {"accounts": "0001_initial", "trainerlab": "0001_initial"},
     )
 
-    validate_migration_compatibility(manifest, mode="core")
+    manifest_module.validate_migration_compatibility(manifest, mode="core")
 
 
 def test_core_migration_compatibility_fails_on_relevant_app_mismatch(monkeypatch):
     manifest = {"backup_type": "core", "migration_heads": {"accounts": "0002_changed"}}
     monkeypatch.setattr(
-        "apps.common.backups.manifest.get_migration_heads", lambda: {"accounts": "0001_initial"}
+        manifest_module, "get_migration_heads", lambda: {"accounts": "0001_initial"}
     )
 
     with pytest.raises(ValueError, match="accounts"):
-        validate_migration_compatibility(manifest, mode="core")
+        manifest_module.validate_migration_compatibility(manifest, mode="core")
 
 
 def test_full_migration_compatibility_fails_on_any_mismatch(monkeypatch):
     manifest = {"backup_type": "full", "migration_heads": {"trainerlab": "9999_future"}}
     monkeypatch.setattr(
-        "apps.common.backups.manifest.get_migration_heads",
+        manifest_module,
+        "get_migration_heads",
         lambda: {"trainerlab": "0001_initial"},
     )
 
     with pytest.raises(ValueError, match="trainerlab"):
-        validate_migration_compatibility(manifest, mode="full")
+        manifest_module.validate_migration_compatibility(manifest, mode="full")
 
 
 @pytest.mark.django_db
@@ -504,10 +509,10 @@ def test_advisory_lock_refuses_overlap(monkeypatch):
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setattr("apps.common.backups.postgres.connection", FakeConnection())
+    monkeypatch.setattr(postgres_module, "connection", FakeConnection())
 
     with (
         pytest.raises(CommandError, match="Another backup is already running"),
-        backup_advisory_lock(),
+        postgres_module.backup_advisory_lock(),
     ):
         pass
