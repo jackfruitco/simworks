@@ -392,7 +392,8 @@ def test_stripe_checkout_rejects_invalid_product(owner_user, auth_client_factory
 @override_settings(
     BILLING_STRIPE_CHECKOUT_ENABLED=True,
     BILLING_STRIPE_PRICE_PLAN_MAP={"medsim_one:monthly": "price_test"},
-    BILLING_STRIPE_PROMO_COUPON_ID="coupon_test",
+    BILLING_STRIPE_PROMO_COUPON_MAP={"medsim_one:monthly": "coupon_medsim_one"},
+    BILLING_STRIPE_PROMO_COUPON_ID="coupon_global",
     BILLING_STRIPE_TRIAL_DAYS=14,
 )
 def test_stripe_checkout_creates_session_for_personal_account(owner_user, auth_client_factory):
@@ -433,7 +434,7 @@ def test_stripe_checkout_creates_session_for_personal_account(owner_user, auth_c
     assert call_kwargs["mode"] == "subscription"
     assert call_kwargs["line_items"] == [{"price": "price_test", "quantity": 1}]
     assert call_kwargs["subscription_data"]["trial_period_days"] == 14
-    assert call_kwargs["discounts"] == [{"coupon": "coupon_test"}]
+    assert call_kwargs["discounts"] == [{"coupon": "coupon_medsim_one"}]
     assert call_kwargs["metadata"]["account_uuid"]
     assert call_kwargs["metadata"]["user_id"] == str(owner_user.id)
     assert call_kwargs["metadata"]["product_code"] == ProductCode.MEDSIM_ONE.value
@@ -447,8 +448,12 @@ def test_stripe_checkout_creates_session_for_personal_account(owner_user, auth_c
 @override_settings(
     BILLING_STRIPE_CHECKOUT_ENABLED=True,
     BILLING_STRIPE_PRICE_PLAN_MAP={"chatlab_go:monthly": "price_chatlab_go_test"},
+    BILLING_STRIPE_PROMO_COUPON_MAP={"chatlab_go:monthly": "coupon_chatlab_go"},
+    BILLING_STRIPE_PROMO_COUPON_ID="coupon_global",
 )
-def test_stripe_checkout_metadata_uses_canonical_product_code(owner_user, auth_client_factory):
+def test_stripe_checkout_uses_chatlab_go_coupon_and_canonical_metadata(
+    owner_user, auth_client_factory
+):
     client = auth_client_factory(owner_user)
 
     with (
@@ -477,10 +482,99 @@ def test_stripe_checkout_metadata_uses_canonical_product_code(owner_user, auth_c
 
     assert response.status_code == 200
     call_kwargs = session_create.call_args.kwargs
+    assert call_kwargs["discounts"] == [{"coupon": "coupon_chatlab_go"}]
     assert call_kwargs["metadata"]["product_code"] == ProductCode.CHATLAB_GO.value
     assert (
         call_kwargs["subscription_data"]["metadata"]["product_code"] == ProductCode.CHATLAB_GO.value
     )
+
+
+@pytest.mark.django_db
+@override_settings(
+    BILLING_STRIPE_CHECKOUT_ENABLED=True,
+    BILLING_STRIPE_PRICE_PLAN_MAP={"trainerlab_go:monthly": "price_trainerlab_go_test"},
+    BILLING_STRIPE_PROMO_COUPON_MAP={"medsim_one:monthly": "coupon_medsim_one"},
+    BILLING_STRIPE_PROMO_COUPON_ID="",
+)
+def test_stripe_checkout_missing_coupon_map_entry_does_not_block_checkout(
+    owner_user, auth_client_factory
+):
+    client = auth_client_factory(owner_user)
+
+    with (
+        patch(
+            "apps.billing.providers.stripe.stripe.Customer.create",
+            return_value=SimpleNamespace(id="cus_test"),
+        ),
+        patch(
+            "apps.billing.providers.stripe.stripe.checkout.Session.create",
+            return_value=SimpleNamespace(
+                id="cs_test",
+                url="https://checkout.stripe.com/c/cs_test",
+            ),
+        ) as session_create,
+    ):
+        response = client.post(
+            "/api/v1/billing/stripe/checkout-session/",
+            data={
+                "product_code": ProductCode.TRAINERLAB_GO.value,
+                "billing_interval": "monthly",
+                "success_url": "https://medsim.example/billing/success/",
+                "cancel_url": "https://medsim.example/billing/",
+            },
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    call_kwargs = session_create.call_args.kwargs
+    assert call_kwargs["line_items"] == [
+        {"price": "price_trainerlab_go_test", "quantity": 1}
+    ]
+    assert "discounts" not in call_kwargs
+
+
+@pytest.mark.django_db
+@override_settings(
+    BILLING_STRIPE_CHECKOUT_ENABLED=True,
+    BILLING_STRIPE_PRICE_PLAN_MAP={"trainerlab_go:monthly": "price_trainerlab_go_test"},
+    BILLING_STRIPE_PROMO_COUPON_MAP={},
+    BILLING_STRIPE_PROMO_COUPON_ID="coupon_global",
+)
+def test_stripe_checkout_global_coupon_fallback_still_works(
+    owner_user, auth_client_factory
+):
+    client = auth_client_factory(owner_user)
+
+    with (
+        patch(
+            "apps.billing.providers.stripe.stripe.Customer.create",
+            return_value=SimpleNamespace(id="cus_test"),
+        ),
+        patch(
+            "apps.billing.providers.stripe.stripe.checkout.Session.create",
+            return_value=SimpleNamespace(
+                id="cs_test",
+                url="https://checkout.stripe.com/c/cs_test",
+            ),
+        ) as session_create,
+    ):
+        response = client.post(
+            "/api/v1/billing/stripe/checkout-session/",
+            data={
+                "product_code": ProductCode.TRAINERLAB_GO.value,
+                "billing_interval": "monthly",
+                "success_url": "https://medsim.example/billing/success/",
+                "cancel_url": "https://medsim.example/billing/",
+            },
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    call_kwargs = session_create.call_args.kwargs
+    assert call_kwargs["line_items"] == [
+        {"price": "price_trainerlab_go_test", "quantity": 1}
+    ]
+    assert call_kwargs["discounts"] == [{"coupon": "coupon_global"}]
 
 
 @pytest.mark.django_db
