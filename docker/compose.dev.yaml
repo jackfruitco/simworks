@@ -12,7 +12,7 @@ services:
       DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
       DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
       DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
-      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-""}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
     expose:
       - 8000
     volumes:
@@ -47,18 +47,20 @@ services:
     env_file:
       - .env
     environment:
-      CHOKIDAR_USEPOLLING: "1"
-      CHOKIDAR_INTERVAL: "300"
       DJANGO_MIGRATE: ${DJANGO_MIGRATE:-0}
       DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-0}
       DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-0}
-    command: ["npm", "run", "watch:css:docker"]
+      # Binary is baked into the image outside /app/SimWorks, which this
+      # service bind-mounts over.
+      TAILWIND_CLI_PATH: /app/.tailwind-cli
+      # Write straight into the shared static volume nginx serves, so CSS
+      # rebuilds show up without re-running collectstatic. Relative to
+      # STATICFILES_DIRS[0] (/app/SimWorks/static), so this is /app/static.
+      TAILWIND_CLI_DIST_CSS: ../../static/css/tailwind.css
+    command: ["sh", "-c", "mkdir -p /app/static/css && PYTHONPATH=/app/SimWorks python manage.py tailwind watch --noreload"]
     volumes:
       - ../SimWorks:/app/SimWorks
       - ../packages:/app/packages
-      - ../package.json:/app/package.json
-      - ../package-lock.json:/app/package-lock.json
-      - ../postcss.config.js:/app/postcss.config.js
       - ../tailwind.config.js:/app/tailwind.config.js
       - static-vol:/app/static
     restart: unless-stopped

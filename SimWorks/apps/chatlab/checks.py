@@ -6,6 +6,36 @@ from django.core.checks import Error, Warning, register
 
 
 @register()
+def check_voicelab_provider_configured(app_configs, **kwargs):
+    """Warn when VoiceLab cannot mint Realtime client secrets.
+
+    Without a key every `POST /api/v1/simulations/<id>/voice/session/` fails
+    with 503, so surface it at deploy time instead of at first voice session.
+    """
+    try:
+        from apps.chatlab.voice import realtime_provider_configured
+
+        configured = realtime_provider_configured()
+    except Exception:
+        return []  # Provider resolution unavailable; don't block startup.
+
+    if configured:
+        return []
+
+    return [
+        Warning(
+            "VoiceLab has no OpenAI API key; live voice sessions will fail with 503.",
+            hint=(
+                "Set ORCA_OPENAI_API_KEY (or OPENAI_API_KEY) for the server process. "
+                "In Docker deployments the variable must also be forwarded in "
+                "docker/compose.yaml."
+            ),
+            id="chatlab.W002",
+        )
+    ]
+
+
+@register()
 def check_chatlab_modifier_catalog(app_configs, **kwargs):
     errors = []
 

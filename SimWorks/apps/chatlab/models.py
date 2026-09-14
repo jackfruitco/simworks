@@ -1,5 +1,6 @@
 # chatlab/models.py
 from typing import ClassVar
+import uuid
 
 from django.conf import settings
 from django.db import models
@@ -20,6 +21,167 @@ class ChatSession(BaseSession):
     Represents a session within ChatLab that extends a shared Simulation instance.
     Additional chat-specific behaviors or fields can be added here.
     """
+
+
+class VoiceSession(PersistModel):
+    """Provider-backed live voice session for a ChatLab simulation."""
+
+    class Status(models.TextChoices):
+        CONFIGURING = "configuring", "Configuring"
+        ACTIVE = "active", "Active"
+        ENDED = "ended", "Ended"
+        FAILED = "failed", "Failed"
+
+    class Transport(models.TextChoices):
+        WEBRTC = "webrtc", "WebRTC"
+        WEBSOCKET = "websocket", "WebSocket"
+
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    ended_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+
+    simulation = models.ForeignKey(
+        Simulation,
+        on_delete=models.CASCADE,
+        related_name="voice_sessions",
+    )
+    conversation = models.ForeignKey(
+        "simcore.Conversation",
+        on_delete=models.CASCADE,
+        related_name="voice_sessions",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chatlab_voice_sessions",
+    )
+
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.CONFIGURING,
+        db_index=True,
+    )
+    transport = models.CharField(
+        max_length=16,
+        choices=Transport.choices,
+        default=Transport.WEBRTC,
+    )
+    provider = models.CharField(max_length=32, default="openai")
+    provider_session_id = models.CharField(max_length=255, blank=True, default="")
+    model_name = models.CharField(max_length=100, blank=True, default="")
+    voice_name = models.CharField(max_length=100, blank=True, default="")
+    client_idempotency_key = models.CharField(max_length=255, blank=True, default="")
+    client_metadata = models.JSONField(blank=True, default=dict)
+    provider_metadata = models.JSONField(blank=True, default=dict)
+    last_error_code = models.CharField(max_length=100, blank=True, default="")
+    last_error_text = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering: ClassVar = ["-created_at", "-pk"]
+        indexes: ClassVar = [
+            models.Index(
+                fields=["simulation", "status", "created_at"],
+                name="chatlab_voice_sim_status_idx",
+            ),
+            models.Index(
+                fields=["created_by", "created_at"],
+                name="chatlab_voice_actor_idx",
+            ),
+            models.Index(
+                fields=["created_by", "simulation", "client_idempotency_key"],
+                name="chatlab_voice_idem_idx",
+            ),
+        ]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["created_by", "simulation", "client_idempotency_key"],
+                condition=Q(client_idempotency_key__gt=""),
+                name="chatlab_unique_voice_start_idem",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ChatLab VoiceSession#{self.pk} sim#{self.simulation_id} {self.status}"
+
+
+class VoiceToolCall(PersistModel):
+    """Durable VoiceLab tool-call execution record."""
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    voice_session = models.ForeignKey(
+        VoiceSession,
+        on_delete=models.CASCADE,
+        related_name="tool_calls",
+    )
+    tool_call_id = models.CharField(max_length=255)
+    name = models.CharField(max_length=100)
+    arguments = models.JSONField(blank=True, default=dict)
+    output = models.JSONField(blank=True, default=dict)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.RUNNING,
+        db_index=True,
+    )
+    last_error_text = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering: ClassVar = ["-created_at", "-pk"]
+        indexes: ClassVar = [
+            models.Index(
+                fields=["voice_session", "status"],
+                name="chatlab_voice_tool_status_idx",
+            ),
+        ]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["voice_session", "tool_call_id"],
+                name="chatlab_unique_voice_tool_call",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ChatLab VoiceToolCall#{self.pk} session#{self.voice_session_id} {self.status}"
+
+
+class VoiceTranscriptReceipt(PersistModel):
+    """Durable idempotency receipt for provider transcript events."""
+
+    voice_session = models.ForeignKey(
+        VoiceSession,
+        on_delete=models.CASCADE,
+        related_name="transcript_receipts",
+    )
+    provider_message_id = models.CharField(max_length=255)
+    message = models.ForeignKey(
+        "chatlab.Message",
+        on_delete=models.CASCADE,
+        related_name="voice_transcript_receipts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering: ClassVar = ["-created_at", "-pk"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["voice_session", "provider_message_id"],
+                name="chatlab_unique_voice_transcript",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ChatLab VoiceTranscriptReceipt#{self.pk} session#{self.voice_session_id}"
 
 
 class Message(PersistModel):
@@ -167,7 +329,7 @@ class Message(PersistModel):
                     is_from_ai=True,
                 ),
                 name="chatlab_unique_ai_image_per_source_message",
-            )
+            ),
         ]
 
     def __str__(self):

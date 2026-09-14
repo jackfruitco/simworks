@@ -16,13 +16,24 @@ classifiers = [
 
 dependencies = [
   "pydantic>=2.12.5",
-  "pydantic-ai-slim[openai,anthropic,google,groq,mistral,cohere]>=1.65.0",
+  "pydantic-ai-slim>=1.65.0",
   "typing-extensions>=4.12",
   "opentelemetry-api>=1.31",
   "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
+# Provider SDKs are optional. Every provider is imported lazily inside its
+# factory in orchestrai.components.services.service, so installing only the
+# providers actually configured keeps the rest out of the environment.
+openai = ["pydantic-ai-slim[openai]>=1.65.0"]
+anthropic = ["pydantic-ai-slim[anthropic]>=1.65.0"]
+google = ["pydantic-ai-slim[google]>=1.65.0"]
+groq = ["pydantic-ai-slim[groq]>=1.65.0"]
+mistral = ["pydantic-ai-slim[mistral]>=1.65.0"]
+cohere = ["pydantic-ai-slim[cohere]>=1.65.0"]
+all = ["orchestrai[openai,anthropic,google,groq,mistral,cohere]"]
+
 dev = ["pytest>=9", "ruff>=0.6", "mypy>=1.11"]
 
 [build-system]

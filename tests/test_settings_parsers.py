@@ -13,6 +13,8 @@ _spec.loader.exec_module(_mod)
 
 int_from_env = _mod.int_from_env
 optional_int_from_env = _mod.optional_int_from_env
+str_from_env = _mod.str_from_env
+optional_str_from_env = _mod.optional_str_from_env
 
 
 class TestIntFromEnv:
@@ -45,6 +47,43 @@ class TestIntFromEnv:
     def test_minimum_not_violated(self, monkeypatch):
         monkeypatch.setenv("_TEST_INT", "5")
         assert int_from_env("_TEST_INT", default=0, minimum=1) == 5
+
+
+class TestStrFromEnv:
+    def test_missing_returns_default(self, monkeypatch):
+        monkeypatch.delenv("_TEST_STR", raising=False)
+        assert str_from_env("_TEST_STR", "fallback") == "fallback"
+
+    def test_blank_string_returns_default(self, monkeypatch):
+        # Compose interpolates unset variables to an empty string.
+        monkeypatch.setenv("_TEST_STR", "")
+        assert str_from_env("_TEST_STR", "fallback") == "fallback"
+
+    def test_whitespace_only_returns_default(self, monkeypatch):
+        monkeypatch.setenv("_TEST_STR", "   ")
+        assert str_from_env("_TEST_STR", "fallback") == "fallback"
+
+    def test_value_is_stripped(self, monkeypatch):
+        monkeypatch.setenv("_TEST_STR", "  gpt-realtime  ")
+        assert str_from_env("_TEST_STR", "fallback") == "gpt-realtime"
+
+
+class TestOptionalStrFromEnv:
+    def test_missing_returns_none(self, monkeypatch):
+        monkeypatch.delenv("_TEST_OPT_STR", raising=False)
+        assert optional_str_from_env("_TEST_OPT_STR") is None
+
+    def test_blank_string_returns_none(self, monkeypatch):
+        monkeypatch.setenv("_TEST_OPT_STR", "")
+        assert optional_str_from_env("_TEST_OPT_STR") is None
+
+    def test_whitespace_only_returns_none(self, monkeypatch):
+        monkeypatch.setenv("_TEST_OPT_STR", "   ")
+        assert optional_str_from_env("_TEST_OPT_STR") is None
+
+    def test_value_is_stripped(self, monkeypatch):
+        monkeypatch.setenv("_TEST_OPT_STR", " sk-test ")
+        assert optional_str_from_env("_TEST_OPT_STR") == "sk-test"
 
 
 class TestOptionalIntFromEnv:

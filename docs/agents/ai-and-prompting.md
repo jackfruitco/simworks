@@ -17,6 +17,17 @@
 - Instruction and schema docs must reflect current package APIs.
 - Keep terminology consistent: provider vs service vs client.
 - Do not blur framework internals into app-level feature documentation.
+- Keep static role, contract, behavior, and schema-note instructions in YAML.
+- Keep Python instruction classes for dynamic context assembly, compact codebooks, dictionaries, and runtime data only.
+- Avoid duplicating static YAML text in Python classes or service mixins.
+- Budget instruction categories:
+  - `role`: short, durable, always included.
+  - `contract`: short, durable, always included.
+  - `behavior`: short, durable, always included.
+  - `schema_notes`: only constraints the schema cannot enforce.
+  - `examples`: optional; include only for known regressions, eval/debug mode, or high-risk ambiguity.
+  - `context`: dynamic and compact; prefer JSON or compact bullets.
+  - `dictionaries/codebooks`: include only the subset required for the current task when possible.
 
 ## Safety and correctness
 

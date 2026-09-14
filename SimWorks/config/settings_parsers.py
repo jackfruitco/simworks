@@ -22,6 +22,26 @@ def csv_from_env(name: str, default: list[str] | None = None) -> list[str]:
     return [item for item in re.split(r"\s*,\s*", value.strip()) if item]
 
 
+def str_from_env(name: str, default: str) -> str:
+    """Return the env var value, falling back to default when unset or blank.
+
+    Container runtimes commonly materialize unset variables as empty strings,
+    which ``os.getenv(name, default)`` would return verbatim.
+    """
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip()
+
+
+def optional_str_from_env(name: str) -> str | None:
+    """Return the env var value if set to a non-blank value, otherwise None."""
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+    return value.strip()
+
+
 def int_from_env(name: str, default: int, *, minimum: int | None = None) -> int:
     value = os.getenv(name)
     if value is None or value.strip() == "":

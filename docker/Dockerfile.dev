@@ -45,16 +45,28 @@ RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends curl nodejs npm && \
+    apt-get update && apt-get install -y --no-install-recommends curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER appuser
 
-COPY package.json package-lock.json* postcss.config.js tailwind.config.js /app/
-
-RUN npm ci --no-audit --no-fund --cache /tmp/.npm
+COPY tailwind.config.js /app/
 
 COPY SimWorks /app/SimWorks
+
+# Pre-fetch the standalone Tailwind CLI at build time so `tailwind watch`
+# does not need network access on first container start. Must match
+# TAILWIND_CLI_VERSION in config/settings.py.
+#
+# Stored outside /app/SimWorks on purpose: compose.dev.yaml bind-mounts the
+# host's SimWorks/ over that path, which would hide anything baked in here.
+# The tailwind-watch service points TAILWIND_CLI_PATH at this directory.
+ARG TAILWIND_CLI_VERSION=4.1.18
+RUN mkdir -p /app/.tailwind-cli && \
+    curl -fsSL -o /app/.tailwind-cli/tailwindcss-linux-x64-${TAILWIND_CLI_VERSION} \
+        "https://github.com/tailwindlabs/tailwindcss/releases/download/v${TAILWIND_CLI_VERSION}/tailwindcss-linux-x64" && \
+    chmod +x /app/.tailwind-cli/tailwindcss-linux-x64-${TAILWIND_CLI_VERSION}
+
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
 

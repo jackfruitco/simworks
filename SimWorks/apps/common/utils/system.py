@@ -13,20 +13,27 @@ def check_env(var_name, default=_SENTINEL):
     Retrieves the environment variable or returns the default if provided.
     Raises ImproperlyConfigured if the variable is not found and no default is provided.
 
+    A variable set to a blank value counts as not set. Container runtimes
+    routinely materialize unset variables as empty strings (Compose renders an
+    unset ``${VAR}`` that way), and returning that empty string would override
+    the caller's default with nothing.
+
     :param var_name: The name of the environment variable.
     :param default: The default value to return if the variable is not found.
                     If not provided, an error is raised.
     :return: The environment variable value or the default.
     """
-    try:
-        return os.environ[var_name]
-    except KeyError:
-        if default is not _SENTINEL:
-            return default
-        raise ImproperlyConfigured(
-            f"Required environment variable '{var_name}' is not set. "
-            f"Please set it in your environment or .env file."
-        ) from None
+    value = os.environ.get(var_name)
+    if value is not None and value.strip() != "":
+        return value
+
+    if default is not _SENTINEL:
+        return default
+
+    raise ImproperlyConfigured(
+        f"Required environment variable '{var_name}' is not set. "
+        f"Please set it in your environment or .env file."
+    )
 
 
 def coerce_to_bool(value: str | bool | int) -> bool:

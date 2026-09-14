@@ -29,7 +29,9 @@ RateLimitValue = int | Callable[[], int]
 def get_redis_client() -> redis.Redis | None:
     """Get Redis client for rate limiting.
 
-    Uses Redis database 3 (after channels=0, celery broker=1, celery results=2).
+    Uses Redis database 3. Full allocation: 0=channels, 1=Celery broker,
+    2=Celery results, 3=rate limiting, 4=Django cache (see
+    config.task_settings.CACHES).
     Constructs connection from individual settings to avoid exposing the full
     connection URL, which contains credentials, in the settings namespace.
     """
