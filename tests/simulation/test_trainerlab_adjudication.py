@@ -541,17 +541,21 @@ class TestTrainerLabAdjudication:
         base_time = datetime(2030, 1, 1, tzinfo=UTC)
         total_events = 105
         baseline_events = RuntimeEvent.objects.filter(session=session).count()
+        baseline_sequence = session.event_sequence
 
         for sequence in range(total_events):
             runtime_event = RuntimeEvent.objects.create(
                 session=session,
                 simulation=session.simulation,
+                sequence=baseline_sequence + sequence + 1,
                 event_type="trainerlab.runtime.note",
                 payload={"sequence": sequence},
             )
             RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
                 created_at=base_time + timedelta(seconds=sequence)
             )
+        session.event_sequence = baseline_sequence + total_events
+        session.save(update_fields=["event_sequence"])
 
         aggregate = load_trainer_engine_aggregate(session=session, event_limit=100)
 
