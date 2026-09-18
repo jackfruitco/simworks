@@ -2227,11 +2227,13 @@ class TestTrainerLabDictionaries:
         base_time = datetime(2030, 1, 1, tzinfo=UTC)
         total_events = DEFAULT_EVENT_TIMELINE_LIMIT + 5
         baseline_events = RuntimeEvent.objects.filter(session=trainer_session).count()
+        baseline_sequence = trainer_session.event_sequence
 
         for sequence in range(total_events):
             runtime_event = RuntimeEvent.objects.create(
                 session=trainer_session,
                 simulation=trainer_session.simulation,
+                sequence=baseline_sequence + sequence + 1,
                 event_type="trainerlab.runtime.note",
                 payload={"sequence": sequence},
                 correlation_id=f"timeline-{sequence}",
@@ -2239,6 +2241,9 @@ class TestTrainerLabDictionaries:
             RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
                 created_at=base_time + timedelta(seconds=sequence)
             )
+        TrainerSession.objects.filter(pk=trainer_session.pk).update(
+            event_sequence=baseline_sequence + total_events
+        )
 
         body = client.get(
             f"/api/v1/trainerlab/simulations/{session['simulation_id']}/state/"

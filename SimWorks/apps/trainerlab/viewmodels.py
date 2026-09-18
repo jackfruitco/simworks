@@ -364,7 +364,9 @@ def load_trainer_engine_aggregate(
         for vital_type, model in VITAL_TYPE_MODEL_MAP.items()
     }
     runtime_events = tuple(
-        RuntimeEvent.objects.filter(session=session).order_by("-sequence")[:event_limit]
+        RuntimeEvent.objects.filter(session=session).order_by("-sequence", "-created_at", "-id")[
+            :event_limit
+        ]
     )
     runtime_event_total_count = RuntimeEvent.objects.filter(session=session).count()
     latest_event_cursor = (
