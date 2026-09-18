@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -1538,6 +1539,8 @@ def discard_runtime_work(
     )
     state["pending_runtime_reasons"] = []
     state["currently_processing_reasons"] = []
+    state.pop("runtime_generation", None)
+    state.pop("vitals_generation", None)
     state["runtime_processing"] = False
     state["active_service_call_id"] = ""
     state["active_started_at"] = None
@@ -1560,6 +1563,8 @@ def append_pending_runtime_reason(
 ) -> dict[str, Any]:
     locked = TrainerSession.objects.select_for_update().get(pk=session.pk)
     state = get_runtime_state(locked)
+    if reason_kind not in {"tick", "manual_tick"}:
+        state["input_revision"] = int(state.get("input_revision", 0)) + 1
     reason = {
         "reason_kind": reason_kind,
         "payload": payload or {},
@@ -1782,6 +1787,63 @@ def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _capture_ai_generation(session, state, worker: str) -> dict[str, Any]:
+    """Called under the session lock, before publishing work to a worker."""
+    generation = {
+        "token": str(uuid4()),
+        "state_revision": int(state.get("state_revision", 0)),
+        "input_revision": int(state.get("input_revision", 0)),
+        "status": session.status,
+    }
+    state[f"{worker}_generation"] = generation
+    return generation
+
+
+def _ai_output_rejection(session, state, context, worker: str) -> str | None:
+    expected = context.get("ai_generation")
+    active = state.get(f"{worker}_generation")
+    if not expected or not active or expected != active:
+        return "generation_not_owned"
+    if (
+        expected["state_revision"] != int(state.get("state_revision", 0))
+        or expected["input_revision"] != int(state.get("input_revision", 0))
+        or expected["status"] != session.status
+    ):
+        return "state_changed_during_generation"
+    return None
+
+
+def _reject_ai_output(session, state, context, worker: str, reason: str):
+    """Audit rejection without allowing an old callback to clear a newer worker."""
+    owned = context.get("ai_generation") == state.get(f"{worker}_generation")
+    if owned and context.get("ai_generation"):
+        if worker == "runtime":
+            clear_runtime_processing(
+                session_id=session.id,
+                error=reason,
+                requeue_current_batch=reason == "state_changed_during_generation",
+                expected_generation=context["ai_generation"],
+            )
+            session.refresh_from_db()
+            state = get_runtime_state(session)
+        else:
+            state.pop(f"{worker}_generation", None)
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+    emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_PATCH_EVALUATION_COMPLETED,
+        payload={
+            "worker_kind": worker,
+            "accepted": [],
+            "rejected": [{"reason": reason}],
+            "source_call_id": str(context.get("call_id") or ""),
+        },
+        correlation_id=context.get("correlation_id"),
+    )
+    return state
+
+
 def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
     with transaction.atomic():
         session = (
@@ -1830,6 +1892,7 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         state["pending_runtime_reasons"] = remaining
         state["currently_processing_reasons"] = reasons
         state["runtime_processing"] = True
+        generation = _capture_ai_generation(session, state, "runtime")
         state["active_started_at"] = now.astimezone(UTC).isoformat()
         state["scheduled_runtime_task_run_at"] = None
         state["pending_since"] = remaining[0].get("created_at") if remaining else None
@@ -1854,6 +1917,7 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
             runtime_state_override=state,
         )
         return {
+            "ai_generation": generation,
             "session_id": session.id,
             "simulation_id": session.simulation_id,
             "reasons": reasons,
@@ -1883,6 +1947,7 @@ def _restore_runtime_turn_batch(
         pending = list(state.get("pending_runtime_reasons") or [])
         state["pending_runtime_reasons"] = reasons + pending
         state["currently_processing_reasons"] = []
+        state.pop("runtime_generation", None)
         state["runtime_processing"] = False
         state["active_service_call_id"] = ""
         state["active_started_at"] = None
@@ -1906,10 +1971,12 @@ def _restore_runtime_turn_batch(
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
 
-def _mark_runtime_service_call_active(*, session_id: int, call_id: str) -> None:
+def _mark_runtime_service_call_active(*, session_id: int, call_id: str, generation: dict) -> None:
     with transaction.atomic():
         session = TrainerSession.objects.select_for_update().get(pk=session_id)
         state = get_runtime_state(session)
+        if state.get("runtime_generation") != generation:
+            return
         now = timezone.now()
         state["active_service_call_id"] = str(call_id)
         state["last_runtime_call_at"] = now.astimezone(UTC).isoformat()
@@ -1929,6 +1996,7 @@ def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
     from .orca.services import GenerateTrainerRuntimeTurn
 
     context = {
+        "ai_generation": batch["ai_generation"],
         "simulation_id": batch["simulation_id"],
         "session_id": batch["session_id"],
         "trainer_agent_view_model": batch["trainer_agent_view_model"],
@@ -2042,7 +2110,9 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
     try:
         call_id = enqueue_runtime_turn_service_call(request_batch)
         try:
-            _mark_runtime_service_call_active(session_id=session_id, call_id=call_id)
+            _mark_runtime_service_call_active(
+                session_id=session_id, call_id=call_id, generation=batch["ai_generation"]
+            )
         except Exception:
             logger.exception(
                 "trainerlab.runtime.active_call_mark_failed",
@@ -2091,11 +2161,15 @@ def clear_runtime_processing(
     session_id: int,
     error: str = "",
     requeue_current_batch: bool = False,
-) -> None:
+    expected_generation: dict | None = None,
+) -> bool:
     should_schedule_follow_up = False
     with transaction.atomic():
         session = TrainerSession.objects.select_for_update().get(pk=session_id)
         state = get_runtime_state(session)
+        if state.get("runtime_generation") != expected_generation:
+            return False
+        state.pop("runtime_generation", None)
         current = list(state.get("currently_processing_reasons") or [])
         pending = list(state.get("pending_runtime_reasons") or [])
         if session.status in TERMINAL_SESSION_STATUSES:
@@ -2127,7 +2201,8 @@ def clear_runtime_processing(
             bool(pending) and session.status not in TERMINAL_SESSION_STATUSES
         )
     if should_schedule_follow_up:
-        _schedule_runtime_follow_up_if_pending(session_id)
+        transaction.on_commit(lambda: _schedule_runtime_follow_up_if_pending(session_id))
+    return True
 
 
 def _resolve_superseded_event(
@@ -3057,15 +3132,15 @@ def _apply_intervention_effect(
         return
 
     intervention.effectiveness = change.get("effectiveness", intervention.effectiveness)
-    if change.get("notes"):
-        intervention.notes = str(change.get("notes"))
-    intervention.save(update_fields=["effectiveness", "notes"])
+    # Recorded instructor notes are authoritative facts. Keep AI assessment
+    # commentary in the derived effect record rather than overwriting them.
+    intervention.save(update_fields=["effectiveness"])
 
     effects = dict(state.get("intervention_effects") or {})
     effects[str(intervention.id)] = {
         "status": change.get("status", "active"),
         "clinical_effect": change.get("clinical_effect", ""),
-        "notes": intervention.notes,
+        "notes": str(change.get("notes") or ""),
     }
     state["intervention_effects"] = effects
 
@@ -3134,6 +3209,9 @@ def apply_runtime_turn_output(
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        rejection = _ai_output_rejection(session, state, service_context, "runtime")
+        if rejection:
+            return _reject_ai_output(session, state, service_context, "runtime", rejection)
         if session.status in TERMINAL_SESSION_STATUSES:
             state, _discarded = discard_runtime_work(state)
             session.runtime_state_json = state
@@ -3143,6 +3221,23 @@ def apply_runtime_turn_output(
         touched_domains: list[str] = []
 
         state_changes = dict(output_payload.get("state_changes") or {})
+        assessments = state_changes.get("intervention_assessments", [])
+        intervention_ids = {item.get("intervention_event_id") for item in assessments}
+        authoritative_ids = set(
+            Intervention.objects.filter(
+                simulation=session.simulation,
+                is_active=True,
+                source__in=[EventSource.INSTRUCTOR, EventSource.SYSTEM],
+                pk__in=intervention_ids,
+            ).values_list("pk", flat=True)
+        )
+        if intervention_ids != authoritative_ids or any(
+            key in state_changes
+            for key in ("interventions", "learner_actions", "intervention_updates")
+        ):
+            return _reject_ai_output(
+                session, state, service_context, "runtime", "non_authoritative_intervention"
+            )
 
         evaluation_summary = {
             "worker_kind": "core_runtime",
@@ -3260,6 +3355,7 @@ def apply_runtime_turn_output(
                     "reason": "routed_to_narrative_step",
                 }
             )
+        state.pop("runtime_generation", None)
         state["runtime_processing"] = False
         state["currently_processing_reasons"] = []
         state["active_service_call_id"] = ""
@@ -3646,6 +3742,15 @@ def refresh_completed_run_review(
 # ---------------------------------------------------------------------------
 
 
+def fail_vitals_generation(*, session_id: int, service_context: dict) -> None:
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session_id)
+        state = get_runtime_state(session)
+        if service_context.get("ai_generation") != state.get("vitals_generation"):
+            return
+        _reject_ai_output(session, state, service_context, "vitals", "vitals_generation_failed")
+
+
 def apply_vitals_progression_output(
     *,
     session_id: int,
@@ -3661,8 +3766,12 @@ def apply_vitals_progression_output(
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        rejection = _ai_output_rejection(session, state, service_context, "vitals")
+        if rejection:
+            return _reject_ai_output(session, state, service_context, "vitals", rejection)
         if session.status in TERMINAL_SESSION_STATUSES:
             return state
+        state.pop("vitals_generation", None)
 
         for change in output_payload.get("vitals", []):
             _apply_vital_change(session=session, change=change, correlation_id=correlation_id)
@@ -3690,16 +3799,23 @@ def enqueue_vitals_progression(
     """Enqueue a vitals-only AI progression turn."""
     from .orca.services import GenerateVitalsProgression
 
-    state = get_runtime_state(session)
-    aggregate = load_trainer_engine_aggregate(
-        session=session,
-        runtime_state_override=state,
-    )
-    scenario_snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
+    with transaction.atomic():
+        session = (
+            TrainerSession.objects.select_for_update()
+            .select_related("simulation")
+            .get(pk=session.pk)
+        )
+        state = get_runtime_state(session)
+        generation = _capture_ai_generation(session, state, "vitals")
+        session.runtime_state_json = state
+        session.save(update_fields=["runtime_state_json", "modified_at"])
+        aggregate = load_trainer_engine_aggregate(session=session, runtime_state_override=state)
+        scenario_snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
 
     try:
         return GenerateVitalsProgression.task.using(
             context={
+                "ai_generation": generation,
                 "simulation_id": session.simulation_id,
                 "session_id": session.id,
                 "active_elapsed_seconds": get_active_elapsed_seconds(session, state=state),
@@ -3712,6 +3828,7 @@ def enqueue_vitals_progression(
         )
     except Exception:
         logger.exception("trainerlab.vitals.enqueue_failed", session_id=session.id)
+        fail_vitals_generation(session_id=session.id, service_context={"ai_generation": generation})
         return None
 
 

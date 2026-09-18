@@ -2798,6 +2798,7 @@ class TestTrainerLabDictionaries:
                     cause_id=injury.id,
                 ),
                 service_context={
+                    "ai_generation": batch["ai_generation"],
                     "session_id": batch["session_id"],
                     "simulation_id": batch["simulation_id"],
                     "correlation_id": batch.get("correlation_id"),
@@ -2821,6 +2822,8 @@ class TestTrainerLabDictionaries:
         call_id = process_runtime_turn_queue(session_id=trainer_session.id)
 
         assert call_id == inline_call_id
+        intervention.refresh_from_db()
+        assert intervention.notes == "Tourniquet placed high and tight"
         assert captured_batch["runtime_request_metrics"]["previous_response_id_present"] is False
         assert "runtime_llm_context" in captured_batch
         assert "trainer_agent_view_model" in captured_batch
