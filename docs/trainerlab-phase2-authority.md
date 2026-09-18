@@ -1,7 +1,8 @@
-# TrainerLab Phase II: AI commit ownership
+# TrainerLab Phase II: authoritative runtime commits
 
-This first Phase II increment makes AI results conditional proposals. It does not
-replace the existing domain models, outbox, or REST snapshot contract.
+Phase II makes AI results conditional proposals and serializes instructor
+mutations against AI commits. The domain models and durable outbox remain the
+source of truth.
 
 Runtime and vitals work each receive an independent generation token, captured
 state revision, instructor-input revision, and lifecycle status before dispatch.
@@ -28,16 +29,31 @@ callbacks lack generation metadata and are deliberately rejected. The existing
 stuck-work recovery remains responsible for abandoned jobs; this increment does
 not add a new durable job table or exactly-once broker delivery.
 
-## Remaining Phase II work
+## Ordering and reconciliation
 
-- Serialize all instructor, guard, lifecycle, and AI mutation entry points under
-  the same session transaction. Existing revision checks do not by themselves
-  make every legacy writer atomic with an AI commit.
-- Add a monotonic event sequence and define snapshot/event reconciliation across
-  all writers, including corrections and authoritative client event IDs.
-- Carry stronger command provenance through intervention assessments and debrief.
-- Complete frontend overlay reconciliation and test on macOS/iOS.
+Instructor event injection, steering, presets, adjustments, lifecycle changes,
+initial seeding transitions, and AI commits take the same session row lock.
+Accepted commands commit with their state changes, projection, and outbox
+events; a rolled-back mutation leaves a failed idempotency claim. Runtime
+events have a per-session monotonic sequence, including a backfill migration.
+The sequence travels in outbox payloads and `/state/` snapshots. The UUID
+outbox cursor remains the reconnect token; the sequence orders authoritative
+state within one TrainerLab session. The iOS client discards an event older
+than its snapshot or latest applied event, requests a refresh on gaps, and
+rejects an older snapshot even when the state revision is equal.
 
-The matching frontend increment rejects responses from a previous scenario or
-console lifetime and snapshots older than known lifecycle revisions. Rejected
+Intervention requests carry a stable client event ID. The backend includes it
+and the command ID in event payloads, and includes the client ID in snapshots.
+The client reconciles optimistic interventions against that ID; older servers
+without the field retain the existing type/site matching behavior. AI can
+assess a recorded intervention but cannot create a performed intervention.
+The debrief command log includes original instructor payloads, while ordered
+timeline highlights include event sequence and provenance.
+
+Deploy the backend migration before a new iOS client relies on ordered events.
+Older event payloads without a sequence continue to decode and use the
+existing revision and cursor behavior.
+
+The frontend also rejects responses from a previous scenario or console
+lifetime and snapshots older than known lifecycle revisions. Rejected
 snapshots do not falsely update the last-successful-refresh timestamp.

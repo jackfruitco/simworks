@@ -102,6 +102,7 @@ class TrainerSession(BaseSession):
     initial_directives = models.TextField(blank=True, default="")
     tick_interval_seconds = models.PositiveSmallIntegerField(default=15)
     tick_nonce = models.PositiveIntegerField(default=0)
+    event_sequence = models.PositiveBigIntegerField(default=0)
 
     run_started_at = models.DateTimeField(blank=True, null=True)
     run_paused_at = models.DateTimeField(blank=True, null=True)
@@ -207,6 +208,7 @@ class RuntimeEvent(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sequence = models.PositiveBigIntegerField(null=True, blank=True)
     session = models.ForeignKey(
         "trainerlab.TrainerSession",
         on_delete=models.CASCADE,
@@ -244,6 +246,11 @@ class RuntimeEvent(models.Model):
         indexes = [
             models.Index(fields=["simulation", "created_at"], name="idx_runtime_evt_sim"),
             models.Index(fields=["session", "created_at"], name="idx_runtime_evt_session"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "sequence"], name="uniq_tl_runtime_sequence"
+            ),
         ]
 
 

@@ -167,6 +167,7 @@ class RuntimeSnapshot(StrictBaseModel):
     control_plane_debug: dict[str, Any] = Field(default_factory=dict)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
     latest_event_cursor: str | None = None
+    latest_event_sequence: int = 0
 
 
 class ScenarioStateSummary(StrictBaseModel):
@@ -363,7 +364,7 @@ def load_trainer_engine_aggregate(
         for vital_type, model in VITAL_TYPE_MODEL_MAP.items()
     }
     runtime_events = tuple(
-        RuntimeEvent.objects.filter(session=session).order_by("-created_at", "-id")[:event_limit]
+        RuntimeEvent.objects.filter(session=session).order_by("-sequence")[:event_limit]
     )
     runtime_event_total_count = RuntimeEvent.objects.filter(session=session).count()
     latest_event_cursor = (
@@ -498,6 +499,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
             (runtime_state.get("control_plane_debug") or {}).get("last_request_profile") or {}
         ),
         latest_event_cursor=aggregate.latest_event_cursor,
+        latest_event_sequence=aggregate.session.event_sequence,
     )
     logger.debug(
         "trainerlab.runtime_snapshot.built",

@@ -346,6 +346,7 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
             "target_problem_id": obj.target_problem_id,
             "initiated_by_type": obj.initiated_by_type,
             "initiated_by_id": obj.initiated_by_id,
+            "client_event_id": obj.client_event_id,
             "status": obj.status,
             "effectiveness": obj.effectiveness,
             "target_problem_previous_status": obj.target_problem_previous_status,

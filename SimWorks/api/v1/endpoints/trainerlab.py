@@ -694,6 +694,21 @@ def apply_preset(
     if not created:
         command = _resolve_existing_command(command)
         return PresetApplyOut(command_id=str(command.id), status="accepted")
+    try:
+        return _commit_preset(instruction, session, command, user, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_preset(instruction, session, command, user, correlation_id) -> PresetApplyOut:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     # #5: Snapshot state before applying preset to compute diff afterwards
@@ -944,23 +959,24 @@ def _process_run_command(
         raise HttpError(409, command.error)
 
     try:
-        if command_type == TrainerCommand.CommandType.START:
-            session = start_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.PAUSE:
-            session = pause_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.RESUME:
-            session = resume_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.STOP:
-            session = stop_session(session=session, user=user, correlation_id=correlation_id)
-        else:
-            raise HttpError(400, "Unsupported command")
+        with transaction.atomic():
+            if command_type == TrainerCommand.CommandType.START:
+                session = start_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.PAUSE:
+                session = pause_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.RESUME:
+                session = resume_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.STOP:
+                session = stop_session(session=session, user=user, correlation_id=correlation_id)
+            else:
+                raise HttpError(400, "Unsupported command")
+
+            command.status = TrainerCommand.CommandStatus.PROCESSED
+            command.processed_at = timezone.now()
+            _save_command(command, update_fields=["status", "processed_at"])
     except ValidationError as exc:
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
-
-    command.status = TrainerCommand.CommandStatus.PROCESSED
-    command.processed_at = timezone.now()
-    _save_command(command, update_fields=["status", "processed_at"])
 
     return trainer_run_to_out(session)
 
@@ -1057,6 +1073,21 @@ def steer_prompt(
     if not created:
         command = _resolve_existing_command(command)
         return _accepted(command)
+    try:
+        return _commit_steer(session, command, user, body, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_steer(session, command, user, body, correlation_id) -> TrainerCommandAck:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     state = get_runtime_state(session)
@@ -1129,6 +1160,21 @@ def adjust_simulation(
             status="accepted",
             simulation_id=simulation.id,
         )
+    try:
+        return _commit_adjust(simulation, session, command, user, body, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_adjust(simulation, session, command, user, body, correlation_id) -> SimulationAdjustAck:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     adjustment_entry = {
@@ -1716,7 +1762,6 @@ def _commit_injected_event(
     try:
         domain_event = create_fn(session)
     except ValidationError as exc:
-        _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
 
     if getattr(domain_event, "_duplicate_client_event", False):
@@ -1777,6 +1822,7 @@ def _commit_injected_event(
             session=session,
             event_type=event_type,
             obj=domain_event,
+            extra={"command_id": str(command.id)},
             created_by=user,
             correlation_id=correlation_id,
             idempotency_key=f"{event_type}:{domain_event.id}",

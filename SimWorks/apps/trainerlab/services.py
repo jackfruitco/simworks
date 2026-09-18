@@ -540,6 +540,7 @@ def _checkpoint_active_elapsed(
     return state
 
 
+@transaction.atomic
 def emit_runtime_event(
     *,
     session: TrainerSession,
@@ -550,9 +551,18 @@ def emit_runtime_event(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RuntimeEvent:
+    # A shared session lock orders events across instructor, guard, and AI
+    # writers; the event and its outbox row commit together.
+    locked = TrainerSession.objects.select_for_update().get(pk=session.pk)
+    sequence = locked.event_sequence + 1
+    locked.event_sequence = sequence
+    locked.save(update_fields=["event_sequence"])
+    session.event_sequence = sequence
+    payload = {**payload, "event_sequence": sequence}
     runtime_event = RuntimeEvent.objects.create(
         session=session,
         simulation=session.simulation,
+        sequence=sequence,
         event_type=event_type,
         payload=payload,
         supersedes=supersedes,
@@ -573,7 +583,7 @@ def emit_runtime_event(
         correlation_id=correlation_id,
     )
     if event:
-        poke_drain_sync()
+        transaction.on_commit(poke_drain_sync)
 
     return runtime_event
 
@@ -863,6 +873,7 @@ def _set_session_phase(
     return session
 
 
+@transaction.atomic
 def fail_initial_scenario_generation(
     *,
     simulation_id: int,
@@ -872,7 +883,8 @@ def fail_initial_scenario_generation(
     correlation_id: str | None = None,
 ) -> TrainerSession | None:
     session = (
-        TrainerSession.objects.select_related("simulation")
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation")
         .filter(simulation_id=simulation_id)
         .first()
     )
@@ -926,6 +938,7 @@ def fail_initial_scenario_generation(
     return session
 
 
+@transaction.atomic
 def complete_initial_scenario_generation(
     *,
     simulation_id: int,
@@ -933,7 +946,8 @@ def complete_initial_scenario_generation(
     call_id: str | None = None,
 ) -> TrainerSession | None:
     session = (
-        TrainerSession.objects.select_related("simulation")
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation")
         .filter(simulation_id=simulation_id)
         .first()
     )
@@ -1019,11 +1033,13 @@ def enqueue_initial_scenario_generation(
         return None
 
 
+@transaction.atomic
 def retry_initial_scenario_generation(
     *,
     session: TrainerSession,
     correlation_id: str | None = None,
 ) -> str | None:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.FAILED:
         raise ValidationError("Initial generation retry is only available for failed simulations")
 
@@ -3673,7 +3689,7 @@ def stop_session(
 
 @transaction.atomic
 def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSummary:
-    events = list(session.runtime_events.order_by("created_at"))
+    events = list(session.runtime_events.order_by("sequence"))
     commands = list(session.commands.order_by("issued_at"))
     existing_summary_json = dict(
         getattr(getattr(session, "summary", None), "summary_json", {}) or {}
@@ -3693,6 +3709,7 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
         "timeline_highlights": [
             {
                 "event_type": event.event_type,
+                "event_sequence": event.sequence,
                 "created_at": _iso_or_none(event.created_at),
                 "payload": event.payload,
             }

@@ -3,6 +3,7 @@
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 import threading
+import time
 import traceback
 from unittest.mock import patch
 from uuid import uuid4
@@ -2337,6 +2338,39 @@ class TestTrainerLabDictionaries:
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
+    def test_runtime_event_sequence_orders_committed_outbox_and_snapshot(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import RuntimeEvent, TrainerSession
+
+        client = auth_client_factory(instructor_user)
+        simulation_id = _create_session(client, idempotency_key="ordered-session")["simulation_id"]
+        for index in (1, 2):
+            response = _post_injury_event(
+                client,
+                simulation_id=simulation_id,
+                idempotency_key=f"ordered-injury-{index}",
+                injury_description=f"Ordered injury {index}",
+            )
+            assert response.status_code == 200
+
+        session = TrainerSession.objects.get(simulation_id=simulation_id)
+        events = list(RuntimeEvent.objects.filter(session=session).order_by("sequence"))
+        assert [event.sequence for event in events] == list(range(1, len(events) + 1))
+        assert session.event_sequence == len(events)
+        outbox = OutboxEvent.objects.filter(
+            simulation_id=simulation_id, event_type="patient.injury.created"
+        )
+        assert sorted(event.payload["event_sequence"] for event in outbox) == [
+            event.sequence for event in events if event.event_type == "patient.injury.created"
+        ]
+        snapshot = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
+        assert snapshot["runtime_snapshot"]["latest_event_sequence"] == session.event_sequence
+
     def test_duplicate_intervention_client_event_id_replays_without_duplicate_event(
         self,
         auth_client_factory,
@@ -2344,6 +2378,7 @@ class TestTrainerLabDictionaries:
         instructor_membership,
         monkeypatch,
     ):
+        from apps.common.models import OutboxEvent
         from apps.trainerlab.models import Injury, Intervention, Problem, TrainerSession
 
         monkeypatch.setattr(
@@ -2420,6 +2455,11 @@ class TestTrainerLabDictionaries:
             if reason.get("payload", {}).get("event_kind") == "intervention"
         ]
         assert len(reasons) == 1
+        event = OutboxEvent.objects.get(
+            simulation_id=simulation_id, event_type="patient.intervention.created"
+        )
+        assert event.payload["client_event_id"] == "tap-abc-123"
+        assert event.payload["command_id"] == first.json()["command_id"]
 
     def test_duplicate_intervention_client_event_id_conflicting_payload_returns_409(
         self,
@@ -3514,12 +3554,19 @@ class TestTrainerLabIdempotencyConcurrency:
 
         def _request():
             client = auth_client_factory(instructor_user)
-            return _post_injury_event(
-                client,
-                simulation_id=simulation_id,
-                idempotency_key="injury-race",
-                injury_description="Parallel laceration",
-            )
+            from django.db import connection
+
+            for _attempt in range(20):
+                response = _post_injury_event(
+                    client,
+                    simulation_id=simulation_id,
+                    idempotency_key="injury-race",
+                    injury_description="Parallel laceration",
+                )
+                if response.status_code != 500 or connection.vendor != "sqlite":
+                    return response
+                time.sleep(0.05)
+            return response
 
         thread_one, result_one = _threaded_json_request(_request)
         thread_one.start()

@@ -624,6 +624,10 @@ class RuntimeSnapshotOut(BaseModel):
     last_runtime_completed_at: str | None = None
     control_plane_debug: ControlPlaneDebugOut = Field(default_factory=ControlPlaneDebugOut)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
+    latest_event_sequence: int = Field(
+        default=0,
+        description="Highest committed session event sequence represented by this snapshot.",
+    )
     latest_event_cursor: str | None = Field(
         default=None,
         description=(
