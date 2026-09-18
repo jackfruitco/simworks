@@ -9609,6 +9609,12 @@
             "title": "Request Metadata",
             "type": "object"
           },
+          "latest_event_sequence": {
+            "default": 0,
+            "description": "Highest committed session event sequence represented by this snapshot.",
+            "title": "Latest Event Sequence",
+            "type": "integer"
+          },
           "latest_event_cursor": {
             "anyOf": [
               {
