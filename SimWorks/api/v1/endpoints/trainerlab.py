@@ -995,15 +995,14 @@ def retry_trainer_initial_generation(
     session = _get_session_for_simulation(request, simulation_id)
 
     try:
-        call_id = retry_initial_scenario_generation(
+        retry_initial_scenario_generation(
             session=session,
             correlation_id=_get_correlation_id(request),
         )
     except ValidationError as exc:
         raise HttpError(409, str(exc)) from None
 
-    if not call_id and session.status != SessionStatus.FAILED:
-        session.refresh_from_db()
+    session.refresh_from_db()
     return 202, trainer_run_to_out(session)
 
 
