@@ -2256,14 +2256,9 @@ def trigger_vitals_tick(
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
-    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
-        raise HttpError(409, "Vitals tick is only allowed on running or paused sessions.")
-
-    call_id = enqueue_vitals_progression(session=session, correlation_id=correlation_id)
-    if call_id is None:
-        raise HttpError(503, "Could not enqueue vitals progression; please retry.")
-
-    return TrainerCommandAck(command_id=call_id, status="accepted")
+    return _process_tick_command(
+        request, session=session, correlation_id=correlation_id, vitals_only=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2341,15 +2336,52 @@ def trigger_tick(
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
-    try:
-        reason = trigger_manual_tick(session=session, correlation_id=correlation_id)
-    except Exception as exc:
-        raise HttpError(409, str(exc)) from None
-
-    return TrainerCommandAck(
-        command_id=reason.get("created_at", ""),
-        status="accepted",
+    return _process_tick_command(
+        request, session=session, correlation_id=correlation_id, vitals_only=False
     )
+
+
+def _process_tick_command(
+    request: HttpRequest,
+    *,
+    session: TrainerSession,
+    correlation_id: str | None,
+    vitals_only: bool,
+) -> TrainerCommandAck:
+    """Claim before enqueueing so a lost response cannot duplicate an AI turn."""
+    command, created = _claim_command(
+        session=session,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        idempotency_key=_get_idempotency_key(request),
+        issued_by=request.auth,
+        payload_json={"event_type": "manual_vitals_tick" if vitals_only else "manual_tick"},
+    )
+    if not created:
+        _resolve_existing_command(command)
+        return _accepted(command)
+
+    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
+        _mark_command_failed(command, "Manual ticks require a running or paused session.")
+        raise HttpError(409, command.error)
+
+    try:
+        if vitals_only:
+            if enqueue_vitals_progression(session=session, correlation_id=correlation_id) is None:
+                raise HttpError(503, "Could not enqueue vitals progression; submit a new command.")
+        else:
+            trigger_manual_tick(session=session, correlation_id=correlation_id)
+    except ValidationError as exc:
+        _mark_command_failed(command, str(exc))
+        raise HttpError(409, str(exc)) from None
+    except Exception:
+        # An uncertain enqueue must not be repeated automatically with this key.
+        _mark_command_failed(command, "Tick could not be confirmed; refresh before retrying.")
+        raise
+
+    command.status = TrainerCommand.CommandStatus.PROCESSED
+    command.processed_at = timezone.now()
+    _save_command(command, update_fields=["status", "processed_at"])
+    return _accepted(command)
 
 
 # ---------------------------------------------------------------------------

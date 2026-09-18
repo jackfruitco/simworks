@@ -3200,6 +3200,86 @@ class TestTrainerLabDictionaries:
 
 
 @pytest.mark.django_db
+class TestTrainerLabTickIdempotency:
+    @pytest.fixture
+    def tick_client(self, auth_client_factory, instructor_user, instructor_membership):
+        from apps.trainerlab.models import TrainerSession
+
+        client = auth_client_factory(instructor_user)
+        created = _create_session(client)
+        session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+        session.status = "running"
+        session.save(update_fields=["status"])
+        return client, session
+
+    @pytest.mark.parametrize(
+        "suffix,service_name",
+        [
+            ("", "trigger_manual_tick"),
+            ("vitals/", "enqueue_vitals_progression"),
+        ],
+    )
+    def test_retry_returns_same_ack_without_duplicate_work(self, tick_client, suffix, service_name):
+        from apps.trainerlab.models import TrainerCommand
+
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/{suffix}"
+        with patch(
+            f"api.v1.endpoints.trainerlab.{service_name}", return_value="call-id"
+        ) as enqueue:
+            first = client.post(url, HTTP_IDEMPOTENCY_KEY="tick-retry")
+            session.status = "completed"
+            session.save(update_fields=["status"])
+            replay = client.post(url, HTTP_IDEMPOTENCY_KEY="tick-retry")
+        assert first.status_code == replay.status_code == 200
+        assert first.json() == replay.json()
+        assert enqueue.call_count == 1
+        command = TrainerCommand.objects.get(id=first.json()["command_id"])
+        assert command.status == TrainerCommand.CommandStatus.PROCESSED
+
+    def test_key_cannot_be_reused_for_other_tick_type(self, tick_client):
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/"
+        with (
+            patch("api.v1.endpoints.trainerlab.trigger_manual_tick"),
+            patch("api.v1.endpoints.trainerlab.enqueue_vitals_progression") as vitals,
+        ):
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="shared-tick").status_code == 200
+            assert (
+                client.post(url + "vitals/", HTTP_IDEMPOTENCY_KEY="shared-tick").status_code == 409
+            )
+        vitals.assert_not_called()
+
+    @pytest.mark.parametrize("suffix", ["", "vitals/"])
+    def test_missing_key_and_terminal_session_do_not_enqueue(self, tick_client, suffix):
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/{suffix}"
+        session.status = "completed"
+        session.save(update_fields=["status"])
+        with (
+            patch("api.v1.endpoints.trainerlab.trigger_manual_tick") as runtime,
+            patch("api.v1.endpoints.trainerlab.enqueue_vitals_progression") as vitals,
+        ):
+            assert client.post(url).status_code == 400
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="terminal-tick").status_code == 409
+        runtime.assert_not_called()
+        vitals.assert_not_called()
+
+    def test_failed_enqueue_is_settled_and_not_repeated(self, tick_client):
+        from apps.trainerlab.models import TrainerCommand
+
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/vitals/"
+        with patch(
+            "api.v1.endpoints.trainerlab.enqueue_vitals_progression", return_value=None
+        ) as enqueue:
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="failed-tick").status_code == 503
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="failed-tick").status_code == 409
+        assert enqueue.call_count == 1
+        assert TrainerCommand.objects.get(idempotency_key="failed-tick").status == "failed"
+
+
+@pytest.mark.django_db
 class TestTrainerLabGuardEndpoints:
     def test_guard_state_endpoint_returns_default_active_payload_before_run(
         self,
