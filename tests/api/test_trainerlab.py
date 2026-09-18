@@ -2338,6 +2338,31 @@ class TestTrainerLabDictionaries:
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
+        from apps.trainerlab.services import _apply_intervention_effect
+
+        for effect in ("bleeding slows", "bleeding stops"):
+            _apply_intervention_effect(
+                session=trainer_session,
+                change={
+                    "intervention_event_id": intervention.id,
+                    "status": "active",
+                    "effectiveness": "effective",
+                    "clinical_effect": effect,
+                },
+                state={},
+                correlation_id=None,
+            )
+        assessments = list(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id, event_type="patient.intervention.updated"
+            ).order_by("created_at", "id")
+        )
+        assert len(assessments) == 2
+        assert [item.payload["effect"]["clinical_effect"] for item in assessments] == [
+            "bleeding slows",
+            "bleeding stops",
+        ]
+
     def test_runtime_event_sequence_orders_committed_outbox_and_snapshot(
         self,
         auth_client_factory,

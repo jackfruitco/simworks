@@ -3171,22 +3171,6 @@ def _apply_intervention_effect(
             },
         ),
         correlation_id=correlation_id,
-        idempotency_key=(
-            f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention.id}:"
-            f"{effects[str(intervention.id)]['status']}"
-        ),
-    )
-
-    # #6: Emit structured assessment event so clients get a closed-loop feedback signal
-    assessed_status = change.get("status", "active")
-    assessed_effectiveness = change.get("clinical_effect", "")
-    emit_intervention_assessed(
-        session=session,
-        intervention_id=intervention.id,
-        effectiveness=change.get("effectiveness", "unknown"),
-        clinical_effect=assessed_effectiveness,
-        status=assessed_status,
-        correlation_id=correlation_id,
     )
 
 
@@ -4125,60 +4109,6 @@ def compute_preset_diff(
 # ---------------------------------------------------------------------------
 # #6 — Intervention assessed event (called from _apply_intervention_effect)
 # ---------------------------------------------------------------------------
-
-
-def emit_intervention_assessed(
-    *,
-    session: TrainerSession,
-    intervention_id: int,
-    effectiveness: str,
-    clinical_effect: str,
-    status: str,
-    correlation_id: str | None = None,
-) -> None:
-    """Emit patient.intervention.updated when the AI evaluates an intervention."""
-    intervention = Intervention.objects.filter(
-        pk=intervention_id,
-        simulation=session.simulation,
-    ).first()
-    if intervention is None:
-        return
-
-    target_problem_id: int | None = None
-    target_problem_title: str | None = None
-    target_problem_status: str | None = None
-    if intervention.target_problem_id:
-        problem = Problem.objects.filter(pk=intervention.target_problem_id).first()
-        if problem:
-            target_problem_id = problem.pk
-            target_problem_title = problem.display_name or problem.title
-            if problem.is_resolved:
-                target_problem_status = "resolved"
-            elif problem.is_controlled:
-                target_problem_status = "controlled"
-            elif problem.is_treated:
-                target_problem_status = "treated"
-            else:
-                target_problem_status = "active"
-
-    emit_runtime_event(
-        session=session,
-        event_type=outbox_events.PATIENT_INTERVENTION_UPDATED,
-        payload={
-            "intervention_id": intervention_id,
-            "intervention_type": intervention.intervention_type or None,
-            "site_code": intervention.site_code or None,
-            "effectiveness": effectiveness,
-            "clinical_effect": clinical_effect,
-            "status": status,
-            "assessment_status": status,
-            "target_problem_id": target_problem_id,
-            "target_problem_title": target_problem_title,
-            "target_problem_status": target_problem_status,
-        },
-        correlation_id=correlation_id,
-        idempotency_key=f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention_id}:{status}",
-    )
 
 
 # Shared non-AI committer path for initial seeding/manual injections.
