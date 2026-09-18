@@ -3385,6 +3385,43 @@ class TestTrainerLabAnnotationsAPI:
 
 @pytest.mark.django_db(transaction=True)
 class TestTrainerLabIdempotencyConcurrency:
+    def test_injection_failure_rolls_back_domain_and_outbox_but_settles_command(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import Injury, TrainerCommand
+
+        client = auth_client_factory(instructor_user)
+        simulation_id = _create_session(client, idempotency_key="injection-rollback-session")[
+            "simulation_id"
+        ]
+
+        def fail_projection(**kwargs):
+            raise RuntimeError("projection unavailable")
+
+        monkeypatch.setattr(
+            "api.v1.endpoints.trainerlab.commit_non_ai_mutation_side_effects",
+            fail_projection,
+        )
+        response = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="injection-rollback-injury",
+            injury_description="Rolled-back injury",
+        )
+        assert response.status_code == 500
+
+        assert not Injury.objects.filter(injury_description="Rolled-back injury").exists()
+        assert not OutboxEvent.objects.filter(
+            simulation_id=simulation_id, event_type="patient.injury.created"
+        ).exists()
+        command = TrainerCommand.objects.get(idempotency_key="injection-rollback-injury")
+        assert command.status == TrainerCommand.CommandStatus.FAILED
+
     def test_parallel_duplicate_session_create_returns_single_session(
         self,
         auth_client_factory,
