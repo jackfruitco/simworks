@@ -8,7 +8,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, OperationalError
+from django.db import IntegrityError, OperationalError, transaction
 from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
@@ -1672,6 +1672,40 @@ def _inject_event_core(
     if not created:
         command = _resolve_existing_command(command)
         return _accepted(command)
+    try:
+        return _commit_injected_event(
+            session=session,
+            command=command,
+            user=user,
+            payload_json=payload_json,
+            create_fn=create_fn,
+            correlation_id=correlation_id,
+        )
+    except (HttpError, ValidationError) as exc:
+        # The domain transaction rolls back, but the failed idempotency claim
+        # remains durable and cannot be replayed into a second intervention.
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_injected_event(
+    *,
+    session: TrainerSession,
+    command: TrainerCommand,
+    user,
+    payload_json: dict,
+    create_fn: Callable[[TrainerSession], Any],
+    correlation_id: str | None,
+) -> TrainerCommandAck:
+    # The same row is locked by AI commits. Domain rows, outbox entries,
+    # projection revision, and pending reasons now commit as one unit.
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     event_kind = payload_json.get("event_kind")
     _reject_terminal_mutation(
         command=command,

@@ -3480,9 +3480,19 @@ def apply_debrief_output(
         return summary
 
 
+def _lock_live_session(session: TrainerSession) -> TrainerSession:
+    return (
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation", "simulation__account")
+        .get(pk=session.pk)
+    )
+
+
+@transaction.atomic
 def start_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.SEEDED:
         raise ValidationError("Session can only be started from seeded state")
 
@@ -3543,9 +3553,11 @@ def start_session(
     return session
 
 
+@transaction.atomic
 def pause_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.RUNNING:
         raise ValidationError("Session can only be paused from running state")
 
@@ -3574,9 +3586,11 @@ def pause_session(
     return session
 
 
+@transaction.atomic
 def resume_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.PAUSED:
         raise ValidationError("Session can only be resumed from paused state")
 
@@ -3618,9 +3632,11 @@ def resume_session(
     return session
 
 
+@transaction.atomic
 def stop_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED, SessionStatus.SEEDED}:
         raise ValidationError("Session is already terminal")
 
@@ -3837,6 +3853,7 @@ def enqueue_vitals_progression(
 # ---------------------------------------------------------------------------
 
 
+@transaction.atomic
 def update_problem_status(
     *,
     session: TrainerSession,
@@ -3851,6 +3868,7 @@ def update_problem_status(
     Creates a superseding event record (immutable event log) and deactivates the old one
     so the full problem history is preserved.
     """
+    session = _lock_live_session(session)
     original: Problem | None = (
         Problem.objects.select_related("cause_injury", "cause_illness")
         .filter(
@@ -4200,6 +4218,7 @@ def commit_non_ai_mutation_side_effects(
 # ---------------------------------------------------------------------------
 
 
+@transaction.atomic
 def update_scenario_brief(
     *,
     session: TrainerSession,
@@ -4212,6 +4231,7 @@ def update_scenario_brief(
 
     Creates a new superseding ScenarioBrief event and refreshes derived views.
     """
+    session = _lock_live_session(session)
     existing = (
         ScenarioBrief.objects.filter(simulation=session.simulation, is_active=True)
         .order_by("-timestamp", "-id")
