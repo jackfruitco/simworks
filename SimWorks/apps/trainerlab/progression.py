@@ -120,11 +120,26 @@ def invalidate_progression(session, state):
     state["scenario_decisions"] = []
 
 
+def _refresh_patient_projection(session, correlation_id=None):
+    from .services import (
+        _current_patient_status_payload,
+        _persist_patient_status_state,
+        recompute_active_recommendations,
+    )
+
+    recompute_active_recommendations(session=session, correlation_id=correlation_id)
+    _persist_patient_status_state(
+        session=session, base_status=_current_patient_status_payload(session)
+    )
+
+
 @transaction.atomic
 def advance_progression(*, session_id, tick_nonce):
     from .services import (
+        _apply_progression_catalogs,
         _apply_vital_change,
         _finalize_runtime_views,
+        append_pending_runtime_reason,
         get_active_elapsed_seconds,
         get_runtime_state,
     )
@@ -135,6 +150,17 @@ def advance_progression(*, session_id, tick_nonce):
     if session.status != SessionStatus.RUNNING or session.tick_nonce != tick_nonce:
         return
     state = get_runtime_state(session)
+    if session.scenario_spec_json.get("authorized_progression_rules"):
+        previous_sequence = session.event_sequence
+        _apply_progression_catalogs(session=session, correlation_id=None)
+        if session.event_sequence != previous_sequence:
+            # Evaluate scenario rules before planning, so a new clinical fact
+            # cannot coexist with a trajectory computed from the old patient.
+            append_pending_runtime_reason(session=session, reason_kind="scenario_rule_applied")
+            session.refresh_from_db()
+            _refresh_patient_projection(session)
+            _finalize_runtime_views(session=session, state=get_runtime_state(session))
+            return
     if state.get("runtime_processing"):
         return  # Preserve the generation's observed revision until it settles.
     plan = ProgressionPlan.objects.filter(session=session, status="active").first()
@@ -193,9 +219,21 @@ def resolve_decision(*, session_id, decision_id, approved, user, correlation_id=
     ):
         raise ValidationError("The scenario changed. Refresh before deciding.")
     if approved:
+        from .services import _resolve_active_cause
+
+        if (
+            _resolve_active_cause(
+                session=session,
+                cause_kind=decision.proposal["cause_kind"],
+                cause_id=decision.proposal["cause_id"],
+            )
+            is None
+        ):
+            raise ValidationError("The branch cause is no longer active. Refresh the scenario.")
         _apply_problem_observation(
             session=session, observation=decision.proposal, correlation_id=correlation_id
         )
+        _refresh_patient_projection(session, correlation_id)
     decision.status = desired
     decision.decided_by = user
     decision.decided_at = timezone.now()

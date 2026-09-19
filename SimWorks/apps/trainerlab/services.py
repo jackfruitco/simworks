@@ -3438,8 +3438,6 @@ def apply_runtime_turn_output(
             )
 
         project_decisions(session, state)
-        if session.status == SessionStatus.RUNNING:
-            _apply_progression_catalogs(session=session, correlation_id=correlation_id)
         # Deterministic step 3: recommendation worker owns recommendation output.
         recompute_active_recommendations(
             session=session,
@@ -3762,6 +3760,9 @@ def stop_session(
     previous_status = session.status
     terminal_at = timezone.now()
     state = _freeze_active_elapsed(session, state=get_runtime_state(session), now=terminal_at)
+    from .progression import invalidate_progression
+
+    invalidate_progression(session, state)
     state, discarded_reasons = discard_runtime_work(state, discarded_at=terminal_at)
 
     session.status = SessionStatus.COMPLETED

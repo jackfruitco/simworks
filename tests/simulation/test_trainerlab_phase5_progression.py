@@ -204,3 +204,31 @@ def test_respiratory_illness_does_not_automatically_become_tension_pneumothorax(
     with patch("apps.trainerlab.services.get_active_elapsed_seconds", return_value=900):
         _apply_progression_catalogs(session=session, correlation_id=None)
     assert not Problem.objects.filter(kind="tension_pneumothorax").exists()
+
+
+def test_scheduled_rule_invalidates_old_plan_before_physiology(session):
+    from apps.trainerlab.models import PatientStatusState
+
+    installed = plan(session)
+    cause = Illness.objects.create(simulation=session.simulation, name="Obstruction")
+    Problem.objects.create(
+        simulation=session.simulation,
+        cause_illness=cause,
+        problem_kind="illness",
+        kind="airway_obstruction",
+        title="Obstruction",
+        march_category="A",
+        onset_elapsed_seconds=0,
+    )
+    session.scenario_spec_json = {
+        "authorized_progression_rules": ["progression.airway_obstruction_to_hypoxia"]
+    }
+    session.save(update_fields=["scenario_spec_json"])
+    advance(session, 60)
+    installed.refresh_from_db()
+    assert installed.status == "invalidated"
+    assert HeartRate.objects.count() == 1
+    assert Problem.objects.filter(kind="hypoxia").exists()
+    assert PatientStatusState.objects.get(
+        simulation=session.simulation, is_active=True
+    ).respiratory_distress
