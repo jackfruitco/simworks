@@ -8155,6 +8155,149 @@
         "title": "ControlPlaneDebugOut",
         "type": "object"
       },
+      "DashboardAttentionItemOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "severity"
+        ],
+        "title": "DashboardAttentionItemOut",
+        "type": "object"
+      },
+      "DashboardCapabilitiesOut": {
+        "properties": {
+          "lifecycle_actions": {
+            "items": {
+              "enum": [
+                "start",
+                "pause",
+                "resume",
+                "stop"
+              ],
+              "type": "string"
+            },
+            "title": "Lifecycle Actions",
+            "type": "array"
+          },
+          "can_record_learner_action": {
+            "default": false,
+            "title": "Can Record Learner Action",
+            "type": "boolean"
+          },
+          "can_inject_event": {
+            "default": false,
+            "title": "Can Inject Event",
+            "type": "boolean"
+          },
+          "can_override_patient_state": {
+            "default": false,
+            "title": "Can Override Patient State",
+            "type": "boolean"
+          },
+          "can_steer": {
+            "default": false,
+            "title": "Can Steer",
+            "type": "boolean"
+          },
+          "can_annotate": {
+            "default": false,
+            "title": "Can Annotate",
+            "type": "boolean"
+          },
+          "can_tick_ai": {
+            "default": false,
+            "title": "Can Tick Ai",
+            "type": "boolean"
+          },
+          "can_tick_vitals": {
+            "default": false,
+            "title": "Can Tick Vitals",
+            "type": "boolean"
+          },
+          "can_view_debrief": {
+            "default": false,
+            "title": "Can View Debrief",
+            "type": "boolean"
+          }
+        },
+        "title": "DashboardCapabilitiesOut",
+        "type": "object"
+      },
+      "DashboardPresentationOut": {
+        "properties": {
+          "patient_summary": {
+            "default": "",
+            "title": "Patient Summary",
+            "type": "string"
+          },
+          "primary_cue": {
+            "default": "",
+            "title": "Primary Cue",
+            "type": "string"
+          },
+          "cue_rationale": {
+            "default": "",
+            "title": "Cue Rationale",
+            "type": "string"
+          },
+          "upcoming_changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upcoming Changes",
+            "type": "array"
+          },
+          "monitoring_focus": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Monitoring Focus",
+            "type": "array"
+          },
+          "attention_items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardAttentionItemOut"
+            },
+            "title": "Attention Items",
+            "type": "array"
+          },
+          "held_vital_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Vital Types",
+            "type": "array"
+          },
+          "capabilities": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardCapabilitiesOut"
+              }
+            ]
+          }
+        },
+        "title": "DashboardPresentationOut",
+        "type": "object"
+      },
       "EventTimelineEntryOut": {
         "properties": {
           "event_id": {
@@ -9493,6 +9636,18 @@
             "title": "Active Elapsed Seconds",
             "type": "integer"
           },
+          "clock_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Observed At"
+          },
           "tick_count": {
             "default": 0,
             "title": "Tick Count",
@@ -9959,6 +10114,9 @@
           "runtime_snapshot": {
             "$ref": "#/components/schemas/RuntimeSnapshotOut"
           },
+          "presentation": {
+            "$ref": "#/components/schemas/DashboardPresentationOut"
+          },
           "event_timeline": {
             "$ref": "#/components/schemas/EventTimelineOut"
           },
@@ -9972,6 +10130,7 @@
           "status",
           "scenario_snapshot",
           "runtime_snapshot",
+          "presentation",
           "event_timeline",
           "metadata"
         ],

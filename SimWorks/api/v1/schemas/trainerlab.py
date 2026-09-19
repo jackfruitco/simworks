@@ -609,6 +609,7 @@ class RuntimeSnapshotOut(BaseModel):
     phase: str = ""
     state_revision: int = 0
     active_elapsed_seconds: int = 0
+    clock_observed_at: datetime | None = None
     tick_count: int = 0
     tick_interval_seconds: int = 15
     next_tick_at: datetime | None = None
@@ -639,6 +640,37 @@ class RuntimeSnapshotOut(BaseModel):
     )
 
 
+class DashboardAttentionItemOut(BaseModel):
+    code: str
+    title: str
+    severity: Literal["critical", "warning", "info"]
+
+
+class DashboardCapabilitiesOut(BaseModel):
+    lifecycle_actions: list[Literal["start", "pause", "resume", "stop"]] = Field(
+        default_factory=list
+    )
+    can_record_learner_action: bool = False
+    can_inject_event: bool = False
+    can_override_patient_state: bool = False
+    can_steer: bool = False
+    can_annotate: bool = False
+    can_tick_ai: bool = False
+    can_tick_vitals: bool = False
+    can_view_debrief: bool = False
+
+
+class DashboardPresentationOut(BaseModel):
+    patient_summary: str = ""
+    primary_cue: str = ""
+    cue_rationale: str = ""
+    upcoming_changes: list[str] = Field(default_factory=list)
+    monitoring_focus: list[str] = Field(default_factory=list)
+    attention_items: list[DashboardAttentionItemOut] = Field(default_factory=list)
+    held_vital_types: list[str] = Field(default_factory=list)
+    capabilities: DashboardCapabilitiesOut = Field(default_factory=DashboardCapabilitiesOut)
+
+
 class TrainerRestMetadataOut(BaseModel):
     builder_version: str = "v1"
     schema_version: str = "v1"
@@ -652,6 +684,7 @@ class TrainerRestViewModelOut(BaseModel):
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_snapshot: ScenarioSnapshotOut
     runtime_snapshot: RuntimeSnapshotOut
+    presentation: DashboardPresentationOut
     event_timeline: EventTimelineOut
     metadata: TrainerRestMetadataOut
 
