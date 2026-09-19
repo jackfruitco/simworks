@@ -265,6 +265,7 @@ def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
     return enrich_trainer_payload(
         {
             "problem_id": problem.id,
+            "onset_elapsed_seconds": getattr(problem, "onset_elapsed_seconds", None),
             "active": problem.is_active,
             "kind": problem.kind,
             "code": problem.code,

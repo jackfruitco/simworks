@@ -565,6 +565,12 @@ class Problem(BaseDomainEvent):
     single direct cause to keep persistence and adjudication deterministic.
     """
 
+    onset_elapsed_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Simulation clock time at first onset; carried through superseding records.",
+    )
+
     class MARCHCategory(models.TextChoices):
         M = "M", _("Massive Hemorrhage")
         A = "A", _("Airway")

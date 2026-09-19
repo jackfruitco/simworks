@@ -122,9 +122,12 @@ from apps.trainerlab.services import (
     emit_domain_runtime_event,
     emit_runtime_event,
     enqueue_vitals_progression,
+    get_active_elapsed_seconds,
     get_or_create_command,
     get_runtime_state,
     get_session_annotations,
+    legacy_problem_onset,
+    override_patient_avpu,
     pause_session,
     refresh_completed_run_review,
     resume_session,
@@ -1189,6 +1192,10 @@ def _commit_adjust(simulation, session, command, user, body, correlation_id) -> 
         "metadata": body.metadata,
         "issued_at": timezone.now().isoformat(),
     }
+    if body.target == "avpu":
+        if body.avpu_state is None:
+            raise HttpError(400, "An AVPU state is required for this adjustment")
+        override_patient_avpu(session=session, avpu=body.avpu_state, correlation_id=correlation_id)
     state = get_runtime_state(session)
     adjustments = list(state.get("adjustments", []))
     adjustments.append(adjustment_entry)
@@ -1354,6 +1361,15 @@ def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
+        onset_elapsed_seconds=(
+            old_problem.onset_elapsed_seconds
+            if old_problem is not None and old_problem.onset_elapsed_seconds is not None
+            else (
+                legacy_problem_onset(session, old_problem)
+                if old_problem is not None
+                else get_active_elapsed_seconds(session)
+            )
+        ),
         cause_injury=cause_injury,
         cause_illness=cause_illness,
         parent_problem=parent_problem,
@@ -1650,6 +1666,14 @@ _VITAL_MODEL_MAP = {
 
 def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
     vital_model = _VITAL_MODEL_MAP.get(body.vital_type)
+    if body.min_value > body.max_value:
+        raise HttpError(400, "Vital minimum must not exceed maximum")
+    if body.vital_type == "blood_pressure" and (
+        body.min_value_diastolic is None
+        or body.max_value_diastolic is None
+        or body.min_value_diastolic > body.max_value_diastolic
+    ):
+        raise HttpError(400, "Blood pressure requires an ordered diastolic range")
     supersedes = (
         vital_model.objects.filter(
             pk=body.supersedes_event_id, simulation_id=session.simulation_id
@@ -1657,6 +1681,22 @@ def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
         if body.supersedes_event_id and vital_model
         else None
     )
+    if supersedes is None and vital_model is not None:
+        supersedes = (
+            vital_model.objects.filter(simulation_id=session.simulation_id, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+    if body.supersedes_event_id and (supersedes is None or not supersedes.is_active):
+        raise HttpError(409, "Vital override is stale; refresh the patient state")
+    if body.supersedes_event_id and vital_model is not None:
+        current = (
+            vital_model.objects.filter(simulation_id=session.simulation_id, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+        if current is None or current.pk != supersedes.pk:
+            raise HttpError(409, "Vital override has changed; refresh the patient state")
     if supersedes is not None and supersedes.is_active:
         supersedes.is_active = False
         supersedes.save(update_fields=["is_active"])
@@ -2439,8 +2479,8 @@ def _process_tick_command(
         _resolve_existing_command(command)
         return _accepted(command)
 
-    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
-        _mark_command_failed(command, "Manual ticks require a running or paused session.")
+    if session.status != SessionStatus.RUNNING:
+        _mark_command_failed(command, "Resume the session before advancing the scenario.")
         raise HttpError(409, command.error)
 
     try:

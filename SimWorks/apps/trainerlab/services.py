@@ -360,6 +360,21 @@ def _persist_patient_status_state(
     return patient_status
 
 
+def override_patient_avpu(
+    *, session: TrainerSession, avpu: str, correlation_id: str | None = None
+) -> PatientStatusState:
+    """Apply an instructor observation now, before asking AI to reason about it."""
+    status = _persist_patient_status_state(
+        session=session,
+        base_status={**_current_patient_status_payload(session), "avpu": avpu},
+        source=EventSource.INSTRUCTOR,
+    )
+    _finalize_runtime_views(
+        session=session, state=get_runtime_state(session), correlation_id=correlation_id
+    )
+    return status
+
+
 def _persist_runtime_state_and_load_aggregate(
     *,
     session: TrainerSession,
@@ -1426,6 +1441,13 @@ def schedule_runtime_turn_once(
         now = timezone.now()
         pending = list(state.get("pending_runtime_reasons") or [])
 
+        if session.status == SessionStatus.PAUSED:
+            # Keep instructor inputs for resume without spending an AI call while paused.
+            state["scheduled_runtime_task_run_at"] = None
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            return False
+
         if not pending:
             state["pending_since"] = None
             state["scheduled_runtime_task_run_at"] = None
@@ -1826,6 +1848,8 @@ def _ai_output_rejection(session, state, context, worker: str) -> str | None:
         or expected["status"] != session.status
     ):
         return "state_changed_during_generation"
+    if session.status == SessionStatus.PAUSED:
+        return "session_paused"
     return None
 
 
@@ -1837,7 +1861,8 @@ def _reject_ai_output(session, state, context, worker: str, reason: str):
             clear_runtime_processing(
                 session_id=session.id,
                 error=reason,
-                requeue_current_batch=reason == "state_changed_during_generation",
+                requeue_current_batch=reason
+                in {"state_changed_during_generation", "session_paused"},
                 expected_generation=context["ai_generation"],
             )
             session.refresh_from_db()
@@ -1868,6 +1893,8 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        if session.status == SessionStatus.PAUSED:
+            return None
         if session.status in TERMINAL_SESSION_STATUSES:
             current = list(state.get("currently_processing_reasons") or [])
             pending = list(state.get("pending_runtime_reasons") or [])
@@ -2280,8 +2307,20 @@ def _next_better_severity(value: str | None) -> str:
     return Problem.Severity.LOW
 
 
-def _problem_age_seconds(problem: Problem) -> int:
-    return max(0, int((timezone.now() - problem.timestamp).total_seconds()))
+def _problem_age_seconds(session: TrainerSession, problem: Problem) -> int:
+    if problem.onset_elapsed_seconds is not None:
+        return max(0, get_active_elapsed_seconds(session) - problem.onset_elapsed_seconds)
+    return max(0, get_active_elapsed_seconds(session) - legacy_problem_onset(session, problem))
+
+
+def legacy_problem_onset(session: TrainerSession, problem: Problem) -> int:
+    # Historical rows retain their first onset, even after supersession.
+    origin = problem
+    while origin.supersedes_id:
+        origin = origin.supersedes
+    if session.run_started_at is None:
+        return 0
+    return max(0, int((origin.timestamp - session.run_started_at).total_seconds()))
 
 
 def _resolve_active_cause(
@@ -2350,6 +2389,15 @@ def _create_problem_domain_event(
         simulation=session.simulation,
         source=EventSource.SYSTEM,
         supersedes=supersedes,
+        onset_elapsed_seconds=(
+            supersedes.onset_elapsed_seconds
+            if supersedes is not None and supersedes.onset_elapsed_seconds is not None
+            else (
+                legacy_problem_onset(session, supersedes)
+                if supersedes is not None
+                else get_active_elapsed_seconds(session)
+            )
+        ),
         cause_injury=cause if isinstance(cause, Injury) else None,
         cause_illness=cause if isinstance(cause, Illness) else None,
         parent_problem=parent_problem,
@@ -2590,7 +2638,7 @@ def _apply_progression_catalogs(
     for problem in problems:
         if not problem.is_active:
             continue
-        age_seconds = _problem_age_seconds(problem)
+        age_seconds = _problem_age_seconds(session, problem)
         if problem.kind == "hemorrhage" and problem.status == Problem.Status.ACTIVE:
             if (
                 _severity_rank(problem.severity) >= _severity_rank(Problem.Severity.HIGH)
@@ -3052,6 +3100,8 @@ def _apply_vital_change(
         .order_by("-timestamp", "-id")
         .first()
     )
+    if existing is not None and existing.lock_value:
+        return
     _deactivate_event(existing)
 
     common = {
@@ -3060,7 +3110,8 @@ def _apply_vital_change(
         "supersedes": existing,
         "min_value": change.get("min_value"),
         "max_value": change.get("max_value"),
-        "lock_value": bool(change.get("lock_value", False)),
+        # Only an authoritative instructor event may hold physiology.
+        "lock_value": False,
     }
     if model is BloodPressure:
         created = model.objects.create(
@@ -3318,10 +3369,11 @@ def apply_runtime_turn_output(
                 {"domain": "intervention", "kind": "intervention_assessment"}
             )
 
-        _apply_progression_catalogs(
-            session=session,
-            correlation_id=correlation_id,
-        )
+        if session.status == SessionStatus.RUNNING:
+            _apply_progression_catalogs(
+                session=session,
+                correlation_id=correlation_id,
+            )
         # Deterministic step 3: recommendation worker owns recommendation output.
         recompute_active_recommendations(
             session=session,
@@ -3564,6 +3616,7 @@ def pause_session(
     previous_status = session.status
     now = timezone.now()
     state = _freeze_active_elapsed(session, state=get_runtime_state(session), now=now)
+    state["scheduled_runtime_task_run_at"] = None
 
     session.status = SessionStatus.PAUSED
     session.run_paused_at = now
@@ -3822,6 +3875,8 @@ def enqueue_vitals_progression(
             .select_related("simulation")
             .get(pk=session.pk)
         )
+        if session.status != SessionStatus.RUNNING:
+            return None
         state = get_runtime_state(session)
         generation = _capture_ai_generation(session, state, "vitals")
         session.runtime_state_json = state
@@ -3900,6 +3955,11 @@ def update_problem_status(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=original,
+        onset_elapsed_seconds=(
+            original.onset_elapsed_seconds
+            if original.onset_elapsed_seconds is not None
+            else legacy_problem_onset(session, original)
+        ),
         cause_injury=original.cause_injury,
         cause_illness=original.cause_illness,
         problem_kind=original.problem_kind,
@@ -3950,8 +4010,8 @@ def trigger_manual_tick(
 
     Returns the queued reason dict.
     """
-    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
-        raise ValidationError("Manual tick is only allowed on running or paused sessions.")
+    if session.status != SessionStatus.RUNNING:
+        raise ValidationError("Resume the session before advancing the scenario.")
 
     reason = append_pending_runtime_reason(
         session=session,

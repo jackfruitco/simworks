@@ -151,6 +151,7 @@ class RuntimeSnapshot(StrictBaseModel):
     phase: str = ""
     state_revision: int = 0
     active_elapsed_seconds: int = 0
+    clock_observed_at: datetime | None = None
     tick_count: int = 0
     tick_interval_seconds: int = 15
     next_tick_at: datetime | None = None
@@ -470,7 +471,11 @@ def build_scenario_snapshot(aggregate: TrainerEngineAggregate) -> ScenarioSnapsh
 def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot:
     runtime_state = aggregate.runtime_state
     next_tick_at = None
-    if aggregate.session.last_ai_tick_at is not None and aggregate.session.tick_interval_seconds:
+    if (
+        aggregate.session.status == SessionStatus.RUNNING
+        and aggregate.session.last_ai_tick_at is not None
+        and aggregate.session.tick_interval_seconds
+    ):
         next_tick_at = aggregate.session.last_ai_tick_at + timedelta(
             seconds=aggregate.session.tick_interval_seconds
         )
@@ -483,6 +488,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
             session=aggregate.session,
             runtime_state=runtime_state,
         ),
+        clock_observed_at=timezone.now().replace(microsecond=0),
         tick_count=int(runtime_state.get("tick_count", 0) or 0),
         tick_interval_seconds=aggregate.session.tick_interval_seconds,
         next_tick_at=next_tick_at,
