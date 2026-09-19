@@ -2024,6 +2024,62 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/decisions/{decision_id}/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_decide_scenario_branch",
+        "summary": "Decide Scenario Branch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "decision_id",
+            "schema": {
+              "title": "Decision Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_trainerlab_access_me",
@@ -7330,6 +7386,37 @@
         "title": "LabAccessOut",
         "type": "object"
       },
+      "TrainerCommandAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id"
+        ],
+        "title": "TrainerCommandAck",
+        "type": "object"
+      },
+      "ScenarioDecisionIn": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "title": "ScenarioDecisionIn",
+        "type": "object"
+      },
       "DictionaryItemOut": {
         "properties": {
           "code": {
@@ -8293,6 +8380,19 @@
                 "$ref": "#/components/schemas/DashboardCapabilitiesOut"
               }
             ]
+          },
+          "progression": {
+            "additionalProperties": true,
+            "title": "Progression",
+            "type": "object"
+          },
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
           }
         },
         "title": "DashboardPresentationOut",
@@ -10301,24 +10401,6 @@
           "message"
         ],
         "title": "GuardDenialDetail",
-        "type": "object"
-      },
-      "TrainerCommandAck": {
-        "properties": {
-          "command_id": {
-            "title": "Command Id",
-            "type": "string"
-          },
-          "status": {
-            "default": "accepted",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "command_id"
-        ],
-        "title": "TrainerCommandAck",
         "type": "object"
       },
       "SteerPromptIn": {

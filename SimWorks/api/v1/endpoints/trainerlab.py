@@ -40,6 +40,7 @@ from api.v1.schemas.trainerlab import (
     RunSummaryOut,
     ScenarioBriefDetailOut,
     ScenarioBriefUpdateIn,
+    ScenarioDecisionIn,
     ScenarioInstructionApplyIn,
     ScenarioInstructionCreateIn,
     ScenarioInstructionOut,
@@ -146,6 +147,44 @@ IDEMPOTENCY_POLL_INTERVAL_SECONDS = 0.01
 IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 5.0
 IDEMPOTENCY_COMMAND_WAIT_TIMEOUT_SECONDS = 15.0
 TRAINERLAB_HUB_EVENT_TYPES = (outbox_events.SIMULATION_STATUS_UPDATED,)
+
+
+@router.post("/simulations/{simulation_id}/decisions/{decision_id}/", response=TrainerCommandAck)
+@api_rate_limit
+def decide_scenario_branch(
+    request: HttpRequest, simulation_id: int, decision_id: int, body: ScenarioDecisionIn
+):
+    from apps.trainerlab.progression import resolve_decision
+
+    _require_lab_access(request)
+    session = _get_session_for_simulation(request, simulation_id, request.auth)
+    with transaction.atomic():
+        # Serialize command claim and branch mutation with all other scenario writers.
+        session = TrainerSession.objects.select_for_update().get(pk=session.pk)
+        command, created = _claim_command(
+            session=session,
+            command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
+            idempotency_key=_get_idempotency_key(request),
+            issued_by=request.auth,
+            payload_json={"decision_id": decision_id, "approved": body.approved},
+        )
+        if not created:
+            _resolve_existing_command(command)
+            return _accepted(command)
+        try:
+            resolve_decision(
+                session_id=session.pk,
+                decision_id=decision_id,
+                approved=body.approved,
+                user=request.auth,
+                correlation_id=_get_correlation_id(request),
+            )
+        except ValidationError as exc:
+            raise HttpError(409, str(exc)) from None
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        _save_command(command, update_fields=["status", "processed_at"])
+    return _accepted(command)
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:

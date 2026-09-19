@@ -254,6 +254,53 @@ class RuntimeEvent(models.Model):
         ]
 
 
+class ProgressionPlan(models.Model):
+    """Versioned, finite-horizon physiology proposal; execution belongs to the engine."""
+
+    session = models.ForeignKey(
+        TrainerSession, on_delete=models.CASCADE, related_name="progression_plans"
+    )
+    version = models.PositiveIntegerField()
+    input_revision = models.PositiveIntegerField(default=0)
+    starts_at = models.PositiveIntegerField()
+    ends_at = models.PositiveIntegerField()
+    status = models.CharField(max_length=24, default="active")
+    baseline = models.JSONField(default=list)
+    targets = models.JSONField(default=list)
+    portrayal = models.JSONField(default=dict)
+    source_call_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["session", "version"], name="uniq_tl_plan_version"),
+            models.UniqueConstraint(
+                fields=["session"], condition=models.Q(status="active"), name="uniq_tl_active_plan"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ends_at__gt=models.F("starts_at")),
+                name="tl_plan_positive_horizon",
+            ),
+        ]
+
+
+class ScenarioDecision(models.Model):
+    """A proposed branch is not a clinical fact until the instructor authorizes it."""
+
+    session = models.ForeignKey(
+        TrainerSession, on_delete=models.CASCADE, related_name="scenario_decisions"
+    )
+    input_revision = models.PositiveIntegerField(default=0)
+    proposal = models.JSONField(default=dict)
+    status = models.CharField(max_length=24, default="pending")
+    source_call_id = models.CharField(max_length=100, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+
 class TrainerRunSummary(models.Model):
     session = models.OneToOneField(
         "trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="summary"

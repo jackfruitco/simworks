@@ -27,6 +27,47 @@ class FakeClock:
         self.current += seconds
 
 
+@pytest.mark.django_db
+def test_scenario_decision_endpoint_is_authorized_and_idempotent(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user
+):
+    from apps.trainerlab.models import Illness, Problem, TrainerSession
+    from apps.trainerlab.progression import propose_branch
+    from apps.trainerlab.services import get_runtime_state
+
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="branch-session")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    session.status = "running"
+    session.save(update_fields=["status"])
+    cause = Illness.objects.create(simulation=session.simulation, name="Respiratory illness")
+    decision = propose_branch(
+        session=session,
+        state=get_runtime_state(session),
+        source_call_id="branch-test",
+        observation={
+            "observation": "new_problem",
+            "cause_kind": "illness",
+            "cause_id": cause.pk,
+            "problem_kind": "hypoxia",
+            "title": "Hypoxia",
+        },
+    )
+    url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/decisions/{decision.pk}/"
+    kwargs = {
+        "data": {"approved": True},
+        "content_type": "application/json",
+        "HTTP_IDEMPOTENCY_KEY": "branch-confirm",
+    }
+    assert auth_client_factory(non_member_user).post(url, **kwargs).status_code == 403
+    first = client.post(url, **kwargs)
+    assert first.status_code == 200
+    assert client.post(url, **kwargs).json() == first.json()
+    assert Problem.objects.filter(simulation=session.simulation, kind="hypoxia").count() == 1
+    kwargs["data"] = {"approved": False}
+    assert client.post(url, **kwargs).status_code == 409
+
+
 @pytest.fixture
 def user_role(db):
     from apps.accounts.models import UserRole
@@ -2910,21 +2951,24 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id,
             is_active=True,
         ).latest("timestamp")
-        assert patient_status.respiratory_distress is True
-        assert patient_status.impending_pneumothorax is True
-        assert Problem.objects.filter(
+        assert patient_status.respiratory_distress is False
+        assert (
+            patient_status.impending_pneumothorax is True
+        )  # Existing open chest wound, not the proposed branch.
+        assert not Problem.objects.filter(
             simulation_id=simulation_id,
             kind="respiratory_distress",
             is_active=True,
         ).exists()
-        assert AssessmentFinding.objects.filter(
+        assert not AssessmentFinding.objects.filter(
             simulation_id=simulation_id,
             kind="diminished_breath_sounds",
             is_active=True,
         ).exists()
         state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
-        assert state["scenario_snapshot"]["patient_status"]["respiratory_distress"] is True
+        assert state["scenario_snapshot"]["patient_status"]["respiratory_distress"] is False
         assert state["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
+        assert state["presentation"]["decisions"][0]["title"] == "Respiratory distress"
         assert state["scenario_snapshot"]["recommended_interventions"]
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,

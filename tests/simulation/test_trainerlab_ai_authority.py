@@ -3,7 +3,7 @@
 import pytest
 
 from apps.accounts.models import UserRole
-from apps.trainerlab.models import HeartRate, RuntimeEvent
+from apps.trainerlab.models import HeartRate, ProgressionPlan, RuntimeEvent
 from apps.trainerlab.services import (
     _capture_ai_generation,
     _mark_runtime_service_call_active,
@@ -57,11 +57,18 @@ def apply(session, context, worker="runtime"):
 @pytest.mark.django_db
 @pytest.mark.parametrize("worker", ["runtime", "vitals"])
 def test_duplicate_completion_cannot_apply_twice(session, worker):
+    HeartRate.objects.create(simulation=session.simulation, min_value=70, max_value=75)
     context = claim(session, worker)
     apply(session, context, worker)
     assert HeartRate.objects.filter(simulation=session.simulation).count() == 1
+    assert ProgressionPlan.objects.filter(session=session).count() == (
+        1 if worker == "runtime" else 0
+    )
     apply(session, context, worker)
     assert HeartRate.objects.filter(simulation=session.simulation).count() == 1
+    assert ProgressionPlan.objects.filter(session=session).count() == (
+        1 if worker == "runtime" else 0
+    )
 
 
 @pytest.mark.django_db

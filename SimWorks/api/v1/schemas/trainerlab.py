@@ -669,6 +669,12 @@ class DashboardPresentationOut(BaseModel):
     attention_items: list[DashboardAttentionItemOut] = Field(default_factory=list)
     held_vital_types: list[str] = Field(default_factory=list)
     capabilities: DashboardCapabilitiesOut = Field(default_factory=DashboardCapabilitiesOut)
+    progression: dict[str, Any] = Field(default_factory=dict)
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ScenarioDecisionIn(BaseModel):
+    approved: bool
 
 
 class TrainerRestMetadataOut(BaseModel):

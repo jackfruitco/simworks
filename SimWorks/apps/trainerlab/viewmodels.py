@@ -202,6 +202,8 @@ class DashboardPresentation(StrictBaseModel):
     attention_items: list[DashboardAttentionItem] = Field(default_factory=list)
     held_vital_types: list[str] = Field(default_factory=list)
     capabilities: DashboardCapabilities = Field(default_factory=DashboardCapabilities)
+    progression: dict[str, Any] = Field(default_factory=dict)
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ScenarioStateSummary(StrictBaseModel):
@@ -674,6 +676,8 @@ def build_dashboard_presentation(
         attention_items=attention_items[:5],
         held_vital_types=held_vital_types,
         capabilities=capabilities,
+        progression=dict(aggregate.runtime_state.get("progression") or {"status": "awaiting_plan"}),
+        decisions=list(aggregate.runtime_state.get("scenario_decisions") or []) if mutable else [],
     )
 
 

@@ -71,14 +71,22 @@ def trainerlab_runtime_tick(self, session_id: int, tick_nonce: int) -> None:
             session_id=session.id,
         )
 
-    append_pending_runtime_reason(
-        session=session,
-        reason_kind="tick",
-        payload={
-            "tick_nonce": tick_nonce,
-            "scheduled_at": timezone.now().isoformat(),
-        },
-    )
+    from .progression import advance_progression
+
+    advance_progression(session_id=session.id, tick_nonce=tick_nonce)
+    session.refresh_from_db()
+    if session.status != SessionStatus.RUNNING or session.tick_nonce != tick_nonce:
+        return
+    # A valid plan runs without an AI round trip on every timer tick.
+    if (session.runtime_state_json.get("progression") or {}).get("status") != "active":
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="tick",
+            payload={
+                "tick_nonce": tick_nonce,
+                "scheduled_at": timezone.now().isoformat(),
+            },
+        )
 
     try:
         trainerlab_runtime_tick.apply_async(

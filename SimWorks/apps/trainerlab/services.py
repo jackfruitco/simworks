@@ -71,7 +71,6 @@ from .schemas.shared import RuntimePatientStatus
 from .viewmodels import (
     BUILDER_VERSION as VIEWMODEL_BUILDER_VERSION,
     SCHEMA_VERSION as VIEWMODEL_SCHEMA_VERSION,
-    build_scenario_snapshot,
     build_trainer_agent_view_model,
     build_trainer_derived_views,
     build_trainer_rest_view_model,
@@ -1603,6 +1602,9 @@ def append_pending_runtime_reason(
     state = get_runtime_state(locked)
     if reason_kind not in {"tick", "manual_tick"}:
         state["input_revision"] = int(state.get("input_revision", 0)) + 1
+        from .progression import invalidate_progression
+
+        invalidate_progression(locked, state)
     reason = {
         "reason_kind": reason_kind,
         "payload": payload or {},
@@ -2565,6 +2567,8 @@ def _ensure_secondary_problem(
     rule_id: str,
     correlation_id: str | None,
 ) -> None:
+    if rule_id not in session.scenario_spec_json.get("authorized_progression_rules", []):
+        return
     existing = _existing_problem_for_observation(
         session=session,
         cause=parent_problem.cause,
@@ -2693,6 +2697,8 @@ def _apply_progression_catalogs(
             problem.kind == "infectious_process"
             and problem.status == Problem.Status.ACTIVE
             and age_seconds >= 300
+            and "progression.infectious_process_worsening"
+            in session.scenario_spec_json.get("authorized_progression_rules", [])
             and _severity_rank(problem.severity) < _severity_rank(Problem.Severity.HIGH)
         ):
             _deactivate_event(problem)
@@ -3102,6 +3108,11 @@ def _apply_vital_change(
     )
     if existing is not None and existing.lock_value:
         return
+    if existing is not None and all(
+        getattr(existing, key, None) == change.get(key)
+        for key in ("min_value", "max_value", "min_value_diastolic", "max_value_diastolic")
+    ):
+        return
     _deactivate_event(existing)
 
     common = {
@@ -3125,6 +3136,9 @@ def _apply_vital_change(
     payload = _serialize_vital(vital_type, created)
     payload["action"] = "updated"
     payload["trend"] = change.get("trend", "stable")
+    if change.get("progression_plan_id"):
+        payload["progression_plan_id"] = change["progression_plan_id"]
+        payload["progression_plan_version"] = change["progression_plan_version"]
     emit_runtime_event(
         session=session,
         event_type=outbox_events.PATIENT_VITAL_UPDATED,
@@ -3301,7 +3315,65 @@ def apply_runtime_turn_output(
             "source_call_id": str(service_context.get("call_id") or ""),
             "correlation_id": correlation_id,
         }
+        from .orca.schemas.runtime import TrainerRuntimeTurnOutput
+        from .progression import install_plan, project_decisions, propose_branch
+
+        try:
+            output_payload = TrainerRuntimeTurnOutput.model_validate(output_payload).model_dump(
+                mode="json"
+            )
+        except ValueError:
+            return _reject_ai_output(
+                session, state, service_context, "runtime", "invalid_runtime_proposal"
+            )
+        state_changes = output_payload["state_changes"]
+        branch_proposals = [
+            item
+            for item in state_changes["problem_observations"]
+            if item["observation"] == "new_problem"
+        ]
+        for observation in branch_proposals:
+            if (
+                _resolve_active_cause(
+                    session=session,
+                    cause_kind=observation["cause_kind"],
+                    cause_id=observation["cause_id"],
+                )
+                is None
+            ):
+                return _reject_ai_output(
+                    session, state, service_context, "runtime", "unsupported_branch_cause"
+                )
+        if branch_proposals:
+            # A proposal must not sneak its consequences into another output domain.
+            state_changes = {"problem_observations": branch_proposals}
+            output_payload["patient_status"] = _current_patient_status_payload(session)
+            output_payload["portrayal"] = {}
+
+        # Validate physiology before committing any part of this proposal.
+        try:
+            install_plan(
+                session=session,
+                state=state,
+                targets=state_changes.get("vital_updates", []),
+                duration=int(output_payload.get("trajectory_duration_seconds", 30)),
+                portrayal=dict(output_payload.get("portrayal") or {}),
+                source_call_id=str(service_context.get("call_id") or ""),
+            )
+        except (ValueError, ValidationError) as exc:
+            return _reject_ai_output(
+                session, state, service_context, "runtime", f"invalid_progression_plan: {exc}"
+            )
+
         for observation in state_changes.get("problem_observations", []):
+            if observation.get("observation") == "new_problem":
+                propose_branch(
+                    session=session,
+                    state=state,
+                    observation=observation,
+                    source_call_id=str(service_context.get("call_id") or ""),
+                )
+                continue
             _apply_problem_observation(
                 session=session,
                 observation=observation,
@@ -3313,13 +3385,9 @@ def apply_runtime_turn_output(
                 {"domain": "problem", "kind": "problem_observation"}
             )
 
-        # Deterministic step 2: vitals worker owns physiology.
-        for change in state_changes.get("vital_updates", []):
-            _apply_vital_change(
-                session=session,
-                change=change,
-                correlation_id=correlation_id,
-            )
+        # Targets are persisted in the finite-horizon plan above. Only the
+        # progression executor writes their interpolated physiological effects.
+        for _change in state_changes.get("vital_updates", []):
             if "physiology" not in touched_domains:
                 touched_domains.append("physiology")
             evaluation_summary["normalized"].append(
@@ -3369,11 +3437,9 @@ def apply_runtime_turn_output(
                 {"domain": "intervention", "kind": "intervention_assessment"}
             )
 
+        project_decisions(session, state)
         if session.status == SessionStatus.RUNNING:
-            _apply_progression_catalogs(
-                session=session,
-                correlation_id=correlation_id,
-            )
+            _apply_progression_catalogs(session=session, correlation_id=correlation_id)
         # Deterministic step 3: recommendation worker owns recommendation output.
         recompute_active_recommendations(
             session=session,
@@ -3827,8 +3893,7 @@ def apply_vitals_progression_output(
     output_payload: dict[str, Any],
     service_context: dict[str, Any],
 ) -> dict[str, Any]:
-    """Persist vitals-only AI output and refresh runtime state."""
-    correlation_id = service_context.get("correlation_id")
+    """Reject completions from the retired standalone physiology writer."""
     with transaction.atomic():
         session = (
             TrainerSession.objects.select_for_update()
@@ -3841,24 +3906,9 @@ def apply_vitals_progression_output(
             return _reject_ai_output(session, state, service_context, "vitals", rejection)
         if session.status in TERMINAL_SESSION_STATUSES:
             return state
-        state.pop("vitals_generation", None)
-
-        for change in output_payload.get("vitals", []):
-            _apply_vital_change(session=session, change=change, correlation_id=correlation_id)
-
-        _persist_patient_status_state(
-            session=session,
-            base_status=_current_patient_status_payload(session),
-            source=EventSource.SYSTEM,
-        )
-        aggregate, _derived_views, _rest_view_model = _finalize_runtime_views(
-            session=session,
-            state=state,
-            correlation_id=correlation_id,
-            update_tick_timestamp=False,
-        )
-
-    return aggregate.runtime_state
+        # Rolling deployments may still deliver old vitals-worker completions.
+        # They must not bypass the single runtime planner / progression executor.
+        return _reject_ai_output(session, state, service_context, "vitals", "retired_vitals_writer")
 
 
 def enqueue_vitals_progression(
@@ -3866,9 +3916,7 @@ def enqueue_vitals_progression(
     session: TrainerSession,
     correlation_id: str | None = None,
 ) -> str | None:
-    """Enqueue a vitals-only AI progression turn."""
-    from .orca.services import GenerateVitalsProgression
-
+    """Compatibility entry point: coalesce into the authoritative runtime planner."""
     with transaction.atomic():
         session = (
             TrainerSession.objects.select_for_update()
@@ -3877,31 +3925,13 @@ def enqueue_vitals_progression(
         )
         if session.status != SessionStatus.RUNNING:
             return None
-        state = get_runtime_state(session)
-        generation = _capture_ai_generation(session, state, "vitals")
-        session.runtime_state_json = state
-        session.save(update_fields=["runtime_state_json", "modified_at"])
-        aggregate = load_trainer_engine_aggregate(session=session, runtime_state_override=state)
-        scenario_snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
-
-    try:
-        return GenerateVitalsProgression.task.using(
-            context={
-                "ai_generation": generation,
-                "simulation_id": session.simulation_id,
-                "session_id": session.id,
-                "active_elapsed_seconds": get_active_elapsed_seconds(session, state=state),
-                "scenario_snapshot": scenario_snapshot,
-                "runtime_reasons": [{"reason_kind": "manual_vitals_tick"}],
-                "correlation_id": correlation_id,
-            },
-        ).enqueue(
-            user_message="Update the patient's vital signs based on current clinical state.",
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="manual_tick",
+            payload={"requested_domain": "vitals"},
+            correlation_id=correlation_id,
         )
-    except Exception:
-        logger.exception("trainerlab.vitals.enqueue_failed", session_id=session.id)
-        fail_vitals_generation(session_id=session.id, service_context={"ai_generation": generation})
-        return None
+    return "runtime_queued"
 
 
 # ---------------------------------------------------------------------------
