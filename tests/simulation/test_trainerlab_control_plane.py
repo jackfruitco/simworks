@@ -13,6 +13,7 @@ from apps.trainerlab.runtime_llm import (
     get_runtime_max_prompt_tokens,
 )
 from apps.trainerlab.services import (
+    _capture_ai_generation,
     _runtime_trigger_kind,
     append_pending_runtime_reason,
     apply_runtime_turn_output,
@@ -34,6 +35,15 @@ class _FakeEncoding:
 
     def encode(self, text: str) -> list[int]:
         return list(range(max(1, len(text) // 4)))
+
+
+def _generation_context(session):
+    session.refresh_from_db()
+    state = get_runtime_state(session)
+    generation = _capture_ai_generation(session, state, "runtime")
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json"])
+    return generation
 
 
 def _create_running_session(django_user_model, *, email: str):
@@ -186,7 +196,11 @@ def test_runtime_completion_schedules_one_follow_up_for_pending_reasons(
             "instructor_intent": {"summary": "observe"},
             "rationale_notes": [],
         },
-        service_context={"correlation_id": "follow-up", "call_id": "call-current"},
+        service_context={
+            "correlation_id": "follow-up",
+            "call_id": "call-current",
+            "ai_generation": _generation_context(session),
+        },
     )
 
     session.refresh_from_db()
@@ -392,7 +406,11 @@ def test_control_plane_execution_plan_progresses(django_user_model):
             "instructor_intent": {"summary": "observe"},
             "rationale_notes": ["ok"],
         },
-        service_context={"correlation_id": "cp-test", "call_id": "call-1"},
+        service_context={
+            "correlation_id": "cp-test",
+            "call_id": "call-1",
+            "ai_generation": _generation_context(session),
+        },
     )
 
     session.refresh_from_db()
@@ -449,7 +467,11 @@ def test_runtime_patch_provenance_is_backend_injected(django_user_model):
             "instructor_intent": {"summary": "observe"},
             "rationale_notes": ["ok"],
         },
-        service_context={"correlation_id": "corr-abc", "call_id": "call-abc"},
+        service_context={
+            "correlation_id": "corr-abc",
+            "call_id": "call-abc",
+            "ai_generation": _generation_context(session),
+        },
     )
 
     session.refresh_from_db()
@@ -479,6 +501,12 @@ def test_runtime_enqueue_context_uses_compact_state_and_no_previous_response(mon
         {
             "simulation_id": 11,
             "session_id": 22,
+            "ai_generation": {
+                "token": "test-generation",
+                "state_revision": 3,
+                "input_revision": 0,
+                "status": "running",
+            },
             "trainer_agent_view_model": {
                 "simulation_id": 11,
                 "session_id": 22,

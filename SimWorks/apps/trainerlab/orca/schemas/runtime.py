@@ -69,6 +69,8 @@ class RuntimeVitalUpdate(StrictBaseModel):
     def validate_range(self):
         if self.min_value > self.max_value:
             raise ValueError("min_value must be less than or equal to max_value")
+        if self.vital_type == "spo2" and self.max_value > 100:
+            raise ValueError("SpO2 cannot exceed 100 percent")
         if self.vital_type == "blood_pressure":
             if self.min_value_diastolic is None or self.max_value_diastolic is None:
                 raise ValueError("blood pressure updates require diastolic bounds")
@@ -303,7 +305,14 @@ class TrainerRuntimeSnapshot(StrictBaseModel):
     scenario_brief: ScenarioBrief | None = None
 
 
+class PatientPortrayal(StrictBaseModel):
+    behavior: str = Field(default="", max_length=240)
+    speech: str = Field(default="", max_length=240)
+
+
 class TrainerRuntimeTurnOutput(StrictBaseModel):
+    trajectory_duration_seconds: int = Field(default=30, ge=15, le=120)
+    portrayal: PatientPortrayal = Field(default_factory=PatientPortrayal)
     state_changes: RuntimeStateChanges = Field(default_factory=RuntimeStateChanges)
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
     instructor_intent: RuntimeInstructorIntent = Field(default_factory=RuntimeInstructorIntent)

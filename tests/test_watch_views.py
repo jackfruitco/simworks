@@ -335,17 +335,21 @@ def test_trainerlab_watch_view_uses_chronological_event_timeline(
     )
     base_time = datetime(2030, 1, 1, tzinfo=UTC)
     baseline_events = RuntimeEvent.objects.filter(session=session).count()
+    baseline_sequence = session.event_sequence
 
     for sequence in range(3):
         runtime_event = RuntimeEvent.objects.create(
             session=session,
             simulation=session.simulation,
+            sequence=baseline_sequence + sequence + 1,
             event_type="trainerlab.runtime.note",
             payload={"sequence": sequence},
         )
         RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
             created_at=base_time + timedelta(seconds=sequence)
         )
+    session.event_sequence = baseline_sequence + 3
+    session.save(update_fields=["event_sequence"])
 
     client.force_login(trainer_member)
     response = client.get(

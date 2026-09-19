@@ -175,11 +175,14 @@ def handle_runtime_turn_failed(
         logger.warning("TrainerLab runtime failed without session_id")
         return
 
-    clear_runtime_processing(
+    cleared = clear_runtime_processing(
         session_id=int(session_id),
         error=error or "TrainerLab runtime turn failed.",
         requeue_current_batch=True,
+        expected_generation=call_context.get("ai_generation"),
     )
+    if not cleared:
+        return
 
     session = TrainerSession.objects.select_related("simulation").filter(pk=session_id).first()
     if session is None:

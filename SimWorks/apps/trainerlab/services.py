@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -70,7 +71,6 @@ from .schemas.shared import RuntimePatientStatus
 from .viewmodels import (
     BUILDER_VERSION as VIEWMODEL_BUILDER_VERSION,
     SCHEMA_VERSION as VIEWMODEL_SCHEMA_VERSION,
-    build_scenario_snapshot,
     build_trainer_agent_view_model,
     build_trainer_derived_views,
     build_trainer_rest_view_model,
@@ -359,6 +359,21 @@ def _persist_patient_status_state(
     return patient_status
 
 
+def override_patient_avpu(
+    *, session: TrainerSession, avpu: str, correlation_id: str | None = None
+) -> PatientStatusState:
+    """Apply an instructor observation now, before asking AI to reason about it."""
+    status = _persist_patient_status_state(
+        session=session,
+        base_status={**_current_patient_status_payload(session), "avpu": avpu},
+        source=EventSource.INSTRUCTOR,
+    )
+    _finalize_runtime_views(
+        session=session, state=get_runtime_state(session), correlation_id=correlation_id
+    )
+    return status
+
+
 def _persist_runtime_state_and_load_aggregate(
     *,
     session: TrainerSession,
@@ -539,6 +554,7 @@ def _checkpoint_active_elapsed(
     return state
 
 
+@transaction.atomic
 def emit_runtime_event(
     *,
     session: TrainerSession,
@@ -549,9 +565,18 @@ def emit_runtime_event(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RuntimeEvent:
+    # A shared session lock orders events across instructor, guard, and AI
+    # writers; the event and its outbox row commit together.
+    locked = TrainerSession.objects.select_for_update().get(pk=session.pk)
+    sequence = locked.event_sequence + 1
+    locked.event_sequence = sequence
+    locked.save(update_fields=["event_sequence"])
+    session.event_sequence = sequence
+    payload = {**payload, "event_sequence": sequence}
     runtime_event = RuntimeEvent.objects.create(
         session=session,
         simulation=session.simulation,
+        sequence=sequence,
         event_type=event_type,
         payload=payload,
         supersedes=supersedes,
@@ -572,7 +597,7 @@ def emit_runtime_event(
         correlation_id=correlation_id,
     )
     if event:
-        poke_drain_sync()
+        transaction.on_commit(poke_drain_sync)
 
     return runtime_event
 
@@ -862,6 +887,7 @@ def _set_session_phase(
     return session
 
 
+@transaction.atomic
 def fail_initial_scenario_generation(
     *,
     simulation_id: int,
@@ -871,7 +897,8 @@ def fail_initial_scenario_generation(
     correlation_id: str | None = None,
 ) -> TrainerSession | None:
     session = (
-        TrainerSession.objects.select_related("simulation")
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation")
         .filter(simulation_id=simulation_id)
         .first()
     )
@@ -925,6 +952,7 @@ def fail_initial_scenario_generation(
     return session
 
 
+@transaction.atomic
 def complete_initial_scenario_generation(
     *,
     simulation_id: int,
@@ -932,7 +960,8 @@ def complete_initial_scenario_generation(
     call_id: str | None = None,
 ) -> TrainerSession | None:
     session = (
-        TrainerSession.objects.select_related("simulation")
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation")
         .filter(simulation_id=simulation_id)
         .first()
     )
@@ -1018,11 +1047,13 @@ def enqueue_initial_scenario_generation(
         return None
 
 
+@transaction.atomic
 def retry_initial_scenario_generation(
     *,
     session: TrainerSession,
     correlation_id: str | None = None,
 ) -> str | None:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.FAILED:
         raise ValidationError("Initial generation retry is only available for failed simulations")
 
@@ -1409,6 +1440,13 @@ def schedule_runtime_turn_once(
         now = timezone.now()
         pending = list(state.get("pending_runtime_reasons") or [])
 
+        if session.status == SessionStatus.PAUSED:
+            # Keep instructor inputs for resume without spending an AI call while paused.
+            state["scheduled_runtime_task_run_at"] = None
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+            return False
+
         if not pending:
             state["pending_since"] = None
             state["scheduled_runtime_task_run_at"] = None
@@ -1538,6 +1576,8 @@ def discard_runtime_work(
     )
     state["pending_runtime_reasons"] = []
     state["currently_processing_reasons"] = []
+    state.pop("runtime_generation", None)
+    state.pop("vitals_generation", None)
     state["runtime_processing"] = False
     state["active_service_call_id"] = ""
     state["active_started_at"] = None
@@ -1560,6 +1600,11 @@ def append_pending_runtime_reason(
 ) -> dict[str, Any]:
     locked = TrainerSession.objects.select_for_update().get(pk=session.pk)
     state = get_runtime_state(locked)
+    if reason_kind not in {"tick", "manual_tick"}:
+        state["input_revision"] = int(state.get("input_revision", 0)) + 1
+        from .progression import invalidate_progression
+
+        invalidate_progression(locked, state)
     reason = {
         "reason_kind": reason_kind,
         "payload": payload or {},
@@ -1782,6 +1827,66 @@ def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _capture_ai_generation(session, state, worker: str) -> dict[str, Any]:
+    """Called under the session lock, before publishing work to a worker."""
+    generation = {
+        "token": str(uuid4()),
+        "state_revision": int(state.get("state_revision", 0)),
+        "input_revision": int(state.get("input_revision", 0)),
+        "status": session.status,
+    }
+    state[f"{worker}_generation"] = generation
+    return generation
+
+
+def _ai_output_rejection(session, state, context, worker: str) -> str | None:
+    expected = context.get("ai_generation")
+    active = state.get(f"{worker}_generation")
+    if not expected or not active or expected != active:
+        return "generation_not_owned"
+    if (
+        expected["state_revision"] != int(state.get("state_revision", 0))
+        or expected["input_revision"] != int(state.get("input_revision", 0))
+        or expected["status"] != session.status
+    ):
+        return "state_changed_during_generation"
+    if session.status == SessionStatus.PAUSED:
+        return "session_paused"
+    return None
+
+
+def _reject_ai_output(session, state, context, worker: str, reason: str):
+    """Audit rejection without allowing an old callback to clear a newer worker."""
+    owned = context.get("ai_generation") == state.get(f"{worker}_generation")
+    if owned and context.get("ai_generation"):
+        if worker == "runtime":
+            clear_runtime_processing(
+                session_id=session.id,
+                error=reason,
+                requeue_current_batch=reason
+                in {"state_changed_during_generation", "session_paused"},
+                expected_generation=context["ai_generation"],
+            )
+            session.refresh_from_db()
+            state = get_runtime_state(session)
+        else:
+            state.pop(f"{worker}_generation", None)
+            session.runtime_state_json = state
+            session.save(update_fields=["runtime_state_json", "modified_at"])
+    emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_PATCH_EVALUATION_COMPLETED,
+        payload={
+            "worker_kind": worker,
+            "accepted": [],
+            "rejected": [{"reason": reason}],
+            "source_call_id": str(context.get("call_id") or ""),
+        },
+        correlation_id=context.get("correlation_id"),
+    )
+    return state
+
+
 def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
     with transaction.atomic():
         session = (
@@ -1790,6 +1895,8 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        if session.status == SessionStatus.PAUSED:
+            return None
         if session.status in TERMINAL_SESSION_STATUSES:
             current = list(state.get("currently_processing_reasons") or [])
             pending = list(state.get("pending_runtime_reasons") or [])
@@ -1830,6 +1937,7 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         state["pending_runtime_reasons"] = remaining
         state["currently_processing_reasons"] = reasons
         state["runtime_processing"] = True
+        generation = _capture_ai_generation(session, state, "runtime")
         state["active_started_at"] = now.astimezone(UTC).isoformat()
         state["scheduled_runtime_task_run_at"] = None
         state["pending_since"] = remaining[0].get("created_at") if remaining else None
@@ -1854,6 +1962,7 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
             runtime_state_override=state,
         )
         return {
+            "ai_generation": generation,
             "session_id": session.id,
             "simulation_id": session.simulation_id,
             "reasons": reasons,
@@ -1883,6 +1992,7 @@ def _restore_runtime_turn_batch(
         pending = list(state.get("pending_runtime_reasons") or [])
         state["pending_runtime_reasons"] = reasons + pending
         state["currently_processing_reasons"] = []
+        state.pop("runtime_generation", None)
         state["runtime_processing"] = False
         state["active_service_call_id"] = ""
         state["active_started_at"] = None
@@ -1906,10 +2016,12 @@ def _restore_runtime_turn_batch(
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
 
-def _mark_runtime_service_call_active(*, session_id: int, call_id: str) -> None:
+def _mark_runtime_service_call_active(*, session_id: int, call_id: str, generation: dict) -> None:
     with transaction.atomic():
         session = TrainerSession.objects.select_for_update().get(pk=session_id)
         state = get_runtime_state(session)
+        if state.get("runtime_generation") != generation:
+            return
         now = timezone.now()
         state["active_service_call_id"] = str(call_id)
         state["last_runtime_call_at"] = now.astimezone(UTC).isoformat()
@@ -1929,6 +2041,7 @@ def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
     from .orca.services import GenerateTrainerRuntimeTurn
 
     context = {
+        "ai_generation": batch["ai_generation"],
         "simulation_id": batch["simulation_id"],
         "session_id": batch["session_id"],
         "trainer_agent_view_model": batch["trainer_agent_view_model"],
@@ -2042,7 +2155,9 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
     try:
         call_id = enqueue_runtime_turn_service_call(request_batch)
         try:
-            _mark_runtime_service_call_active(session_id=session_id, call_id=call_id)
+            _mark_runtime_service_call_active(
+                session_id=session_id, call_id=call_id, generation=batch["ai_generation"]
+            )
         except Exception:
             logger.exception(
                 "trainerlab.runtime.active_call_mark_failed",
@@ -2091,11 +2206,15 @@ def clear_runtime_processing(
     session_id: int,
     error: str = "",
     requeue_current_batch: bool = False,
-) -> None:
+    expected_generation: dict | None = None,
+) -> bool:
     should_schedule_follow_up = False
     with transaction.atomic():
         session = TrainerSession.objects.select_for_update().get(pk=session_id)
         state = get_runtime_state(session)
+        if state.get("runtime_generation") != expected_generation:
+            return False
+        state.pop("runtime_generation", None)
         current = list(state.get("currently_processing_reasons") or [])
         pending = list(state.get("pending_runtime_reasons") or [])
         if session.status in TERMINAL_SESSION_STATUSES:
@@ -2127,7 +2246,8 @@ def clear_runtime_processing(
             bool(pending) and session.status not in TERMINAL_SESSION_STATUSES
         )
     if should_schedule_follow_up:
-        _schedule_runtime_follow_up_if_pending(session_id)
+        transaction.on_commit(lambda: _schedule_runtime_follow_up_if_pending(session_id))
+    return True
 
 
 def _resolve_superseded_event(
@@ -2189,8 +2309,20 @@ def _next_better_severity(value: str | None) -> str:
     return Problem.Severity.LOW
 
 
-def _problem_age_seconds(problem: Problem) -> int:
-    return max(0, int((timezone.now() - problem.timestamp).total_seconds()))
+def _problem_age_seconds(session: TrainerSession, problem: Problem) -> int:
+    if problem.onset_elapsed_seconds is not None:
+        return max(0, get_active_elapsed_seconds(session) - problem.onset_elapsed_seconds)
+    return max(0, get_active_elapsed_seconds(session) - legacy_problem_onset(session, problem))
+
+
+def legacy_problem_onset(session: TrainerSession, problem: Problem) -> int:
+    # Historical rows retain their first onset, even after supersession.
+    origin = problem
+    while origin.supersedes_id:
+        origin = origin.supersedes
+    if session.run_started_at is None:
+        return 0
+    return max(0, int((origin.timestamp - session.run_started_at).total_seconds()))
 
 
 def _resolve_active_cause(
@@ -2259,6 +2391,15 @@ def _create_problem_domain_event(
         simulation=session.simulation,
         source=EventSource.SYSTEM,
         supersedes=supersedes,
+        onset_elapsed_seconds=(
+            supersedes.onset_elapsed_seconds
+            if supersedes is not None and supersedes.onset_elapsed_seconds is not None
+            else (
+                legacy_problem_onset(session, supersedes)
+                if supersedes is not None
+                else get_active_elapsed_seconds(session)
+            )
+        ),
         cause_injury=cause if isinstance(cause, Injury) else None,
         cause_illness=cause if isinstance(cause, Illness) else None,
         parent_problem=parent_problem,
@@ -2426,6 +2567,8 @@ def _ensure_secondary_problem(
     rule_id: str,
     correlation_id: str | None,
 ) -> None:
+    if rule_id not in session.scenario_spec_json.get("authorized_progression_rules", []):
+        return
     existing = _existing_problem_for_observation(
         session=session,
         cause=parent_problem.cause,
@@ -2499,7 +2642,7 @@ def _apply_progression_catalogs(
     for problem in problems:
         if not problem.is_active:
             continue
-        age_seconds = _problem_age_seconds(problem)
+        age_seconds = _problem_age_seconds(session, problem)
         if problem.kind == "hemorrhage" and problem.status == Problem.Status.ACTIVE:
             if (
                 _severity_rank(problem.severity) >= _severity_rank(Problem.Severity.HIGH)
@@ -2554,6 +2697,8 @@ def _apply_progression_catalogs(
             problem.kind == "infectious_process"
             and problem.status == Problem.Status.ACTIVE
             and age_seconds >= 300
+            and "progression.infectious_process_worsening"
+            in session.scenario_spec_json.get("authorized_progression_rules", [])
             and _severity_rank(problem.severity) < _severity_rank(Problem.Severity.HIGH)
         ):
             _deactivate_event(problem)
@@ -2961,6 +3106,13 @@ def _apply_vital_change(
         .order_by("-timestamp", "-id")
         .first()
     )
+    if existing is not None and existing.lock_value:
+        return
+    if existing is not None and all(
+        getattr(existing, key, None) == change.get(key)
+        for key in ("min_value", "max_value", "min_value_diastolic", "max_value_diastolic")
+    ):
+        return
     _deactivate_event(existing)
 
     common = {
@@ -2969,7 +3121,8 @@ def _apply_vital_change(
         "supersedes": existing,
         "min_value": change.get("min_value"),
         "max_value": change.get("max_value"),
-        "lock_value": bool(change.get("lock_value", False)),
+        # Only an authoritative instructor event may hold physiology.
+        "lock_value": False,
     }
     if model is BloodPressure:
         created = model.objects.create(
@@ -2983,6 +3136,9 @@ def _apply_vital_change(
     payload = _serialize_vital(vital_type, created)
     payload["action"] = "updated"
     payload["trend"] = change.get("trend", "stable")
+    if change.get("progression_plan_id"):
+        payload["progression_plan_id"] = change["progression_plan_id"]
+        payload["progression_plan_version"] = change["progression_plan_version"]
     emit_runtime_event(
         session=session,
         event_type=outbox_events.PATIENT_VITAL_UPDATED,
@@ -3057,15 +3213,15 @@ def _apply_intervention_effect(
         return
 
     intervention.effectiveness = change.get("effectiveness", intervention.effectiveness)
-    if change.get("notes"):
-        intervention.notes = str(change.get("notes"))
-    intervention.save(update_fields=["effectiveness", "notes"])
+    # Recorded instructor notes are authoritative facts. Keep AI assessment
+    # commentary in the derived effect record rather than overwriting them.
+    intervention.save(update_fields=["effectiveness"])
 
     effects = dict(state.get("intervention_effects") or {})
     effects[str(intervention.id)] = {
         "status": change.get("status", "active"),
         "clinical_effect": change.get("clinical_effect", ""),
-        "notes": intervention.notes,
+        "notes": str(change.get("notes") or ""),
     }
     state["intervention_effects"] = effects
 
@@ -3079,22 +3235,6 @@ def _apply_intervention_effect(
                 "effect": effects[str(intervention.id)],
             },
         ),
-        correlation_id=correlation_id,
-        idempotency_key=(
-            f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention.id}:"
-            f"{effects[str(intervention.id)]['status']}"
-        ),
-    )
-
-    # #6: Emit structured assessment event so clients get a closed-loop feedback signal
-    assessed_status = change.get("status", "active")
-    assessed_effectiveness = change.get("clinical_effect", "")
-    emit_intervention_assessed(
-        session=session,
-        intervention_id=intervention.id,
-        effectiveness=change.get("effectiveness", "unknown"),
-        clinical_effect=assessed_effectiveness,
-        status=assessed_status,
         correlation_id=correlation_id,
     )
 
@@ -3134,6 +3274,9 @@ def apply_runtime_turn_output(
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        rejection = _ai_output_rejection(session, state, service_context, "runtime")
+        if rejection:
+            return _reject_ai_output(session, state, service_context, "runtime", rejection)
         if session.status in TERMINAL_SESSION_STATUSES:
             state, _discarded = discard_runtime_work(state)
             session.runtime_state_json = state
@@ -3143,6 +3286,23 @@ def apply_runtime_turn_output(
         touched_domains: list[str] = []
 
         state_changes = dict(output_payload.get("state_changes") or {})
+        assessments = state_changes.get("intervention_assessments", [])
+        intervention_ids = {item.get("intervention_event_id") for item in assessments}
+        authoritative_ids = set(
+            Intervention.objects.filter(
+                simulation=session.simulation,
+                is_active=True,
+                source__in=[EventSource.INSTRUCTOR, EventSource.SYSTEM],
+                pk__in=intervention_ids,
+            ).values_list("pk", flat=True)
+        )
+        if intervention_ids != authoritative_ids or any(
+            key in state_changes
+            for key in ("interventions", "learner_actions", "intervention_updates")
+        ):
+            return _reject_ai_output(
+                session, state, service_context, "runtime", "non_authoritative_intervention"
+            )
 
         evaluation_summary = {
             "worker_kind": "core_runtime",
@@ -3155,7 +3315,65 @@ def apply_runtime_turn_output(
             "source_call_id": str(service_context.get("call_id") or ""),
             "correlation_id": correlation_id,
         }
+        from .orca.schemas.runtime import TrainerRuntimeTurnOutput
+        from .progression import install_plan, project_decisions, propose_branch
+
+        try:
+            output_payload = TrainerRuntimeTurnOutput.model_validate(output_payload).model_dump(
+                mode="json"
+            )
+        except ValueError:
+            return _reject_ai_output(
+                session, state, service_context, "runtime", "invalid_runtime_proposal"
+            )
+        state_changes = output_payload["state_changes"]
+        branch_proposals = [
+            item
+            for item in state_changes["problem_observations"]
+            if item["observation"] == "new_problem"
+        ]
+        for observation in branch_proposals:
+            if (
+                _resolve_active_cause(
+                    session=session,
+                    cause_kind=observation["cause_kind"],
+                    cause_id=observation["cause_id"],
+                )
+                is None
+            ):
+                return _reject_ai_output(
+                    session, state, service_context, "runtime", "unsupported_branch_cause"
+                )
+        if branch_proposals:
+            # A proposal must not sneak its consequences into another output domain.
+            state_changes = {"problem_observations": branch_proposals}
+            output_payload["patient_status"] = _current_patient_status_payload(session)
+            output_payload["portrayal"] = {}
+
+        # Validate physiology before committing any part of this proposal.
+        try:
+            install_plan(
+                session=session,
+                state=state,
+                targets=state_changes.get("vital_updates", []),
+                duration=int(output_payload.get("trajectory_duration_seconds", 30)),
+                portrayal=dict(output_payload.get("portrayal") or {}),
+                source_call_id=str(service_context.get("call_id") or ""),
+            )
+        except (ValueError, ValidationError) as exc:
+            return _reject_ai_output(
+                session, state, service_context, "runtime", f"invalid_progression_plan: {exc}"
+            )
+
         for observation in state_changes.get("problem_observations", []):
+            if observation.get("observation") == "new_problem":
+                propose_branch(
+                    session=session,
+                    state=state,
+                    observation=observation,
+                    source_call_id=str(service_context.get("call_id") or ""),
+                )
+                continue
             _apply_problem_observation(
                 session=session,
                 observation=observation,
@@ -3167,13 +3385,9 @@ def apply_runtime_turn_output(
                 {"domain": "problem", "kind": "problem_observation"}
             )
 
-        # Deterministic step 2: vitals worker owns physiology.
-        for change in state_changes.get("vital_updates", []):
-            _apply_vital_change(
-                session=session,
-                change=change,
-                correlation_id=correlation_id,
-            )
+        # Targets are persisted in the finite-horizon plan above. Only the
+        # progression executor writes their interpolated physiological effects.
+        for _change in state_changes.get("vital_updates", []):
             if "physiology" not in touched_domains:
                 touched_domains.append("physiology")
             evaluation_summary["normalized"].append(
@@ -3223,10 +3437,9 @@ def apply_runtime_turn_output(
                 {"domain": "intervention", "kind": "intervention_assessment"}
             )
 
-        _apply_progression_catalogs(
-            session=session,
-            correlation_id=correlation_id,
-        )
+        project_decisions(session, state)
+        if session.status == SessionStatus.RUNNING:
+            _apply_progression_catalogs(session=session, correlation_id=correlation_id)
         # Deterministic step 3: recommendation worker owns recommendation output.
         recompute_active_recommendations(
             session=session,
@@ -3260,6 +3473,7 @@ def apply_runtime_turn_output(
                     "reason": "routed_to_narrative_step",
                 }
             )
+        state.pop("runtime_generation", None)
         state["runtime_processing"] = False
         state["currently_processing_reasons"] = []
         state["active_service_call_id"] = ""
@@ -3384,9 +3598,19 @@ def apply_debrief_output(
         return summary
 
 
+def _lock_live_session(session: TrainerSession) -> TrainerSession:
+    return (
+        TrainerSession.objects.select_for_update()
+        .select_related("simulation", "simulation__account")
+        .get(pk=session.pk)
+    )
+
+
+@transaction.atomic
 def start_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.SEEDED:
         raise ValidationError("Session can only be started from seeded state")
 
@@ -3447,15 +3671,18 @@ def start_session(
     return session
 
 
+@transaction.atomic
 def pause_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.RUNNING:
         raise ValidationError("Session can only be paused from running state")
 
     previous_status = session.status
     now = timezone.now()
     state = _freeze_active_elapsed(session, state=get_runtime_state(session), now=now)
+    state["scheduled_runtime_task_run_at"] = None
 
     session.status = SessionStatus.PAUSED
     session.run_paused_at = now
@@ -3478,9 +3705,11 @@ def pause_session(
     return session
 
 
+@transaction.atomic
 def resume_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status != SessionStatus.PAUSED:
         raise ValidationError("Session can only be resumed from paused state")
 
@@ -3522,9 +3751,11 @@ def resume_session(
     return session
 
 
+@transaction.atomic
 def stop_session(
     *, session: TrainerSession, user, correlation_id: str | None = None
 ) -> TrainerSession:
+    session = _lock_live_session(session)
     if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED, SessionStatus.SEEDED}:
         raise ValidationError("Session is already terminal")
 
@@ -3561,7 +3792,7 @@ def stop_session(
 
 @transaction.atomic
 def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSummary:
-    events = list(session.runtime_events.order_by("created_at"))
+    events = list(session.runtime_events.order_by("sequence"))
     commands = list(session.commands.order_by("issued_at"))
     existing_summary_json = dict(
         getattr(getattr(session, "summary", None), "summary_json", {}) or {}
@@ -3581,6 +3812,7 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
         "timeline_highlights": [
             {
                 "event_type": event.event_type,
+                "event_sequence": event.sequence,
                 "created_at": _iso_or_none(event.created_at),
                 "payload": event.payload,
             }
@@ -3646,14 +3878,22 @@ def refresh_completed_run_review(
 # ---------------------------------------------------------------------------
 
 
+def fail_vitals_generation(*, session_id: int, service_context: dict) -> None:
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session_id)
+        state = get_runtime_state(session)
+        if service_context.get("ai_generation") != state.get("vitals_generation"):
+            return
+        _reject_ai_output(session, state, service_context, "vitals", "vitals_generation_failed")
+
+
 def apply_vitals_progression_output(
     *,
     session_id: int,
     output_payload: dict[str, Any],
     service_context: dict[str, Any],
 ) -> dict[str, Any]:
-    """Persist vitals-only AI output and refresh runtime state."""
-    correlation_id = service_context.get("correlation_id")
+    """Reject completions from the retired standalone physiology writer."""
     with transaction.atomic():
         session = (
             TrainerSession.objects.select_for_update()
@@ -3661,25 +3901,14 @@ def apply_vitals_progression_output(
             .get(pk=session_id)
         )
         state = get_runtime_state(session)
+        rejection = _ai_output_rejection(session, state, service_context, "vitals")
+        if rejection:
+            return _reject_ai_output(session, state, service_context, "vitals", rejection)
         if session.status in TERMINAL_SESSION_STATUSES:
             return state
-
-        for change in output_payload.get("vitals", []):
-            _apply_vital_change(session=session, change=change, correlation_id=correlation_id)
-
-        _persist_patient_status_state(
-            session=session,
-            base_status=_current_patient_status_payload(session),
-            source=EventSource.SYSTEM,
-        )
-        aggregate, _derived_views, _rest_view_model = _finalize_runtime_views(
-            session=session,
-            state=state,
-            correlation_id=correlation_id,
-            update_tick_timestamp=False,
-        )
-
-    return aggregate.runtime_state
+        # Rolling deployments may still deliver old vitals-worker completions.
+        # They must not bypass the single runtime planner / progression executor.
+        return _reject_ai_output(session, state, service_context, "vitals", "retired_vitals_writer")
 
 
 def enqueue_vitals_progression(
@@ -3687,32 +3916,22 @@ def enqueue_vitals_progression(
     session: TrainerSession,
     correlation_id: str | None = None,
 ) -> str | None:
-    """Enqueue a vitals-only AI progression turn."""
-    from .orca.services import GenerateVitalsProgression
-
-    state = get_runtime_state(session)
-    aggregate = load_trainer_engine_aggregate(
-        session=session,
-        runtime_state_override=state,
-    )
-    scenario_snapshot = build_scenario_snapshot(aggregate).model_dump(mode="json")
-
-    try:
-        return GenerateVitalsProgression.task.using(
-            context={
-                "simulation_id": session.simulation_id,
-                "session_id": session.id,
-                "active_elapsed_seconds": get_active_elapsed_seconds(session, state=state),
-                "scenario_snapshot": scenario_snapshot,
-                "runtime_reasons": [{"reason_kind": "manual_vitals_tick"}],
-                "correlation_id": correlation_id,
-            },
-        ).enqueue(
-            user_message="Update the patient's vital signs based on current clinical state.",
+    """Compatibility entry point: coalesce into the authoritative runtime planner."""
+    with transaction.atomic():
+        session = (
+            TrainerSession.objects.select_for_update()
+            .select_related("simulation")
+            .get(pk=session.pk)
         )
-    except Exception:
-        logger.exception("trainerlab.vitals.enqueue_failed", session_id=session.id)
-        return None
+        if session.status != SessionStatus.RUNNING:
+            return None
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind="manual_tick",
+            payload={"requested_domain": "vitals"},
+            correlation_id=correlation_id,
+        )
+    return "runtime_queued"
 
 
 # ---------------------------------------------------------------------------
@@ -3720,6 +3939,7 @@ def enqueue_vitals_progression(
 # ---------------------------------------------------------------------------
 
 
+@transaction.atomic
 def update_problem_status(
     *,
     session: TrainerSession,
@@ -3734,6 +3954,7 @@ def update_problem_status(
     Creates a superseding event record (immutable event log) and deactivates the old one
     so the full problem history is preserved.
     """
+    session = _lock_live_session(session)
     original: Problem | None = (
         Problem.objects.select_related("cause_injury", "cause_illness")
         .filter(
@@ -3764,6 +3985,11 @@ def update_problem_status(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=original,
+        onset_elapsed_seconds=(
+            original.onset_elapsed_seconds
+            if original.onset_elapsed_seconds is not None
+            else legacy_problem_onset(session, original)
+        ),
         cause_injury=original.cause_injury,
         cause_illness=original.cause_illness,
         problem_kind=original.problem_kind,
@@ -3814,8 +4040,8 @@ def trigger_manual_tick(
 
     Returns the queued reason dict.
     """
-    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
-        raise ValidationError("Manual tick is only allowed on running or paused sessions.")
+    if session.status != SessionStatus.RUNNING:
+        raise ValidationError("Resume the session before advancing the scenario.")
 
     reason = append_pending_runtime_reason(
         session=session,
@@ -3975,60 +4201,6 @@ def compute_preset_diff(
 # ---------------------------------------------------------------------------
 
 
-def emit_intervention_assessed(
-    *,
-    session: TrainerSession,
-    intervention_id: int,
-    effectiveness: str,
-    clinical_effect: str,
-    status: str,
-    correlation_id: str | None = None,
-) -> None:
-    """Emit patient.intervention.updated when the AI evaluates an intervention."""
-    intervention = Intervention.objects.filter(
-        pk=intervention_id,
-        simulation=session.simulation,
-    ).first()
-    if intervention is None:
-        return
-
-    target_problem_id: int | None = None
-    target_problem_title: str | None = None
-    target_problem_status: str | None = None
-    if intervention.target_problem_id:
-        problem = Problem.objects.filter(pk=intervention.target_problem_id).first()
-        if problem:
-            target_problem_id = problem.pk
-            target_problem_title = problem.display_name or problem.title
-            if problem.is_resolved:
-                target_problem_status = "resolved"
-            elif problem.is_controlled:
-                target_problem_status = "controlled"
-            elif problem.is_treated:
-                target_problem_status = "treated"
-            else:
-                target_problem_status = "active"
-
-    emit_runtime_event(
-        session=session,
-        event_type=outbox_events.PATIENT_INTERVENTION_UPDATED,
-        payload={
-            "intervention_id": intervention_id,
-            "intervention_type": intervention.intervention_type or None,
-            "site_code": intervention.site_code or None,
-            "effectiveness": effectiveness,
-            "clinical_effect": clinical_effect,
-            "status": status,
-            "assessment_status": status,
-            "target_problem_id": target_problem_id,
-            "target_problem_title": target_problem_title,
-            "target_problem_status": target_problem_status,
-        },
-        correlation_id=correlation_id,
-        idempotency_key=f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention_id}:{status}",
-    )
-
-
 # Shared non-AI committer path for initial seeding/manual injections.
 def commit_non_ai_mutation_side_effects(
     *,
@@ -4083,6 +4255,7 @@ def commit_non_ai_mutation_side_effects(
 # ---------------------------------------------------------------------------
 
 
+@transaction.atomic
 def update_scenario_brief(
     *,
     session: TrainerSession,
@@ -4095,6 +4268,7 @@ def update_scenario_brief(
 
     Creates a new superseding ScenarioBrief event and refreshes derived views.
     """
+    session = _lock_live_session(session)
     existing = (
         ScenarioBrief.objects.filter(simulation=session.simulation, is_active=True)
         .order_by("-timestamp", "-id")
