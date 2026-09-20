@@ -129,7 +129,7 @@ jobs:
           set -euo pipefail
           docker run --rm --entrypoint pg_dump "${IMAGE}:sha-${GITHUB_SHA}" --version \
             | tee /tmp/pg_dump_version.txt
-          grep -E 'PostgreSQL 18\.' /tmp/pg_dump_version.txt
+          grep -Eq '^pg_dump \(PostgreSQL\) 18\.' /tmp/pg_dump_version.txt
 
       - name: Scan image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
