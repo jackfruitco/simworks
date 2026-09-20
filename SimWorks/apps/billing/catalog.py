@@ -170,6 +170,36 @@ def resolve_stripe_price_id(
     return price_id
 
 
+def _stripe_promo_coupon_map() -> dict[str, str]:
+    from django.conf import settings
+
+    value = getattr(settings, "BILLING_STRIPE_PROMO_COUPON_MAP", {}) or {}
+    if not isinstance(value, dict):
+        raise ValueError("BILLING_STRIPE_PROMO_COUPON_MAP must be a JSON object.")
+    normalized: dict[str, str] = {}
+    for key, coupon_id in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("BILLING_STRIPE_PROMO_COUPON_MAP keys must be non-empty strings.")
+        normalized[key.strip()] = str(coupon_id or "").strip()
+    return normalized
+
+
+def resolve_stripe_promo_coupon_id(
+    product_code: str | None,
+    interval: BillingInterval = "monthly",
+) -> str:
+    from django.conf import settings
+
+    canonical_product_code = canonicalize_product_code(product_code)
+    if not canonical_product_code:
+        return ""
+    lookup_key = f"{canonical_product_code}:{interval}"
+    coupon_map = _stripe_promo_coupon_map()
+    if lookup_key in coupon_map:
+        return coupon_map[lookup_key]
+    return (getattr(settings, "BILLING_STRIPE_PROMO_COUPON_ID", "") or "").strip()
+
+
 def stripe_product_code_from_price_id(price_id: str | None) -> str:
     normalized_price_id = (price_id or "").strip()
     if not normalized_price_id:
