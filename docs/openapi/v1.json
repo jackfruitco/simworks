@@ -10865,6 +10865,16 @@
               }
             ],
             "title": "Client Event Id"
+          },
+          "voice_provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceActionProvenanceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10893,6 +10903,49 @@
           "kind"
         ],
         "title": "InterventionDetailsIn",
+        "type": "object"
+      },
+      "VoiceActionProvenanceIn": {
+        "additionalProperties": false,
+        "description": "Audit-only capture metadata; never an instruction or performed-action source.",
+        "properties": {
+          "capture_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "push_to_talk",
+            "default": "push_to_talk",
+            "title": "Source",
+            "type": "string"
+          },
+          "original_transcript": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Original Transcript",
+            "type": "string"
+          },
+          "reviewed_transcript": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reviewed Transcript",
+            "type": "string"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "capture_id",
+          "original_transcript",
+          "reviewed_transcript",
+          "confirmed"
+        ],
+        "title": "VoiceActionProvenanceIn",
         "type": "object"
       },
       "AssessmentFindingCreateIn": {

@@ -28,6 +28,88 @@ class FakeClock:
 
 
 @pytest.mark.django_db
+def test_voice_confirmation_audit_authority_replay_and_correction(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user, monkeypatch
+):
+    from apps.common.models import OutboxEvent
+    from apps.trainerlab.models import Injury, Intervention, Problem, TrainerCommand, TrainerSession
+
+    monkeypatch.setattr("apps.trainerlab.services._enqueue_runtime_turn_task", lambda **_: True)
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="voice-audit-session")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    cause = Injury.objects.create(
+        simulation=session.simulation,
+        injury_location="LUL",
+        injury_kind="GSW",
+        injury_description="Gunshot wound to left upper leg",
+    )
+    problem = Problem.objects.create(
+        simulation=session.simulation,
+        cause_injury=cause,
+        kind="hemorrhage",
+        title="Hemorrhage",
+        march_category="M",
+    )
+    payload = {
+        "intervention_type": "tourniquet",
+        "site_code": "left_arm",
+        "target_problem_id": problem.pk,
+        "client_event_id": "voice-capture-1",
+        "details": {"kind": "tourniquet", "version": 1, "application_mode": "hasty"},
+        "initiated_by_type": "system",
+        "initiated_by_id": non_member_user.pk,
+        "voice_provenance": {
+            "capture_id": "voice-capture-1",
+            "original_transcript": "Not oxygen, tourniquet",
+            "reviewed_transcript": "Tourniquet applied",
+            "confirmed": True,
+        },
+    }
+    url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/events/interventions/"
+    assert (
+        auth_client_factory(non_member_user)
+        .post(url, data=payload, content_type="application/json")
+        .status_code
+        == 403
+    )
+    payload["voice_provenance"]["confirmed"] = False
+    assert client.post(url, data=payload, content_type="application/json").status_code == 422
+    assert not Intervention.objects.filter(simulation=session.simulation).exists()
+    payload["voice_provenance"]["confirmed"] = True
+    first = client.post(url, data=payload, content_type="application/json")
+    assert first.status_code == 200, first.content
+    assert client.post(url, data=payload, content_type="application/json").json() == first.json()
+    intervention = Intervention.objects.get(simulation=session.simulation)
+    assert intervention.initiated_by_id == instructor_user.pk
+    assert intervention.initiated_by_type == "instructor"
+    assert intervention.notes == ""
+    command = TrainerCommand.objects.get(pk=first.json()["command_id"])
+    assert command.issued_by_id == instructor_user.pk
+    assert (
+        command.payload_json["voice_provenance"]["original_transcript"] == "Not oxygen, tourniquet"
+    )
+    event = OutboxEvent.objects.get(
+        simulation_id=session.simulation_id, event_type="patient.intervention.created"
+    )
+    assert event.payload["command_id"] == str(command.pk)
+    assert "voice_provenance" not in event.payload
+    session.refresh_from_db()
+    assert "Not oxygen" not in str(session.runtime_state_json)
+    payload["site_code"] = "right_arm"
+    assert client.post(url, data=payload, content_type="application/json").status_code == 409
+    # A correction is a new authoritative event with an explicit supersedes link.
+    payload["client_event_id"] = "voice-capture-2"
+    payload["voice_provenance"]["capture_id"] = "voice-capture-2"
+    payload["supersedes_event_id"] = intervention.pk
+    correction = client.post(url, data=payload, content_type="application/json")
+    assert correction.status_code == 200, correction.content
+    assert (
+        Intervention.objects.get(client_event_id="voice-capture-2").supersedes_id == intervention.pk
+    )
+
+
+@pytest.mark.django_db
 def test_scenario_decision_endpoint_is_authorized_and_idempotent(
     auth_client_factory, instructor_user, instructor_membership, non_member_user
 ):

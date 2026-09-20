@@ -2079,6 +2079,11 @@ def create_intervention_event(
     simulation_id: int,
     body: InterventionCreateIn,
 ) -> TrainerCommandAck:
+    if body.voice_provenance is not None:
+        # The authenticated confirmer owns the authoritative record. Capture text is
+        # retained only in the durable command audit, never passed to the runtime AI.
+        body.initiated_by_type = "instructor"
+        body.initiated_by_id = request.auth.pk
     idempotency_key = _get_optional_idempotency_key(request)
     if not idempotency_key and body.client_event_id:
         idempotency_key = f"intervention-client-event:{simulation_id}:{body.client_event_id}"

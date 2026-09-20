@@ -192,6 +192,25 @@ class InterventionDetailsIn(BaseModel):
     version: int = 1
 
 
+class VoiceActionProvenanceIn(BaseModel):
+    """Audit-only capture metadata; never an instruction or performed-action source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capture_id: str = Field(min_length=1, max_length=64)
+    source: Literal["push_to_talk"] = "push_to_talk"
+    original_transcript: str = Field(min_length=1, max_length=2000)
+    reviewed_transcript: str = Field(min_length=1, max_length=2000)
+    confirmed: Literal[True]
+
+    @field_validator("capture_id", "original_transcript", "reviewed_transcript")
+    @classmethod
+    def _nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Voice capture fields must not be blank")
+        return value
+
+
 class InterventionCreateIn(BaseModel):
     intervention_type: str = Field(
         ...,
@@ -220,6 +239,7 @@ class InterventionCreateIn(BaseModel):
     initiated_by_id: int | None = None
     supersedes_event_id: int | None = None
     client_event_id: str | None = Field(default=None, max_length=255)
+    voice_provenance: VoiceActionProvenanceIn | None = None
 
     @field_validator("intervention_type")
     @classmethod
@@ -241,6 +261,8 @@ class InterventionCreateIn(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":
+        if self.voice_provenance and self.client_event_id != self.voice_provenance.capture_id:
+            raise ValueError("Confirmed voice actions require the capture ID as client_event_id")
         self.site_code = normalize_site_code(
             normalize_intervention_site(self.intervention_type, self.site_code)
         )
