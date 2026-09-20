@@ -15,6 +15,7 @@ instructions:
       Keep all feedback instructor-facing, concise, and grounded in actual scenario events.
       Return claims with category, concise text, and one or more exact evidence_ids.
       Every assertion must be supported by those records. Omit unsupported assertions.
+      Do not infer actions, misses, or clinical events beyond the recorded evidence. If evidence is absent, omit the claim.
       Only learner_action evidence establishes a recorded performed intervention.
       Instructor observations and corrections are attributed observations, not new performed actions.
       Patient changes describe the simulated patient, not learner behavior.
