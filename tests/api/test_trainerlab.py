@@ -16,6 +16,48 @@ from api.v1.auth import create_access_token
 from apps.common.outbox.event_types import SIMULATION_STATUS_UPDATED
 
 
+def _apply_test_debrief(*, session_id, output_payload, correlation_id=None):
+    from apps.trainerlab.debrief import request_debrief
+    from apps.trainerlab.models import DebriefAnnotation, TrainerRunSummary, TrainerSession
+    from apps.trainerlab.services import apply_debrief_output, build_summary
+
+    session = TrainerSession.objects.get(pk=session_id)
+    session.status = "completed"
+    session.save(update_fields=["status"])
+    claims = []
+    for field, category in (
+        ("narrative_summary", "summary"),
+        ("strengths", "strength"),
+        ("misses", "miss"),
+        ("teaching_points", "teaching_point"),
+        ("overall_assessment", "assessment"),
+    ):
+        texts = output_payload[field]
+        for text in texts if isinstance(texts, list) else [texts]:
+            annotation = DebriefAnnotation.objects.create(
+                session=session,
+                simulation=session.simulation,
+                observation_text=text,
+                outcome="missed" if category == "miss" else "correct",
+            )
+            claims.append(
+                {
+                    "category": category,
+                    "text": text,
+                    "evidence_ids": [f"annotation:{annotation.pk}"],
+                }
+            )
+    build_summary(session=session)
+    request_debrief(session=session)
+    data = TrainerRunSummary.objects.get(session=session).summary_json
+    return apply_debrief_output(
+        session_id=session.pk,
+        output_payload={"claims": claims},
+        correlation_id=correlation_id,
+        service_context={key: data[key] for key in ("debrief_generation", "evidence_revision")},
+    )
+
+
 class FakeClock:
     def __init__(self):
         self.current = 0.0
@@ -25,6 +67,43 @@ class FakeClock:
 
     async def sleep(self, seconds: float) -> None:
         self.current += seconds
+
+
+@pytest.mark.django_db
+def test_debrief_review_authorization_idempotency_and_stale_revision(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user
+):
+    from apps.trainerlab.models import DebriefAnnotation, TrainerSession
+    from apps.trainerlab.services import stop_session
+
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="phase7-review")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    stop_session(session=session, user=instructor_user)
+    base = f"/api/v1/trainerlab/simulations/{session.simulation_id}/summary/"
+    first = client.get(base).json()
+    request = {
+        "evidence_revision": first["evidence_revision"],
+        "correction": "The learner reassessed breathing.",
+    }
+    kwargs = {
+        "data": request,
+        "content_type": "application/json",
+        "HTTP_IDEMPOTENCY_KEY": "review-correction",
+    }
+    assert auth_client_factory(non_member_user).post(base + "review/", **kwargs).status_code == 403
+    accepted = client.post(base + "review/", **kwargs)
+    assert accepted.status_code == 200, accepted.content
+    assert client.post(base + "review/", **kwargs).json() == accepted.json()
+    assert DebriefAnnotation.objects.filter(session=session).count() == 1
+    updated = client.get(base).json()
+    assert updated["evidence_revision"] != first["evidence_revision"]
+    assert updated["debrief_status"] == "generating"
+    assert updated["ai_debrief"] is None
+    assert any(item["kind"] == "instructor_observation" for item in updated["evidence"])
+    kwargs["HTTP_IDEMPOTENCY_KEY"] = "stale-review"
+    assert client.post(base + "review/", **kwargs).status_code == 409
+    assert DebriefAnnotation.objects.filter(session=session).count() == 1
 
 
 @pytest.mark.django_db
@@ -1705,7 +1784,8 @@ class TestTrainerLabEvents:
         instructor_membership,
     ):
         from apps.trainerlab.models import TrainerSession
-        from apps.trainerlab.services import apply_debrief_output
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="post-stop-note-session")
@@ -1750,7 +1830,8 @@ class TestTrainerLabEvents:
         assert any(
             item["content"] == "Post-stop instructor note." for item in summary_body["notes"]
         )
-        assert summary_body["ai_debrief"]["overall_assessment"] == "Baseline assessment"
+        assert summary_body["ai_debrief"] is None
+        assert summary_body["debrief_status"] == "generating"
 
         injury = _post_injury_event(
             client,
@@ -3123,7 +3204,9 @@ class TestTrainerLabDictionaries:
     ):
         from apps.common.models import OutboxEvent
         from apps.trainerlab.models import TrainerRunSummary, TrainerSession
-        from apps.trainerlab.services import apply_debrief_output, build_summary
+        from apps.trainerlab.services import build_summary
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="debrief-output-session")
@@ -3154,7 +3237,7 @@ class TestTrainerLabDictionaries:
         assert summary.summary_json["ai_debrief"]["overall_assessment"].startswith("Strong initial")
 
         trainer_session.refresh_from_db()
-        assert trainer_session.runtime_state_json["summary_feedback"]["teaching_points"] == [
+        assert summary.summary_json["ai_debrief"]["teaching_points"] == [
             "Discuss when needle decompression becomes appropriate."
         ]
         assert OutboxEvent.objects.filter(
@@ -3170,7 +3253,9 @@ class TestTrainerLabDictionaries:
     ):
         from apps.common.models import OutboxEvent
         from apps.trainerlab.models import TrainerRunSummary, TrainerSession
-        from apps.trainerlab.services import apply_debrief_output, build_summary
+        from apps.trainerlab.services import build_summary
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="debrief-revision-session")
@@ -3215,8 +3300,13 @@ class TestTrainerLabDictionaries:
             ).order_by("created_at", "id")
         )
         assert len(events) >= 2
-        assert events[-2].payload["ai_debrief_revision"] == 1
-        assert events[-1].payload["ai_debrief_revision"] == 2
+        ready = [
+            event
+            for event in events
+            if event.payload["status"] == "ready" and "ai_debrief_revision" in event.payload
+        ]
+        assert ready[-2].payload["ai_debrief_revision"] == 1
+        assert ready[-1].payload["ai_debrief_revision"] == 2
 
     def test_build_summary_preserves_notes_beyond_timeline_window(
         self,
@@ -3281,19 +3371,23 @@ class TestTrainerLabDictionaries:
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
         build_summary(session=trainer_session, generated_by=instructor_user)
 
+        data = trainer_session.summary.summary_json
         service = GenerateTrainerRunDebrief(
             context={
                 "simulation_id": simulation_id,
                 "session_id": trainer_session.id,
+                "evidence": data["evidence"],
+                "evidence_revision": data["evidence_revision"],
+                "debrief_generation": "test-generation",
             }
         )
         async_to_sync(service._aprepare_context)()
 
-        assert service.context["notes"][0]["content"] == (
+        assert service.context["evidence"][-1]["facts"]["observation"] == (
             "Remember the trainee verbalized concern about breathing."
         )
         rendered = TrainerDebriefContextInstruction.render_instruction(service)
-        assert "Instructor notes JSON" in rendered
+        assert "Clinical evidence JSON" in rendered
         assert "Remember the trainee verbalized concern about breathing." in rendered
 
     def test_injury_dictionary_contains_curated_regions(

@@ -23,6 +23,7 @@ from api.v1.schemas.trainerlab import (
     AnnotationOut,
     AssessmentFindingCreateIn,
     ControlPlaneDebugOut,
+    DebriefReviewIn,
     DiagnosticResultCreateIn,
     DictionaryItemOut,
     DispositionStateCreateIn,
@@ -2004,7 +2005,9 @@ def _commit_injected_event(
     command.processed_at = timezone.now()
     _save_command(command, update_fields=["status", "processed_at"])
     if event_kind == "note" and session.status == SessionStatus.COMPLETED:
-        refresh_completed_run_review(session=session, generated_by=user)
+        refresh_completed_run_review(
+            session=session, generated_by=user, correlation_id=correlation_id
+        )
     return _accepted(command)
 
 
@@ -2341,14 +2344,80 @@ def list_trainer_events(
 )
 @api_rate_limit
 def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
+    from apps.trainerlab.debrief import summary_for_review
+
     _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
 
-    summary = getattr(session, "summary", None)
+    summary = summary_for_review(session)
     if summary is None:
         raise HttpError(404, "Summary not generated")
 
-    return RunSummaryOut(**summary.summary_json)
+    data = dict(summary.summary_json)
+    if data.get("debrief_status") != "ready":
+        data["ai_debrief"] = None
+    return RunSummaryOut(**data)
+
+
+@router.post("/simulations/{simulation_id}/summary/review/", response=TrainerCommandAck)
+@api_rate_limit
+def review_debrief(request: HttpRequest, simulation_id: int, body: DebriefReviewIn):
+    from apps.trainerlab.debrief import request_debrief, summary_for_review
+
+    _require_lab_access(request)
+    session = _get_session_for_simulation(request, simulation_id)
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session.pk)
+        if session.status != SessionStatus.COMPLETED:
+            raise HttpError(409, "The scenario must be completed before reviewing its debrief")
+        command, created = _claim_command(
+            session=session,
+            command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
+            idempotency_key=_get_idempotency_key(request),
+            issued_by=request.auth,
+            payload_json={"debrief_review": body.model_dump()},
+        )
+        if not created:
+            return _accepted(_resolve_existing_command(command))
+        summary = summary_for_review(session)
+        if (
+            summary is None
+            or summary.summary_json.get("evidence_revision") != body.evidence_revision
+        ):
+            raise HttpError(409, "The review changed. Refresh before submitting.")
+        if body.claim_id and not any(
+            item["id"] == body.claim_id
+            for item in (summary.summary_json.get("ai_debrief") or {}).get("claims", [])
+        ):
+            raise HttpError(409, "The claim changed. Refresh before correcting it.")
+        if body.correction is not None:
+            claim = next(
+                (
+                    item
+                    for item in (summary.summary_json.get("ai_debrief") or {}).get("claims", [])
+                    if item["id"] == body.claim_id
+                ),
+                None,
+            )
+            create_debrief_annotation(
+                session=session,
+                created_by=request.auth,
+                learning_objective="other",
+                outcome="pending",
+                observation_text=(
+                    f"Instructor correction of claim '{claim['text'][:300]}': "
+                    if claim
+                    else "Instructor review: "
+                )
+                + body.correction,
+                correlation_id=_get_correlation_id(request),
+            )
+        else:
+            request_debrief(session=session, correlation_id=_get_correlation_id(request))
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        _save_command(command, update_fields=["status", "processed_at"])
+        return _accepted(command)
 
 
 @router.get(

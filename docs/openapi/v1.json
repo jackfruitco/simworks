@@ -3730,6 +3730,53 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/summary/review/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_review_debrief",
+        "summary": "Review Debrief",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebriefReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/stream/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_stream_trainer_events",
@@ -11459,6 +11506,51 @@
               }
             ],
             "title": "Ai Debrief"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Revision"
+          },
+          "evidence_omitted_count": {
+            "default": 0,
+            "title": "Evidence Omitted Count",
+            "type": "integer"
+          },
+          "debrief_status": {
+            "default": "not_requested",
+            "title": "Debrief Status",
+            "type": "string"
+          },
+          "debrief_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debrief Error"
+          },
+          "ai_debrief_revision": {
+            "default": 0,
+            "title": "Ai Debrief Revision",
+            "type": "integer"
           }
         },
         "required": [
@@ -11473,6 +11565,44 @@
           "ai_rationale_notes"
         ],
         "title": "RunSummaryOut",
+        "type": "object"
+      },
+      "DebriefReviewIn": {
+        "properties": {
+          "evidence_revision": {
+            "title": "Evidence Revision",
+            "type": "string"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "maxLength": 1500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          }
+        },
+        "required": [
+          "evidence_revision"
+        ],
+        "title": "DebriefReviewIn",
         "type": "object"
       },
       "ProblemStatusOut": {

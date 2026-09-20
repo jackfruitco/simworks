@@ -373,6 +373,26 @@ class RunSummaryOut(BaseModel):
     command_log: list[dict[str, Any]]
     ai_rationale_notes: list[Any]
     ai_debrief: dict[str, Any] | None = None
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_revision: str | None = None
+    evidence_omitted_count: int = 0
+    debrief_status: str = "not_requested"
+    debrief_error: str | None = None
+    ai_debrief_revision: int = 0
+
+
+class DebriefReviewIn(BaseModel):
+    evidence_revision: str
+    correction: str | None = Field(default=None, min_length=1, max_length=1500)
+    claim_id: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_correction(self):
+        if self.correction is not None and not self.correction.strip():
+            raise ValueError("Correction cannot be blank")
+        if self.claim_id and self.correction is None:
+            raise ValueError("A claim correction requires an observation")
+        return self
 
 
 class RuntimeCauseStateOut(BaseModel):

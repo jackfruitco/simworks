@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -3526,21 +3525,12 @@ def apply_runtime_turn_output(
     return refreshed
 
 
-def enqueue_summary_debrief(*, session: TrainerSession) -> str | None:
-    from .orca.services import GenerateTrainerRunDebrief
+def enqueue_summary_debrief(
+    *, session: TrainerSession, correlation_id: str | None = None
+) -> str | None:
+    from .debrief import request_debrief
 
-    try:
-        return GenerateTrainerRunDebrief.task.using(
-            context={
-                "simulation_id": session.simulation_id,
-                "session_id": session.id,
-            },
-        ).enqueue(
-            user_message="Create the end-of-run TrainerLab debrief for the instructor.",
-        )
-    except Exception:
-        logger.exception("trainerlab.summary.enqueue_failed", session_id=session.id)
-        return None
+    return request_debrief(session=session, correlation_id=correlation_id)
 
 
 def apply_debrief_output(
@@ -3548,52 +3538,15 @@ def apply_debrief_output(
     session_id: int,
     output_payload: dict[str, Any],
     correlation_id: str | None = None,
+    service_context: dict | None = None,
 ) -> TrainerRunSummary:
-    with transaction.atomic():
-        session = (
-            TrainerSession.objects.select_for_update()
-            .select_related("simulation")
-            .get(pk=session_id)
-        )
-        existing_summary_json = dict(
-            getattr(getattr(session, "summary", None), "summary_json", {}) or {}
-        )
-        next_revision = int(existing_summary_json.get("ai_debrief_revision", 0) or 0) + 1
-        summary, _ = TrainerRunSummary.objects.select_for_update().update_or_create(
-            session=session,
-            defaults={
-                "summary_json": {
-                    **existing_summary_json,
-                    "ai_debrief": output_payload,
-                    "ai_debrief_revision": next_revision,
-                    "status": session.status,
-                    "simulation_id": session.simulation_id,
-                    "final_state": session.runtime_state_json,
-                },
-                "generator_version": "v2",
-            },
-        )
+    from .debrief import apply_output
 
-        state = get_runtime_state(session)
-        state["summary_feedback"] = output_payload
-        session.runtime_state_json = state
-        session.save(update_fields=["runtime_state_json", "modified_at"])
-
-        emit_runtime_event(
-            session=session,
-            event_type=outbox_events.SIMULATION_SUMMARY_UPDATED,
-            payload={
-                "summary_id": summary.id,
-                "status": "updated",
-                "ai_debrief": output_payload,
-                "ai_debrief_revision": next_revision,
-            },
-            correlation_id=correlation_id,
-            idempotency_key=(
-                f"{outbox_events.SIMULATION_SUMMARY_UPDATED}:{session.id}:{next_revision}"
-            ),
-        )
-        return summary
+    return apply_output(
+        session_id=session_id,
+        output_payload=output_payload,
+        context={**(service_context or {}), "correlation_id": correlation_id},
+    )
 
 
 def _lock_live_session(session: TrainerSession) -> TrainerSession:
@@ -3786,14 +3739,31 @@ def stop_session(
             "discarded_runtime_reason_count": len(discarded_reasons),
         },
     )
-    build_summary(session=session, generated_by=user)
-    enqueue_summary_debrief(session=session)
+    build_summary(session=session, generated_by=user, correlation_id=correlation_id)
+    enqueue_summary_debrief(session=session, correlation_id=correlation_id)
     return session
 
 
 @transaction.atomic
-def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSummary:
-    events = list(session.runtime_events.order_by("sequence"))
+def build_summary(
+    *, session: TrainerSession, generated_by=None, correlation_id=None
+) -> TrainerRunSummary:
+    from django.db.models import Count, Q
+
+    from .debrief import project_evidence
+
+    session = _lock_live_session(session)
+    events = list(
+        session.runtime_events.filter(
+            Q(event_type__startswith="patient.") | Q(event_type="simulation.status.updated")
+        ).order_by("sequence", "created_at", "id")
+    )
+    timeline = list(reversed(list(session.runtime_events.order_by("-sequence")[:10])))
+    event_counts = dict(
+        session.runtime_events.values("event_type")
+        .annotate(count=Count("id"))
+        .values_list("event_type", "count")
+    )
     commands = list(session.commands.order_by("issued_at"))
     existing_summary_json = dict(
         getattr(getattr(session, "summary", None), "summary_json", {}) or {}
@@ -3801,15 +3771,36 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
     notes = list(
         SimulationNote.objects.filter(simulation=session.simulation).order_by("timestamp", "id")
     )
+    evidence, evidence_revision, omitted = project_evidence(session, events)
+    # Notes are observations, never proof that an intervention occurred.
+    for note in notes:
+        if note.source == EventSource.AI:
+            continue
+        evidence.append(
+            {
+                "id": f"note:{note.pk}",
+                "kind": "instructor_observation",
+                "event_type": "instructor.note",
+                "created_at": _iso_or_none(note.timestamp),
+                "facts": {"observation": note.content},
+            }
+        )
+    import hashlib
+    import json
+
+    evidence_revision = hashlib.sha256(
+        json.dumps([evidence_revision, evidence], sort_keys=True).encode()
+    ).hexdigest()
 
     summary_payload = {
+        **existing_summary_json,
         "session_id": session.id,
         "simulation_id": session.simulation_id,
         "status": session.status,
         "run_started_at": _iso_or_none(session.run_started_at),
         "run_completed_at": _iso_or_none(session.run_completed_at),
         "final_state": session.runtime_state_json,
-        "event_type_counts": dict(Counter(event.event_type for event in events)),
+        "event_type_counts": event_counts,
         "timeline_highlights": [
             {
                 "event_type": event.event_type,
@@ -3817,7 +3808,7 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
                 "created_at": _iso_or_none(event.created_at),
                 "payload": event.payload,
             }
-            for event in events[-10:]
+            for event in timeline
         ],
         "notes": [
             {
@@ -3843,6 +3834,16 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
         ),
         "ai_debrief": existing_summary_json.get("ai_debrief"),
         "ai_debrief_revision": int(existing_summary_json.get("ai_debrief_revision", 0) or 0),
+        "evidence": evidence,
+        "evidence_revision": evidence_revision,
+        "evidence_omitted_count": omitted,
+        "debrief_status": (
+            existing_summary_json.get("debrief_status", "not_requested")
+            if evidence_revision == existing_summary_json.get("evidence_revision")
+            else "stale"
+            if existing_summary_json.get("ai_debrief")
+            else "not_requested"
+        ),
     }
 
     summary, _ = TrainerRunSummary.objects.update_or_create(
@@ -3858,6 +3859,7 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
         event_type=outbox_events.SIMULATION_SUMMARY_UPDATED,
         payload={"summary_id": summary.id, "status": "ready"},
         created_by=generated_by,
+        correlation_id=correlation_id,
         idempotency_key=f"{outbox_events.SIMULATION_SUMMARY_UPDATED}:{summary.id}:ready",
     )
 
@@ -3865,12 +3867,14 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
 
 
 def refresh_completed_run_review(
-    *, session: TrainerSession, generated_by=None
+    *, session: TrainerSession, generated_by=None, correlation_id=None
 ) -> TrainerRunSummary | None:
     if session.status != SessionStatus.COMPLETED:
         return None
-    summary = build_summary(session=session, generated_by=generated_by)
-    enqueue_summary_debrief(session=session)
+    summary = build_summary(
+        session=session, generated_by=generated_by, correlation_id=correlation_id
+    )
+    enqueue_summary_debrief(session=session, correlation_id=correlation_id)
     return summary
 
 
@@ -4071,6 +4075,7 @@ def trigger_manual_tick(
 # ---------------------------------------------------------------------------
 
 
+@transaction.atomic
 def create_debrief_annotation(
     *,
     session: TrainerSession,
@@ -4083,6 +4088,7 @@ def create_debrief_annotation(
     correlation_id: str | None = None,
 ) -> DebriefAnnotation:
     """Create a structured debrief annotation for this session."""
+    session = _lock_live_session(session)
     annotation = DebriefAnnotation.objects.create(
         session=session,
         simulation=session.simulation,
@@ -4107,6 +4113,9 @@ def create_debrief_annotation(
         created_by=created_by,
         correlation_id=correlation_id,
         idempotency_key=f"{outbox_events.SIMULATION_ANNOTATION_CREATED}:{annotation.id}",
+    )
+    refresh_completed_run_review(
+        session=session, generated_by=created_by, correlation_id=correlation_id
     )
     return annotation
 
