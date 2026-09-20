@@ -2087,11 +2087,16 @@ def create_intervention_event(
     idempotency_key = _get_optional_idempotency_key(request)
     if not idempotency_key and body.client_event_id:
         idempotency_key = f"intervention-client-event:{simulation_id}:{body.client_event_id}"
+    # Preserve the pre-voice command fingerprint for queued manual commands that
+    # cross a backend deployment. A new optional null key would otherwise conflict.
+    payload = body.model_dump(
+        exclude={"voice_provenance"} if body.voice_provenance is None else set()
+    )
     return _inject_event_core(
         request=request,
         simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
-        payload_json={"event_kind": "intervention", **body.model_dump()},
+        payload_json={"event_kind": "intervention", **payload},
         create_fn=lambda session: _create_intervention(session, body),
         idempotency_key=idempotency_key,
     )

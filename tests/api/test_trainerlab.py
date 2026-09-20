@@ -2613,6 +2613,10 @@ class TestTrainerLabDictionaries:
         )
         assert event.payload["client_event_id"] == "tap-abc-123"
         assert event.payload["command_id"] == first.json()["command_id"]
+        from apps.trainerlab.models import TrainerCommand
+
+        command = TrainerCommand.objects.get(pk=first.json()["command_id"])
+        assert "voice_provenance" not in command.payload_json
 
     def test_duplicate_intervention_client_event_id_conflicting_payload_returns_409(
         self,
