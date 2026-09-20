@@ -220,11 +220,13 @@ def project_runtime_llm_snapshot(
     snapshot = dict(scenario_snapshot or {})
     now = timezone.now()
     active_problem_ages = {
-        problem_id: max(0, int((now - timestamp).total_seconds()))
-        for problem_id, timestamp in Problem.objects.filter(
+        problem_id: max(0, active_elapsed_seconds - onset)
+        if onset is not None
+        else min(active_elapsed_seconds, max(0, int((now - timestamp).total_seconds())))
+        for problem_id, timestamp, onset in Problem.objects.filter(
             simulation=session.simulation,
             is_active=True,
-        ).values_list("id", "timestamp")
+        ).values_list("id", "timestamp", "onset_elapsed_seconds")
     }
     active_intervention_ages = {
         intervention_id: max(0, int((now - timestamp).total_seconds()))
@@ -327,6 +329,11 @@ def project_runtime_llm_snapshot(
     )
 
     projected = {
+        "progression": dict(session.runtime_state_json.get("progression") or {}),
+        "pending_scenario_decisions": list(
+            session.runtime_state_json.get("scenario_decisions") or []
+        ),
+        "branch_history": list(session.runtime_state_json.get("branch_history") or []),
         "active_elapsed_seconds": int(active_elapsed_seconds),
         "patient_status": patient_status,
         "active_causes": active_causes,

@@ -7,6 +7,9 @@ This folder contains technical documentation for the MedSim platform (formerly S
 - [`index.md`](index.md) — primary docs index
 - [`quick-start.md`](quick-start.md) — local setup and development workflow
 - [`architecture.md`](architecture.md) — architecture and boundaries
+- [`trainerlab-phase5.md`](trainerlab-phase5.md) — scenario progression, branch authorization, and portrayal
+- [`trainerlab-phase6.md`](trainerlab-phase6.md) — confirmed voice actions and capture provenance
+- [`trainerlab-phase7.md`](trainerlab-phase7.md) — evidence-linked debrief, instructor review, and MVP qualification
 - [`architecture/accounts-billing-entitlements.md`](architecture/accounts-billing-entitlements.md) — account ownership, billing ingestion, and entitlement resolution
 - [`operations/backups.md`](operations/backups.md) — encrypted PostgreSQL backups, R2 storage, and restore runbook
 

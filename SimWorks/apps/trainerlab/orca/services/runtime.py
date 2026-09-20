@@ -46,4 +46,5 @@ class GenerateTrainerRuntimeTurn(DjangoBaseService):
             session_id=session_id,
             error=str(err),
             requeue_current_batch=True,
+            expected_generation=context.get("ai_generation"),
         )

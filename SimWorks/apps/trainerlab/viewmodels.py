@@ -151,6 +151,7 @@ class RuntimeSnapshot(StrictBaseModel):
     phase: str = ""
     state_revision: int = 0
     active_elapsed_seconds: int = 0
+    clock_observed_at: datetime | None = None
     tick_count: int = 0
     tick_interval_seconds: int = 15
     next_tick_at: datetime | None = None
@@ -167,6 +168,42 @@ class RuntimeSnapshot(StrictBaseModel):
     control_plane_debug: dict[str, Any] = Field(default_factory=dict)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
     latest_event_cursor: str | None = None
+    latest_event_sequence: int = 0
+
+
+class DashboardAttentionItem(StrictBaseModel):
+    code: str
+    title: str
+    severity: Literal["critical", "warning", "info"]
+
+
+class DashboardCapabilities(StrictBaseModel):
+    lifecycle_actions: list[Literal["start", "pause", "resume", "stop"]] = Field(
+        default_factory=list
+    )
+    can_record_learner_action: bool = False
+    can_inject_event: bool = False
+    can_override_patient_state: bool = False
+    can_steer: bool = False
+    can_annotate: bool = False
+    can_tick_ai: bool = False
+    can_tick_vitals: bool = False
+    can_view_debrief: bool = False
+
+
+class DashboardPresentation(StrictBaseModel):
+    """Compact, deterministic projection for the live instructor dashboard."""
+
+    patient_summary: str = ""
+    primary_cue: str = ""
+    cue_rationale: str = ""
+    upcoming_changes: list[str] = Field(default_factory=list)
+    monitoring_focus: list[str] = Field(default_factory=list)
+    attention_items: list[DashboardAttentionItem] = Field(default_factory=list)
+    held_vital_types: list[str] = Field(default_factory=list)
+    capabilities: DashboardCapabilities = Field(default_factory=DashboardCapabilities)
+    progression: dict[str, Any] = Field(default_factory=dict)
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ScenarioStateSummary(StrictBaseModel):
@@ -221,6 +258,7 @@ class TrainerRestViewModel(StrictBaseModel):
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_snapshot: ScenarioSnapshot
     runtime_snapshot: RuntimeSnapshot
+    presentation: DashboardPresentation
     event_timeline: EventTimeline
     metadata: TrainerRestMetadata
 
@@ -363,7 +401,9 @@ def load_trainer_engine_aggregate(
         for vital_type, model in VITAL_TYPE_MODEL_MAP.items()
     }
     runtime_events = tuple(
-        RuntimeEvent.objects.filter(session=session).order_by("-created_at", "-id")[:event_limit]
+        RuntimeEvent.objects.filter(session=session).order_by("-sequence", "-created_at", "-id")[
+            :event_limit
+        ]
     )
     runtime_event_total_count = RuntimeEvent.objects.filter(session=session).count()
     latest_event_cursor = (
@@ -467,7 +507,11 @@ def build_scenario_snapshot(aggregate: TrainerEngineAggregate) -> ScenarioSnapsh
 def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot:
     runtime_state = aggregate.runtime_state
     next_tick_at = None
-    if aggregate.session.last_ai_tick_at is not None and aggregate.session.tick_interval_seconds:
+    if (
+        aggregate.session.status == SessionStatus.RUNNING
+        and aggregate.session.last_ai_tick_at is not None
+        and aggregate.session.tick_interval_seconds
+    ):
         next_tick_at = aggregate.session.last_ai_tick_at + timedelta(
             seconds=aggregate.session.tick_interval_seconds
         )
@@ -480,6 +524,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
             session=aggregate.session,
             runtime_state=runtime_state,
         ),
+        clock_observed_at=timezone.now().replace(microsecond=0),
         tick_count=int(runtime_state.get("tick_count", 0) or 0),
         tick_interval_seconds=aggregate.session.tick_interval_seconds,
         next_tick_at=next_tick_at,
@@ -498,6 +543,7 @@ def build_runtime_snapshot(aggregate: TrainerEngineAggregate) -> RuntimeSnapshot
             (runtime_state.get("control_plane_debug") or {}).get("last_request_profile") or {}
         ),
         latest_event_cursor=aggregate.latest_event_cursor,
+        latest_event_sequence=aggregate.session.event_sequence,
     )
     logger.debug(
         "trainerlab.runtime_snapshot.built",
@@ -523,6 +569,115 @@ def build_event_timeline(aggregate: TrainerEngineAggregate) -> EventTimeline:
     return EventTimeline(
         events=events,
         total_events=aggregate.runtime_event_total_count,
+    )
+
+
+def build_dashboard_presentation(
+    aggregate: TrainerEngineAggregate,
+    *,
+    scenario_snapshot: ScenarioSnapshot,
+    runtime_snapshot: RuntimeSnapshot,
+) -> DashboardPresentation:
+    """Build the glanceable instructor projection without additional I/O or AI work."""
+
+    status = aggregate.session.status
+    mutable = status in {SessionStatus.SEEDED, SessionStatus.RUNNING, SessionStatus.PAUSED}
+    lifecycle_actions: list[str]
+    if status == SessionStatus.SEEDED:
+        lifecycle_actions = ["start", "stop"]
+    elif status == SessionStatus.RUNNING:
+        lifecycle_actions = ["pause", "stop"]
+    elif status == SessionStatus.PAUSED:
+        lifecycle_actions = ["resume", "stop"]
+    else:
+        lifecycle_actions = []
+
+    capabilities = DashboardCapabilities(
+        lifecycle_actions=lifecycle_actions,
+        can_record_learner_action=mutable,
+        can_inject_event=mutable,
+        can_override_patient_state=mutable,
+        can_steer=mutable,
+        can_annotate=status != SessionStatus.SEEDING and status != SessionStatus.FAILED,
+        can_tick_ai=status == SessionStatus.RUNNING,
+        can_tick_vitals=status == SessionStatus.RUNNING,
+        can_view_debrief=status == SessionStatus.COMPLETED,
+    )
+
+    patient_status = scenario_snapshot.patient_status
+    attention_items: list[DashboardAttentionItem] = []
+    if patient_status.tension_pneumothorax:
+        attention_items.append(
+            DashboardAttentionItem(
+                code="tension_pneumothorax",
+                title="Tension physiology",
+                severity="critical",
+            )
+        )
+    if patient_status.hemodynamic_instability:
+        attention_items.append(
+            DashboardAttentionItem(
+                code="hemodynamic_instability",
+                title="Hemodynamic instability",
+                severity="critical",
+            )
+        )
+    if patient_status.respiratory_distress:
+        attention_items.append(
+            DashboardAttentionItem(
+                code="respiratory_distress",
+                title="Respiratory distress",
+                severity="critical",
+            )
+        )
+    if patient_status.impending_pneumothorax and not patient_status.tension_pneumothorax:
+        attention_items.append(
+            DashboardAttentionItem(
+                code="impending_pneumothorax",
+                title="Pneumothorax risk",
+                severity="warning",
+            )
+        )
+
+    for flag in patient_status.teaching_flags:
+        normalized = str(flag).strip()
+        if normalized:
+            attention_items.append(
+                DashboardAttentionItem(
+                    code="teaching_flag",
+                    title=normalized,
+                    severity="info",
+                )
+            )
+
+    ai_plan = runtime_snapshot.ai_plan
+    primary_cue = ai_plan.summary.strip()
+    if not primary_cue:
+        primary_cue = {
+            SessionStatus.SEEDING: "Preparing the patient and scenario.",
+            SessionStatus.SEEDED: "Review the brief, then start when the team is ready.",
+            SessionStatus.RUNNING: "Observe the learner and record only actions that occur.",
+            SessionStatus.PAUSED: "Scenario progression is paused.",
+            SessionStatus.COMPLETED: "Scenario complete. Review the debrief.",
+            SessionStatus.FAILED: "Scenario preparation failed.",
+        }[status]
+
+    held_vital_types = sorted(
+        vital_type
+        for vital_type, vital in aggregate.vitals_by_type.items()
+        if vital is not None and bool(vital.lock_value)
+    )
+    return DashboardPresentation(
+        patient_summary=patient_status.narrative.strip(),
+        primary_cue=primary_cue,
+        cue_rationale=ai_plan.rationale.strip(),
+        upcoming_changes=[item for item in ai_plan.upcoming_changes if item.strip()][:3],
+        monitoring_focus=[item for item in ai_plan.monitoring_focus if item.strip()][:3],
+        attention_items=attention_items[:5],
+        held_vital_types=held_vital_types,
+        capabilities=capabilities,
+        progression=dict(aggregate.runtime_state.get("progression") or {"status": "awaiting_plan"}),
+        decisions=list(aggregate.runtime_state.get("scenario_decisions") or []) if mutable else [],
     )
 
 
@@ -621,6 +776,11 @@ def build_trainer_rest_view_model(
         status=aggregate.session.status,
         scenario_snapshot=derived_views.scenario_snapshot,
         runtime_snapshot=derived_views.runtime_snapshot,
+        presentation=build_dashboard_presentation(
+            aggregate,
+            scenario_snapshot=derived_views.scenario_snapshot,
+            runtime_snapshot=derived_views.runtime_snapshot,
+        ),
         event_timeline=derived_views.event_timeline,
         metadata=TrainerRestMetadata(
             snapshot_cache=aggregate.snapshot_cache,

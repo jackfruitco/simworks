@@ -6,7 +6,7 @@ from typing import ClassVar
 
 from asgiref.sync import sync_to_async
 
-from apps.trainerlab.models import TrainerSession
+from apps.trainerlab.debrief import fail_debrief
 from apps.trainerlab.services import apply_debrief_output
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
@@ -19,7 +19,13 @@ class GenerateTrainerRunDebrief(DjangoBaseService):
         "trainerlab.debrief.TrainerDebriefContractInstruction",
         "trainerlab.debrief.TrainerDebriefContextInstruction",
     ]
-    required_context_keys = ("simulation_id", "session_id")
+    required_context_keys = (
+        "simulation_id",
+        "session_id",
+        "debrief_generation",
+        "evidence_revision",
+        "evidence",
+    )
     use_native_output = True
 
     from ..schemas import TrainerRunDebriefOutput as _Schema
@@ -30,17 +36,8 @@ class GenerateTrainerRunDebrief(DjangoBaseService):
         if hasattr(super(), "_aprepare_context"):
             await super()._aprepare_context()
 
-        session = await TrainerSession.objects.select_related("summary").aget(
-            pk=self.context["session_id"]
-        )
-        summary = getattr(session, "summary", None)
-        summary_json = dict(getattr(summary, "summary_json", {}) or {})
-        self.context.setdefault(
-            "final_state", summary_json.get("final_state", session.runtime_state_json)
-        )
-        self.context.setdefault("timeline_highlights", summary_json.get("timeline_highlights", []))
-        self.context.setdefault("notes", summary_json.get("notes", []))
-        self.context.setdefault("command_log", summary_json.get("command_log", []))
+        # The reservation includes an immutable evidence snapshot. Never reload a
+        # newer summary into an older generation or send raw commands to the model.
 
     async def on_success_ctx(self, *, context, result) -> None:
         output = result.output
@@ -49,4 +46,11 @@ class GenerateTrainerRunDebrief(DjangoBaseService):
             session_id=context["session_id"],
             output_payload=payload,
             correlation_id=context.get("correlation_id"),
+            service_context=context,
+        )
+
+    async def on_failure_ctx(self, *, context, err: Exception) -> None:
+        await sync_to_async(fail_debrief, thread_sensitive=True)(
+            session_id=context["session_id"],
+            context=context,
         )

@@ -192,6 +192,25 @@ class InterventionDetailsIn(BaseModel):
     version: int = 1
 
 
+class VoiceActionProvenanceIn(BaseModel):
+    """Audit-only capture metadata; never an instruction or performed-action source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capture_id: str = Field(min_length=1, max_length=64)
+    source: Literal["push_to_talk"] = "push_to_talk"
+    original_transcript: str = Field(min_length=1, max_length=2000)
+    reviewed_transcript: str = Field(min_length=1, max_length=2000)
+    confirmed: Literal[True]
+
+    @field_validator("capture_id", "original_transcript", "reviewed_transcript")
+    @classmethod
+    def _nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Voice capture fields must not be blank")
+        return value
+
+
 class InterventionCreateIn(BaseModel):
     intervention_type: str = Field(
         ...,
@@ -220,6 +239,7 @@ class InterventionCreateIn(BaseModel):
     initiated_by_id: int | None = None
     supersedes_event_id: int | None = None
     client_event_id: str | None = Field(default=None, max_length=255)
+    voice_provenance: VoiceActionProvenanceIn | None = None
 
     @field_validator("intervention_type")
     @classmethod
@@ -241,6 +261,8 @@ class InterventionCreateIn(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":
+        if self.voice_provenance and self.client_event_id != self.voice_provenance.capture_id:
+            raise ValueError("Confirmed voice actions require the capture ID as client_event_id")
         self.site_code = normalize_site_code(
             normalize_intervention_site(self.intervention_type, self.site_code)
         )
@@ -351,6 +373,26 @@ class RunSummaryOut(BaseModel):
     command_log: list[dict[str, Any]]
     ai_rationale_notes: list[Any]
     ai_debrief: dict[str, Any] | None = None
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_revision: str | None = None
+    evidence_omitted_count: int = 0
+    debrief_status: str = "not_requested"
+    debrief_error: str | None = None
+    ai_debrief_revision: int = 0
+
+
+class DebriefReviewIn(BaseModel):
+    evidence_revision: str
+    correction: str | None = Field(default=None, min_length=1, max_length=1500)
+    claim_id: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_correction(self):
+        if self.correction is not None and not self.correction.strip():
+            raise ValueError("Correction cannot be blank")
+        if self.claim_id and self.correction is None:
+            raise ValueError("A claim correction requires an observation")
+        return self
 
 
 class RuntimeCauseStateOut(BaseModel):
@@ -609,6 +651,7 @@ class RuntimeSnapshotOut(BaseModel):
     phase: str = ""
     state_revision: int = 0
     active_elapsed_seconds: int = 0
+    clock_observed_at: datetime | None = None
     tick_count: int = 0
     tick_interval_seconds: int = 15
     next_tick_at: datetime | None = None
@@ -624,6 +667,10 @@ class RuntimeSnapshotOut(BaseModel):
     last_runtime_completed_at: str | None = None
     control_plane_debug: ControlPlaneDebugOut = Field(default_factory=ControlPlaneDebugOut)
     request_metadata: dict[str, Any] = Field(default_factory=dict)
+    latest_event_sequence: int = Field(
+        default=0,
+        description="Highest committed session event sequence represented by this snapshot.",
+    )
     latest_event_cursor: str | None = Field(
         default=None,
         description=(
@@ -633,6 +680,43 @@ class RuntimeSnapshotOut(BaseModel):
             "`null` when no events exist yet."
         ),
     )
+
+
+class DashboardAttentionItemOut(BaseModel):
+    code: str
+    title: str
+    severity: Literal["critical", "warning", "info"]
+
+
+class DashboardCapabilitiesOut(BaseModel):
+    lifecycle_actions: list[Literal["start", "pause", "resume", "stop"]] = Field(
+        default_factory=list
+    )
+    can_record_learner_action: bool = False
+    can_inject_event: bool = False
+    can_override_patient_state: bool = False
+    can_steer: bool = False
+    can_annotate: bool = False
+    can_tick_ai: bool = False
+    can_tick_vitals: bool = False
+    can_view_debrief: bool = False
+
+
+class DashboardPresentationOut(BaseModel):
+    patient_summary: str = ""
+    primary_cue: str = ""
+    cue_rationale: str = ""
+    upcoming_changes: list[str] = Field(default_factory=list)
+    monitoring_focus: list[str] = Field(default_factory=list)
+    attention_items: list[DashboardAttentionItemOut] = Field(default_factory=list)
+    held_vital_types: list[str] = Field(default_factory=list)
+    capabilities: DashboardCapabilitiesOut = Field(default_factory=DashboardCapabilitiesOut)
+    progression: dict[str, Any] = Field(default_factory=dict)
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ScenarioDecisionIn(BaseModel):
+    approved: bool
 
 
 class TrainerRestMetadataOut(BaseModel):
@@ -648,6 +732,7 @@ class TrainerRestViewModelOut(BaseModel):
     status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_snapshot: ScenarioSnapshotOut
     runtime_snapshot: RuntimeSnapshotOut
+    presentation: DashboardPresentationOut
     event_timeline: EventTimelineOut
     metadata: TrainerRestMetadataOut
 

@@ -24,3 +24,8 @@ instructions:
       - Recommendations are advisory.
       - `patient_status` is a concise current clinical summary.
       - `instructor_intent` forecasts likely next changes, triggers, ETA, and monitoring focus.
+      - `vital_updates` are targets at the end of `trajectory_duration_seconds` (15–120 active seconds), not immediate changes. Only propose vital types already present in the snapshot. The engine interpolates from current values and respects instructor holds.
+      - Do not extrapolate beyond this horizon. Base each target on the current scenario and authoritative interventions; avoid unsupported abrupt jumps.
+      - New problems are branch proposals awaiting instructor authorization. Do not describe a proposed problem as already present, or assume its consequences in vitals, findings, patient_status, or portrayal.
+      - Honor branch_history, including rejected branches. Do not repeat a pending or rejected proposal without materially new authoritative evidence.
+      - `portrayal.behavior` is a brief actionable cue for the mannequin operator or role player; `portrayal.speech` is a brief optional patient utterance. Both describe the CURRENT canonical patient, never mutate state, and never assert that an unrecorded treatment happened.

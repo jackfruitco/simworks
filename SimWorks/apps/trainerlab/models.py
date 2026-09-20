@@ -102,6 +102,7 @@ class TrainerSession(BaseSession):
     initial_directives = models.TextField(blank=True, default="")
     tick_interval_seconds = models.PositiveSmallIntegerField(default=15)
     tick_nonce = models.PositiveIntegerField(default=0)
+    event_sequence = models.PositiveBigIntegerField(default=0)
 
     run_started_at = models.DateTimeField(blank=True, null=True)
     run_paused_at = models.DateTimeField(blank=True, null=True)
@@ -207,6 +208,7 @@ class RuntimeEvent(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sequence = models.PositiveBigIntegerField(null=True, blank=True)
     session = models.ForeignKey(
         "trainerlab.TrainerSession",
         on_delete=models.CASCADE,
@@ -245,6 +247,58 @@ class RuntimeEvent(models.Model):
             models.Index(fields=["simulation", "created_at"], name="idx_runtime_evt_sim"),
             models.Index(fields=["session", "created_at"], name="idx_runtime_evt_session"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "sequence"], name="uniq_tl_runtime_sequence"
+            ),
+        ]
+
+
+class ProgressionPlan(models.Model):
+    """Versioned, finite-horizon physiology proposal; execution belongs to the engine."""
+
+    session = models.ForeignKey(
+        TrainerSession, on_delete=models.CASCADE, related_name="progression_plans"
+    )
+    version = models.PositiveIntegerField()
+    input_revision = models.PositiveIntegerField(default=0)
+    starts_at = models.PositiveIntegerField()
+    ends_at = models.PositiveIntegerField()
+    status = models.CharField(max_length=24, default="active")
+    baseline = models.JSONField(default=list)
+    targets = models.JSONField(default=list)
+    portrayal = models.JSONField(default=dict)
+    source_call_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["session", "version"], name="uniq_tl_plan_version"),
+            models.UniqueConstraint(
+                fields=["session"], condition=models.Q(status="active"), name="uniq_tl_active_plan"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ends_at__gt=models.F("starts_at")),
+                name="tl_plan_positive_horizon",
+            ),
+        ]
+
+
+class ScenarioDecision(models.Model):
+    """A proposed branch is not a clinical fact until the instructor authorizes it."""
+
+    session = models.ForeignKey(
+        TrainerSession, on_delete=models.CASCADE, related_name="scenario_decisions"
+    )
+    input_revision = models.PositiveIntegerField(default=0)
+    proposal = models.JSONField(default=dict)
+    status = models.CharField(max_length=24, default="pending")
+    source_call_id = models.CharField(max_length=100, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
 
 
 class TrainerRunSummary(models.Model):
@@ -557,6 +611,12 @@ class Problem(BaseDomainEvent):
     these two direct cause FKs with a dedicated link model. For now we enforce a
     single direct cause to keep persistence and adjudication deterministic.
     """
+
+    onset_elapsed_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Simulation clock time at first onset; carried through superseding records.",
+    )
 
     class MARCHCategory(models.TextChoices):
         M = "M", _("Massive Hemorrhage")

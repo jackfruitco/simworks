@@ -3,6 +3,7 @@
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 import threading
+import time
 import traceback
 from unittest.mock import patch
 from uuid import uuid4
@@ -15,6 +16,48 @@ from api.v1.auth import create_access_token
 from apps.common.outbox.event_types import SIMULATION_STATUS_UPDATED
 
 
+def _apply_test_debrief(*, session_id, output_payload, correlation_id=None):
+    from apps.trainerlab.debrief import request_debrief
+    from apps.trainerlab.models import DebriefAnnotation, TrainerRunSummary, TrainerSession
+    from apps.trainerlab.services import apply_debrief_output, build_summary
+
+    session = TrainerSession.objects.get(pk=session_id)
+    session.status = "completed"
+    session.save(update_fields=["status"])
+    claims = []
+    for field, category in (
+        ("narrative_summary", "summary"),
+        ("strengths", "strength"),
+        ("misses", "miss"),
+        ("teaching_points", "teaching_point"),
+        ("overall_assessment", "assessment"),
+    ):
+        texts = output_payload[field]
+        for text in texts if isinstance(texts, list) else [texts]:
+            annotation = DebriefAnnotation.objects.create(
+                session=session,
+                simulation=session.simulation,
+                observation_text=text,
+                outcome="missed" if category == "miss" else "correct",
+            )
+            claims.append(
+                {
+                    "category": category,
+                    "text": text,
+                    "evidence_ids": [f"annotation:{annotation.pk}"],
+                }
+            )
+    build_summary(session=session)
+    request_debrief(session=session)
+    data = TrainerRunSummary.objects.get(session=session).summary_json
+    return apply_debrief_output(
+        session_id=session.pk,
+        output_payload={"claims": claims},
+        correlation_id=correlation_id,
+        service_context={key: data[key] for key in ("debrief_generation", "evidence_revision")},
+    )
+
+
 class FakeClock:
     def __init__(self):
         self.current = 0.0
@@ -24,6 +67,166 @@ class FakeClock:
 
     async def sleep(self, seconds: float) -> None:
         self.current += seconds
+
+
+@pytest.mark.django_db
+def test_debrief_review_authorization_idempotency_and_stale_revision(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user
+):
+    from apps.trainerlab.models import DebriefAnnotation, TrainerSession
+    from apps.trainerlab.services import stop_session
+
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="phase7-review")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    stop_session(session=session, user=instructor_user)
+    base = f"/api/v1/trainerlab/simulations/{session.simulation_id}/summary/"
+    first = client.get(base).json()
+    request = {
+        "evidence_revision": first["evidence_revision"],
+        "correction": "The learner reassessed breathing.",
+    }
+    kwargs = {
+        "data": request,
+        "content_type": "application/json",
+        "HTTP_IDEMPOTENCY_KEY": "review-correction",
+    }
+    assert auth_client_factory(non_member_user).post(base + "review/", **kwargs).status_code == 403
+    accepted = client.post(base + "review/", **kwargs)
+    assert accepted.status_code == 200, accepted.content
+    assert client.post(base + "review/", **kwargs).json() == accepted.json()
+    assert DebriefAnnotation.objects.filter(session=session).count() == 1
+    updated = client.get(base).json()
+    assert updated["evidence_revision"] != first["evidence_revision"]
+    assert updated["debrief_status"] == "generating"
+    assert updated["ai_debrief"] is None
+    assert any(item["kind"] == "instructor_observation" for item in updated["evidence"])
+    kwargs["HTTP_IDEMPOTENCY_KEY"] = "stale-review"
+    assert client.post(base + "review/", **kwargs).status_code == 409
+    assert DebriefAnnotation.objects.filter(session=session).count() == 1
+
+
+@pytest.mark.django_db
+def test_voice_confirmation_audit_authority_replay_and_correction(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user, monkeypatch
+):
+    from apps.common.models import OutboxEvent
+    from apps.trainerlab.models import Injury, Intervention, Problem, TrainerCommand, TrainerSession
+
+    monkeypatch.setattr("apps.trainerlab.services._enqueue_runtime_turn_task", lambda **_: True)
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="voice-audit-session")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    cause = Injury.objects.create(
+        simulation=session.simulation,
+        injury_location="LUL",
+        injury_kind="GSW",
+        injury_description="Gunshot wound to left upper leg",
+    )
+    problem = Problem.objects.create(
+        simulation=session.simulation,
+        cause_injury=cause,
+        kind="hemorrhage",
+        title="Hemorrhage",
+        march_category="M",
+    )
+    payload = {
+        "intervention_type": "tourniquet",
+        "site_code": "left_arm",
+        "target_problem_id": problem.pk,
+        "client_event_id": "voice-capture-1",
+        "details": {"kind": "tourniquet", "version": 1, "application_mode": "hasty"},
+        "initiated_by_type": "system",
+        "initiated_by_id": non_member_user.pk,
+        "voice_provenance": {
+            "capture_id": "voice-capture-1",
+            "original_transcript": "Not oxygen, tourniquet",
+            "reviewed_transcript": "Tourniquet applied",
+            "confirmed": True,
+        },
+    }
+    url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/events/interventions/"
+    assert (
+        auth_client_factory(non_member_user)
+        .post(url, data=payload, content_type="application/json")
+        .status_code
+        == 403
+    )
+    payload["voice_provenance"]["confirmed"] = False
+    assert client.post(url, data=payload, content_type="application/json").status_code == 422
+    assert not Intervention.objects.filter(simulation=session.simulation).exists()
+    payload["voice_provenance"]["confirmed"] = True
+    first = client.post(url, data=payload, content_type="application/json")
+    assert first.status_code == 200, first.content
+    assert client.post(url, data=payload, content_type="application/json").json() == first.json()
+    intervention = Intervention.objects.get(simulation=session.simulation)
+    assert intervention.initiated_by_id == instructor_user.pk
+    assert intervention.initiated_by_type == "instructor"
+    assert intervention.notes == ""
+    command = TrainerCommand.objects.get(pk=first.json()["command_id"])
+    assert command.issued_by_id == instructor_user.pk
+    assert (
+        command.payload_json["voice_provenance"]["original_transcript"] == "Not oxygen, tourniquet"
+    )
+    event = OutboxEvent.objects.get(
+        simulation_id=session.simulation_id, event_type="patient.intervention.created"
+    )
+    assert event.payload["command_id"] == str(command.pk)
+    assert "voice_provenance" not in event.payload
+    session.refresh_from_db()
+    assert "Not oxygen" not in str(session.runtime_state_json)
+    payload["site_code"] = "right_arm"
+    assert client.post(url, data=payload, content_type="application/json").status_code == 409
+    # A correction is a new authoritative event with an explicit supersedes link.
+    payload["client_event_id"] = "voice-capture-2"
+    payload["voice_provenance"]["capture_id"] = "voice-capture-2"
+    payload["supersedes_event_id"] = intervention.pk
+    correction = client.post(url, data=payload, content_type="application/json")
+    assert correction.status_code == 200, correction.content
+    assert (
+        Intervention.objects.get(client_event_id="voice-capture-2").supersedes_id == intervention.pk
+    )
+
+
+@pytest.mark.django_db
+def test_scenario_decision_endpoint_is_authorized_and_idempotent(
+    auth_client_factory, instructor_user, instructor_membership, non_member_user
+):
+    from apps.trainerlab.models import Illness, Problem, TrainerSession
+    from apps.trainerlab.progression import propose_branch
+    from apps.trainerlab.services import get_runtime_state
+
+    client = auth_client_factory(instructor_user)
+    created = _create_session(client, idempotency_key="branch-session")
+    session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+    session.status = "running"
+    session.save(update_fields=["status"])
+    cause = Illness.objects.create(simulation=session.simulation, name="Respiratory illness")
+    decision = propose_branch(
+        session=session,
+        state=get_runtime_state(session),
+        source_call_id="branch-test",
+        observation={
+            "observation": "new_problem",
+            "cause_kind": "illness",
+            "cause_id": cause.pk,
+            "problem_kind": "hypoxia",
+            "title": "Hypoxia",
+        },
+    )
+    url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/decisions/{decision.pk}/"
+    kwargs = {
+        "data": {"approved": True},
+        "content_type": "application/json",
+        "HTTP_IDEMPOTENCY_KEY": "branch-confirm",
+    }
+    assert auth_client_factory(non_member_user).post(url, **kwargs).status_code == 403
+    first = client.post(url, **kwargs)
+    assert first.status_code == 200
+    assert client.post(url, **kwargs).json() == first.json()
+    assert Problem.objects.filter(simulation=session.simulation, kind="hypoxia").count() == 1
+    kwargs["data"] = {"approved": False}
+    assert client.post(url, **kwargs).status_code == 409
 
 
 @pytest.fixture
@@ -1581,7 +1784,8 @@ class TestTrainerLabEvents:
         instructor_membership,
     ):
         from apps.trainerlab.models import TrainerSession
-        from apps.trainerlab.services import apply_debrief_output
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="post-stop-note-session")
@@ -1626,7 +1830,8 @@ class TestTrainerLabEvents:
         assert any(
             item["content"] == "Post-stop instructor note." for item in summary_body["notes"]
         )
-        assert summary_body["ai_debrief"]["overall_assessment"] == "Baseline assessment"
+        assert summary_body["ai_debrief"] is None
+        assert summary_body["debrief_status"] == "generating"
 
         injury = _post_injury_event(
             client,
@@ -2226,11 +2431,13 @@ class TestTrainerLabDictionaries:
         base_time = datetime(2030, 1, 1, tzinfo=UTC)
         total_events = DEFAULT_EVENT_TIMELINE_LIMIT + 5
         baseline_events = RuntimeEvent.objects.filter(session=trainer_session).count()
+        baseline_sequence = trainer_session.event_sequence
 
         for sequence in range(total_events):
             runtime_event = RuntimeEvent.objects.create(
                 session=trainer_session,
                 simulation=trainer_session.simulation,
+                sequence=baseline_sequence + sequence + 1,
                 event_type="trainerlab.runtime.note",
                 payload={"sequence": sequence},
                 correlation_id=f"timeline-{sequence}",
@@ -2238,6 +2445,9 @@ class TestTrainerLabDictionaries:
             RuntimeEvent.objects.filter(pk=runtime_event.pk).update(
                 created_at=base_time + timedelta(seconds=sequence)
             )
+        TrainerSession.objects.filter(pk=trainer_session.pk).update(
+            event_sequence=baseline_sequence + total_events
+        )
 
         body = client.get(
             f"/api/v1/trainerlab/simulations/{session['simulation_id']}/state/"
@@ -2337,6 +2547,64 @@ class TestTrainerLabDictionaries:
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
+        from apps.trainerlab.services import _apply_intervention_effect
+
+        for effect in ("bleeding slows", "bleeding stops"):
+            _apply_intervention_effect(
+                session=trainer_session,
+                change={
+                    "intervention_event_id": intervention.id,
+                    "status": "active",
+                    "effectiveness": "effective",
+                    "clinical_effect": effect,
+                },
+                state={},
+                correlation_id=None,
+            )
+        assessments = list(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id, event_type="patient.intervention.updated"
+            ).order_by("created_at", "id")
+        )
+        assert len(assessments) == 2
+        assert [item.payload["effect"]["clinical_effect"] for item in assessments] == [
+            "bleeding slows",
+            "bleeding stops",
+        ]
+
+    def test_runtime_event_sequence_orders_committed_outbox_and_snapshot(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import RuntimeEvent, TrainerSession
+
+        client = auth_client_factory(instructor_user)
+        simulation_id = _create_session(client, idempotency_key="ordered-session")["simulation_id"]
+        for index in (1, 2):
+            response = _post_injury_event(
+                client,
+                simulation_id=simulation_id,
+                idempotency_key=f"ordered-injury-{index}",
+                injury_description=f"Ordered injury {index}",
+            )
+            assert response.status_code == 200
+
+        session = TrainerSession.objects.get(simulation_id=simulation_id)
+        events = list(RuntimeEvent.objects.filter(session=session).order_by("sequence"))
+        assert [event.sequence for event in events] == list(range(1, len(events) + 1))
+        assert session.event_sequence == len(events)
+        outbox = OutboxEvent.objects.filter(
+            simulation_id=simulation_id, event_type="patient.injury.created"
+        )
+        assert sorted(event.payload["event_sequence"] for event in outbox) == [
+            event.sequence for event in events if event.event_type == "patient.injury.created"
+        ]
+        snapshot = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
+        assert snapshot["runtime_snapshot"]["latest_event_sequence"] == session.event_sequence
+
     def test_duplicate_intervention_client_event_id_replays_without_duplicate_event(
         self,
         auth_client_factory,
@@ -2344,6 +2612,7 @@ class TestTrainerLabDictionaries:
         instructor_membership,
         monkeypatch,
     ):
+        from apps.common.models import OutboxEvent
         from apps.trainerlab.models import Injury, Intervention, Problem, TrainerSession
 
         monkeypatch.setattr(
@@ -2420,6 +2689,15 @@ class TestTrainerLabDictionaries:
             if reason.get("payload", {}).get("event_kind") == "intervention"
         ]
         assert len(reasons) == 1
+        event = OutboxEvent.objects.get(
+            simulation_id=simulation_id, event_type="patient.intervention.created"
+        )
+        assert event.payload["client_event_id"] == "tap-abc-123"
+        assert event.payload["command_id"] == first.json()["command_id"]
+        from apps.trainerlab.models import TrainerCommand
+
+        command = TrainerCommand.objects.get(pk=first.json()["command_id"])
+        assert "voice_provenance" not in command.payload_json
 
     def test_duplicate_intervention_client_event_id_conflicting_payload_returns_409(
         self,
@@ -2798,6 +3076,7 @@ class TestTrainerLabDictionaries:
                     cause_id=injury.id,
                 ),
                 service_context={
+                    "ai_generation": batch["ai_generation"],
                     "session_id": batch["session_id"],
                     "simulation_id": batch["simulation_id"],
                     "correlation_id": batch.get("correlation_id"),
@@ -2821,6 +3100,8 @@ class TestTrainerLabDictionaries:
         call_id = process_runtime_turn_queue(session_id=trainer_session.id)
 
         assert call_id == inline_call_id
+        intervention.refresh_from_db()
+        assert intervention.notes == "Tourniquet placed high and tight"
         assert captured_batch["runtime_request_metrics"]["previous_response_id_present"] is False
         assert "runtime_llm_context" in captured_batch
         assert "trainer_agent_view_model" in captured_batch
@@ -2837,21 +3118,24 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id,
             is_active=True,
         ).latest("timestamp")
-        assert patient_status.respiratory_distress is True
-        assert patient_status.impending_pneumothorax is True
-        assert Problem.objects.filter(
+        assert patient_status.respiratory_distress is False
+        assert (
+            patient_status.impending_pneumothorax is True
+        )  # Existing open chest wound, not the proposed branch.
+        assert not Problem.objects.filter(
             simulation_id=simulation_id,
             kind="respiratory_distress",
             is_active=True,
         ).exists()
-        assert AssessmentFinding.objects.filter(
+        assert not AssessmentFinding.objects.filter(
             simulation_id=simulation_id,
             kind="diminished_breath_sounds",
             is_active=True,
         ).exists()
         state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
-        assert state["scenario_snapshot"]["patient_status"]["respiratory_distress"] is True
+        assert state["scenario_snapshot"]["patient_status"]["respiratory_distress"] is False
         assert state["scenario_snapshot"]["patient_status"]["impending_pneumothorax"] is True
+        assert state["presentation"]["decisions"][0]["title"] == "Respiratory distress"
         assert state["scenario_snapshot"]["recommended_interventions"]
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,
@@ -2920,7 +3204,9 @@ class TestTrainerLabDictionaries:
     ):
         from apps.common.models import OutboxEvent
         from apps.trainerlab.models import TrainerRunSummary, TrainerSession
-        from apps.trainerlab.services import apply_debrief_output, build_summary
+        from apps.trainerlab.services import build_summary
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="debrief-output-session")
@@ -2951,7 +3237,7 @@ class TestTrainerLabDictionaries:
         assert summary.summary_json["ai_debrief"]["overall_assessment"].startswith("Strong initial")
 
         trainer_session.refresh_from_db()
-        assert trainer_session.runtime_state_json["summary_feedback"]["teaching_points"] == [
+        assert summary.summary_json["ai_debrief"]["teaching_points"] == [
             "Discuss when needle decompression becomes appropriate."
         ]
         assert OutboxEvent.objects.filter(
@@ -2967,7 +3253,9 @@ class TestTrainerLabDictionaries:
     ):
         from apps.common.models import OutboxEvent
         from apps.trainerlab.models import TrainerRunSummary, TrainerSession
-        from apps.trainerlab.services import apply_debrief_output, build_summary
+        from apps.trainerlab.services import build_summary
+
+        apply_debrief_output = _apply_test_debrief
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="debrief-revision-session")
@@ -3012,8 +3300,13 @@ class TestTrainerLabDictionaries:
             ).order_by("created_at", "id")
         )
         assert len(events) >= 2
-        assert events[-2].payload["ai_debrief_revision"] == 1
-        assert events[-1].payload["ai_debrief_revision"] == 2
+        ready = [
+            event
+            for event in events
+            if event.payload["status"] == "ready" and "ai_debrief_revision" in event.payload
+        ]
+        assert ready[-2].payload["ai_debrief_revision"] == 1
+        assert ready[-1].payload["ai_debrief_revision"] == 2
 
     def test_build_summary_preserves_notes_beyond_timeline_window(
         self,
@@ -3078,19 +3371,23 @@ class TestTrainerLabDictionaries:
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
         build_summary(session=trainer_session, generated_by=instructor_user)
 
+        data = trainer_session.summary.summary_json
         service = GenerateTrainerRunDebrief(
             context={
                 "simulation_id": simulation_id,
                 "session_id": trainer_session.id,
+                "evidence": data["evidence"],
+                "evidence_revision": data["evidence_revision"],
+                "debrief_generation": "test-generation",
             }
         )
         async_to_sync(service._aprepare_context)()
 
-        assert service.context["notes"][0]["content"] == (
+        assert service.context["evidence"][-1]["facts"]["observation"] == (
             "Remember the trainee verbalized concern about breathing."
         )
         rendered = TrainerDebriefContextInstruction.render_instruction(service)
-        assert "Instructor notes JSON" in rendered
+        assert "Clinical evidence JSON" in rendered
         assert "Remember the trainee verbalized concern about breathing." in rendered
 
     def test_injury_dictionary_contains_curated_regions(
@@ -3200,6 +3497,86 @@ class TestTrainerLabDictionaries:
 
 
 @pytest.mark.django_db
+class TestTrainerLabTickIdempotency:
+    @pytest.fixture
+    def tick_client(self, auth_client_factory, instructor_user, instructor_membership):
+        from apps.trainerlab.models import TrainerSession
+
+        client = auth_client_factory(instructor_user)
+        created = _create_session(client)
+        session = TrainerSession.objects.get(simulation_id=created["simulation_id"])
+        session.status = "running"
+        session.save(update_fields=["status"])
+        return client, session
+
+    @pytest.mark.parametrize(
+        "suffix,service_name",
+        [
+            ("", "trigger_manual_tick"),
+            ("vitals/", "enqueue_vitals_progression"),
+        ],
+    )
+    def test_retry_returns_same_ack_without_duplicate_work(self, tick_client, suffix, service_name):
+        from apps.trainerlab.models import TrainerCommand
+
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/{suffix}"
+        with patch(
+            f"api.v1.endpoints.trainerlab.{service_name}", return_value="call-id"
+        ) as enqueue:
+            first = client.post(url, HTTP_IDEMPOTENCY_KEY="tick-retry")
+            session.status = "completed"
+            session.save(update_fields=["status"])
+            replay = client.post(url, HTTP_IDEMPOTENCY_KEY="tick-retry")
+        assert first.status_code == replay.status_code == 200
+        assert first.json() == replay.json()
+        assert enqueue.call_count == 1
+        command = TrainerCommand.objects.get(id=first.json()["command_id"])
+        assert command.status == TrainerCommand.CommandStatus.PROCESSED
+
+    def test_key_cannot_be_reused_for_other_tick_type(self, tick_client):
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/"
+        with (
+            patch("api.v1.endpoints.trainerlab.trigger_manual_tick"),
+            patch("api.v1.endpoints.trainerlab.enqueue_vitals_progression") as vitals,
+        ):
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="shared-tick").status_code == 200
+            assert (
+                client.post(url + "vitals/", HTTP_IDEMPOTENCY_KEY="shared-tick").status_code == 409
+            )
+        vitals.assert_not_called()
+
+    @pytest.mark.parametrize("suffix", ["", "vitals/"])
+    def test_missing_key_and_terminal_session_do_not_enqueue(self, tick_client, suffix):
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/{suffix}"
+        session.status = "completed"
+        session.save(update_fields=["status"])
+        with (
+            patch("api.v1.endpoints.trainerlab.trigger_manual_tick") as runtime,
+            patch("api.v1.endpoints.trainerlab.enqueue_vitals_progression") as vitals,
+        ):
+            assert client.post(url).status_code == 400
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="terminal-tick").status_code == 409
+        runtime.assert_not_called()
+        vitals.assert_not_called()
+
+    def test_failed_enqueue_is_settled_and_not_repeated(self, tick_client):
+        from apps.trainerlab.models import TrainerCommand
+
+        client, session = tick_client
+        url = f"/api/v1/trainerlab/simulations/{session.simulation_id}/run/tick/vitals/"
+        with patch(
+            "api.v1.endpoints.trainerlab.enqueue_vitals_progression", return_value=None
+        ) as enqueue:
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="failed-tick").status_code == 503
+            assert client.post(url, HTTP_IDEMPOTENCY_KEY="failed-tick").status_code == 409
+        assert enqueue.call_count == 1
+        assert TrainerCommand.objects.get(idempotency_key="failed-tick").status == "failed"
+
+
+@pytest.mark.django_db
 class TestTrainerLabGuardEndpoints:
     def test_guard_state_endpoint_returns_default_active_payload_before_run(
         self,
@@ -3302,6 +3679,43 @@ class TestTrainerLabAnnotationsAPI:
 
 @pytest.mark.django_db(transaction=True)
 class TestTrainerLabIdempotencyConcurrency:
+    def test_injection_failure_rolls_back_domain_and_outbox_but_settles_command(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import Injury, TrainerCommand
+
+        client = auth_client_factory(instructor_user)
+        simulation_id = _create_session(client, idempotency_key="injection-rollback-session")[
+            "simulation_id"
+        ]
+
+        def fail_projection(**kwargs):
+            raise RuntimeError("projection unavailable")
+
+        monkeypatch.setattr(
+            "api.v1.endpoints.trainerlab.commit_non_ai_mutation_side_effects",
+            fail_projection,
+        )
+        response = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="injection-rollback-injury",
+            injury_description="Rolled-back injury",
+        )
+        assert response.status_code == 500
+
+        assert not Injury.objects.filter(injury_description="Rolled-back injury").exists()
+        assert not OutboxEvent.objects.filter(
+            simulation_id=simulation_id, event_type="patient.injury.created"
+        ).exists()
+        command = TrainerCommand.objects.get(idempotency_key="injection-rollback-injury")
+        assert command.status == TrainerCommand.CommandStatus.FAILED
+
     def test_parallel_duplicate_session_create_returns_single_session(
         self,
         auth_client_factory,
@@ -3394,12 +3808,19 @@ class TestTrainerLabIdempotencyConcurrency:
 
         def _request():
             client = auth_client_factory(instructor_user)
-            return _post_injury_event(
-                client,
-                simulation_id=simulation_id,
-                idempotency_key="injury-race",
-                injury_description="Parallel laceration",
-            )
+            from django.db import connection
+
+            for _attempt in range(20):
+                response = _post_injury_event(
+                    client,
+                    simulation_id=simulation_id,
+                    idempotency_key="injury-race",
+                    injury_description="Parallel laceration",
+                )
+                if response.status_code != 500 or connection.vendor != "sqlite":
+                    return response
+                time.sleep(0.05)
+            return response
 
         thread_one, result_one = _threaded_json_request(_request)
         thread_one.start()

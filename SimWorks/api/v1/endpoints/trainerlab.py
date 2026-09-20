@@ -8,7 +8,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, OperationalError
+from django.db import IntegrityError, OperationalError, transaction
 from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
@@ -23,6 +23,7 @@ from api.v1.schemas.trainerlab import (
     AnnotationOut,
     AssessmentFindingCreateIn,
     ControlPlaneDebugOut,
+    DebriefReviewIn,
     DiagnosticResultCreateIn,
     DictionaryItemOut,
     DispositionStateCreateIn,
@@ -40,6 +41,7 @@ from api.v1.schemas.trainerlab import (
     RunSummaryOut,
     ScenarioBriefDetailOut,
     ScenarioBriefUpdateIn,
+    ScenarioDecisionIn,
     ScenarioInstructionApplyIn,
     ScenarioInstructionCreateIn,
     ScenarioInstructionOut,
@@ -122,9 +124,12 @@ from apps.trainerlab.services import (
     emit_domain_runtime_event,
     emit_runtime_event,
     enqueue_vitals_progression,
+    get_active_elapsed_seconds,
     get_or_create_command,
     get_runtime_state,
     get_session_annotations,
+    legacy_problem_onset,
+    override_patient_avpu,
     pause_session,
     refresh_completed_run_review,
     resume_session,
@@ -143,6 +148,44 @@ IDEMPOTENCY_POLL_INTERVAL_SECONDS = 0.01
 IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 5.0
 IDEMPOTENCY_COMMAND_WAIT_TIMEOUT_SECONDS = 15.0
 TRAINERLAB_HUB_EVENT_TYPES = (outbox_events.SIMULATION_STATUS_UPDATED,)
+
+
+@router.post("/simulations/{simulation_id}/decisions/{decision_id}/", response=TrainerCommandAck)
+@api_rate_limit
+def decide_scenario_branch(
+    request: HttpRequest, simulation_id: int, decision_id: int, body: ScenarioDecisionIn
+):
+    from apps.trainerlab.progression import resolve_decision
+
+    _require_lab_access(request)
+    session = _get_session_for_simulation(request, simulation_id, request.auth)
+    with transaction.atomic():
+        # Serialize command claim and branch mutation with all other scenario writers.
+        session = TrainerSession.objects.select_for_update().get(pk=session.pk)
+        command, created = _claim_command(
+            session=session,
+            command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
+            idempotency_key=_get_idempotency_key(request),
+            issued_by=request.auth,
+            payload_json={"decision_id": decision_id, "approved": body.approved},
+        )
+        if not created:
+            _resolve_existing_command(command)
+            return _accepted(command)
+        try:
+            resolve_decision(
+                session_id=session.pk,
+                decision_id=decision_id,
+                approved=body.approved,
+                user=request.auth,
+                correlation_id=_get_correlation_id(request),
+            )
+        except ValidationError as exc:
+            raise HttpError(409, str(exc)) from None
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        _save_command(command, update_fields=["status", "processed_at"])
+    return _accepted(command)
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:
@@ -694,6 +737,21 @@ def apply_preset(
     if not created:
         command = _resolve_existing_command(command)
         return PresetApplyOut(command_id=str(command.id), status="accepted")
+    try:
+        return _commit_preset(instruction, session, command, user, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_preset(instruction, session, command, user, correlation_id) -> PresetApplyOut:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     # #5: Snapshot state before applying preset to compute diff afterwards
@@ -944,23 +1002,24 @@ def _process_run_command(
         raise HttpError(409, command.error)
 
     try:
-        if command_type == TrainerCommand.CommandType.START:
-            session = start_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.PAUSE:
-            session = pause_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.RESUME:
-            session = resume_session(session=session, user=user, correlation_id=correlation_id)
-        elif command_type == TrainerCommand.CommandType.STOP:
-            session = stop_session(session=session, user=user, correlation_id=correlation_id)
-        else:
-            raise HttpError(400, "Unsupported command")
+        with transaction.atomic():
+            if command_type == TrainerCommand.CommandType.START:
+                session = start_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.PAUSE:
+                session = pause_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.RESUME:
+                session = resume_session(session=session, user=user, correlation_id=correlation_id)
+            elif command_type == TrainerCommand.CommandType.STOP:
+                session = stop_session(session=session, user=user, correlation_id=correlation_id)
+            else:
+                raise HttpError(400, "Unsupported command")
+
+            command.status = TrainerCommand.CommandStatus.PROCESSED
+            command.processed_at = timezone.now()
+            _save_command(command, update_fields=["status", "processed_at"])
     except ValidationError as exc:
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
-
-    command.status = TrainerCommand.CommandStatus.PROCESSED
-    command.processed_at = timezone.now()
-    _save_command(command, update_fields=["status", "processed_at"])
 
     return trainer_run_to_out(session)
 
@@ -979,15 +1038,14 @@ def retry_trainer_initial_generation(
     session = _get_session_for_simulation(request, simulation_id)
 
     try:
-        call_id = retry_initial_scenario_generation(
+        retry_initial_scenario_generation(
             session=session,
             correlation_id=_get_correlation_id(request),
         )
     except ValidationError as exc:
         raise HttpError(409, str(exc)) from None
 
-    if not call_id and session.status != SessionStatus.FAILED:
-        session.refresh_from_db()
+    session.refresh_from_db()
     return 202, trainer_run_to_out(session)
 
 
@@ -1057,6 +1115,21 @@ def steer_prompt(
     if not created:
         command = _resolve_existing_command(command)
         return _accepted(command)
+    try:
+        return _commit_steer(session, command, user, body, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_steer(session, command, user, body, correlation_id) -> TrainerCommandAck:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     state = get_runtime_state(session)
@@ -1129,6 +1202,21 @@ def adjust_simulation(
             status="accepted",
             simulation_id=simulation.id,
         )
+    try:
+        return _commit_adjust(simulation, session, command, user, body, correlation_id)
+    except (HttpError, ValidationError) as exc:
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_adjust(simulation, session, command, user, body, correlation_id) -> SimulationAdjustAck:
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     _reject_terminal_mutation(command=command, session=session)
 
     adjustment_entry = {
@@ -1144,6 +1232,10 @@ def adjust_simulation(
         "metadata": body.metadata,
         "issued_at": timezone.now().isoformat(),
     }
+    if body.target == "avpu":
+        if body.avpu_state is None:
+            raise HttpError(400, "An AVPU state is required for this adjustment")
+        override_patient_avpu(session=session, avpu=body.avpu_state, correlation_id=correlation_id)
     state = get_runtime_state(session)
     adjustments = list(state.get("adjustments", []))
     adjustments.append(adjustment_entry)
@@ -1309,6 +1401,15 @@ def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
+        onset_elapsed_seconds=(
+            old_problem.onset_elapsed_seconds
+            if old_problem is not None and old_problem.onset_elapsed_seconds is not None
+            else (
+                legacy_problem_onset(session, old_problem)
+                if old_problem is not None
+                else get_active_elapsed_seconds(session)
+            )
+        ),
         cause_injury=cause_injury,
         cause_illness=cause_illness,
         parent_problem=parent_problem,
@@ -1605,6 +1706,14 @@ _VITAL_MODEL_MAP = {
 
 def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
     vital_model = _VITAL_MODEL_MAP.get(body.vital_type)
+    if body.min_value > body.max_value:
+        raise HttpError(400, "Vital minimum must not exceed maximum")
+    if body.vital_type == "blood_pressure" and (
+        body.min_value_diastolic is None
+        or body.max_value_diastolic is None
+        or body.min_value_diastolic > body.max_value_diastolic
+    ):
+        raise HttpError(400, "Blood pressure requires an ordered diastolic range")
     supersedes = (
         vital_model.objects.filter(
             pk=body.supersedes_event_id, simulation_id=session.simulation_id
@@ -1612,6 +1721,22 @@ def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
         if body.supersedes_event_id and vital_model
         else None
     )
+    if supersedes is None and vital_model is not None:
+        supersedes = (
+            vital_model.objects.filter(simulation_id=session.simulation_id, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+    if body.supersedes_event_id and (supersedes is None or not supersedes.is_active):
+        raise HttpError(409, "Vital override is stale; refresh the patient state")
+    if body.supersedes_event_id and vital_model is not None:
+        current = (
+            vital_model.objects.filter(simulation_id=session.simulation_id, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+        if current is None or current.pk != supersedes.pk:
+            raise HttpError(409, "Vital override has changed; refresh the patient state")
     if supersedes is not None and supersedes.is_active:
         supersedes.is_active = False
         supersedes.save(update_fields=["is_active"])
@@ -1672,6 +1797,40 @@ def _inject_event_core(
     if not created:
         command = _resolve_existing_command(command)
         return _accepted(command)
+    try:
+        return _commit_injected_event(
+            session=session,
+            command=command,
+            user=user,
+            payload_json=payload_json,
+            create_fn=create_fn,
+            correlation_id=correlation_id,
+        )
+    except (HttpError, ValidationError) as exc:
+        # The domain transaction rolls back, but the failed idempotency claim
+        # remains durable and cannot be replayed into a second intervention.
+        _mark_command_failed(command, str(exc))
+        raise
+    except Exception:
+        _mark_command_failed(command, "Mutation failed; review scenario state before retrying.")
+        raise
+
+
+@transaction.atomic
+def _commit_injected_event(
+    *,
+    session: TrainerSession,
+    command: TrainerCommand,
+    user,
+    payload_json: dict,
+    create_fn: Callable[[TrainerSession], Any],
+    correlation_id: str | None,
+) -> TrainerCommandAck:
+    # The same row is locked by AI commits. Domain rows, outbox entries,
+    # projection revision, and pending reasons now commit as one unit.
+    session = (
+        TrainerSession.objects.select_for_update().select_related("simulation").get(pk=session.pk)
+    )
     event_kind = payload_json.get("event_kind")
     _reject_terminal_mutation(
         command=command,
@@ -1682,7 +1841,6 @@ def _inject_event_core(
     try:
         domain_event = create_fn(session)
     except ValidationError as exc:
-        _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
 
     if getattr(domain_event, "_duplicate_client_event", False):
@@ -1743,6 +1901,7 @@ def _inject_event_core(
             session=session,
             event_type=event_type,
             obj=domain_event,
+            extra={"command_id": str(command.id)},
             created_by=user,
             correlation_id=correlation_id,
             idempotency_key=f"{event_type}:{domain_event.id}",
@@ -1846,7 +2005,9 @@ def _inject_event_core(
     command.processed_at = timezone.now()
     _save_command(command, update_fields=["status", "processed_at"])
     if event_kind == "note" and session.status == SessionStatus.COMPLETED:
-        refresh_completed_run_review(session=session, generated_by=user)
+        refresh_completed_run_review(
+            session=session, generated_by=user, correlation_id=correlation_id
+        )
     return _accepted(command)
 
 
@@ -1921,14 +2082,24 @@ def create_intervention_event(
     simulation_id: int,
     body: InterventionCreateIn,
 ) -> TrainerCommandAck:
+    if body.voice_provenance is not None:
+        # The authenticated confirmer owns the authoritative record. Capture text is
+        # retained only in the durable command audit, never passed to the runtime AI.
+        body.initiated_by_type = "instructor"
+        body.initiated_by_id = request.auth.pk
     idempotency_key = _get_optional_idempotency_key(request)
     if not idempotency_key and body.client_event_id:
         idempotency_key = f"intervention-client-event:{simulation_id}:{body.client_event_id}"
+    # Preserve the pre-voice command fingerprint for queued manual commands that
+    # cross a backend deployment. A new optional null key would otherwise conflict.
+    payload = body.model_dump(
+        exclude={"voice_provenance"} if body.voice_provenance is None else set()
+    )
     return _inject_event_core(
         request=request,
         simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
-        payload_json={"event_kind": "intervention", **body.model_dump()},
+        payload_json={"event_kind": "intervention", **payload},
         create_fn=lambda session: _create_intervention(session, body),
         idempotency_key=idempotency_key,
     )
@@ -2173,14 +2344,80 @@ def list_trainer_events(
 )
 @api_rate_limit
 def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
+    from apps.trainerlab.debrief import summary_for_review
+
     _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
 
-    summary = getattr(session, "summary", None)
+    summary = summary_for_review(session)
     if summary is None:
         raise HttpError(404, "Summary not generated")
 
-    return RunSummaryOut(**summary.summary_json)
+    data = dict(summary.summary_json)
+    if data.get("debrief_status") != "ready":
+        data["ai_debrief"] = None
+    return RunSummaryOut(**data)
+
+
+@router.post("/simulations/{simulation_id}/summary/review/", response=TrainerCommandAck)
+@api_rate_limit
+def review_debrief(request: HttpRequest, simulation_id: int, body: DebriefReviewIn):
+    from apps.trainerlab.debrief import request_debrief, summary_for_review
+
+    _require_lab_access(request)
+    session = _get_session_for_simulation(request, simulation_id)
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session.pk)
+        if session.status != SessionStatus.COMPLETED:
+            raise HttpError(409, "The scenario must be completed before reviewing its debrief")
+        command, created = _claim_command(
+            session=session,
+            command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
+            idempotency_key=_get_idempotency_key(request),
+            issued_by=request.auth,
+            payload_json={"debrief_review": body.model_dump()},
+        )
+        if not created:
+            return _accepted(_resolve_existing_command(command))
+        summary = summary_for_review(session)
+        if (
+            summary is None
+            or summary.summary_json.get("evidence_revision") != body.evidence_revision
+        ):
+            raise HttpError(409, "The review changed. Refresh before submitting.")
+        if body.claim_id and not any(
+            item["id"] == body.claim_id
+            for item in (summary.summary_json.get("ai_debrief") or {}).get("claims", [])
+        ):
+            raise HttpError(409, "The claim changed. Refresh before correcting it.")
+        if body.correction is not None:
+            claim = next(
+                (
+                    item
+                    for item in (summary.summary_json.get("ai_debrief") or {}).get("claims", [])
+                    if item["id"] == body.claim_id
+                ),
+                None,
+            )
+            create_debrief_annotation(
+                session=session,
+                created_by=request.auth,
+                learning_objective="other",
+                outcome="pending",
+                observation_text=(
+                    f"Instructor correction of claim '{claim['text'][:300]}': "
+                    if claim
+                    else "Instructor review: "
+                )
+                + body.correction,
+                correlation_id=_get_correlation_id(request),
+            )
+        else:
+            request_debrief(session=session, correlation_id=_get_correlation_id(request))
+        command.status = TrainerCommand.CommandStatus.PROCESSED
+        command.processed_at = timezone.now()
+        _save_command(command, update_fields=["status", "processed_at"])
+        return _accepted(command)
 
 
 @router.get(
@@ -2256,14 +2493,9 @@ def trigger_vitals_tick(
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
-    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
-        raise HttpError(409, "Vitals tick is only allowed on running or paused sessions.")
-
-    call_id = enqueue_vitals_progression(session=session, correlation_id=correlation_id)
-    if call_id is None:
-        raise HttpError(503, "Could not enqueue vitals progression; please retry.")
-
-    return TrainerCommandAck(command_id=call_id, status="accepted")
+    return _process_tick_command(
+        request, session=session, correlation_id=correlation_id, vitals_only=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2341,15 +2573,52 @@ def trigger_tick(
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
-    try:
-        reason = trigger_manual_tick(session=session, correlation_id=correlation_id)
-    except Exception as exc:
-        raise HttpError(409, str(exc)) from None
-
-    return TrainerCommandAck(
-        command_id=reason.get("created_at", ""),
-        status="accepted",
+    return _process_tick_command(
+        request, session=session, correlation_id=correlation_id, vitals_only=False
     )
+
+
+def _process_tick_command(
+    request: HttpRequest,
+    *,
+    session: TrainerSession,
+    correlation_id: str | None,
+    vitals_only: bool,
+) -> TrainerCommandAck:
+    """Claim before enqueueing so a lost response cannot duplicate an AI turn."""
+    command, created = _claim_command(
+        session=session,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        idempotency_key=_get_idempotency_key(request),
+        issued_by=request.auth,
+        payload_json={"event_type": "manual_vitals_tick" if vitals_only else "manual_tick"},
+    )
+    if not created:
+        _resolve_existing_command(command)
+        return _accepted(command)
+
+    if session.status != SessionStatus.RUNNING:
+        _mark_command_failed(command, "Resume the session before advancing the scenario.")
+        raise HttpError(409, command.error)
+
+    try:
+        if vitals_only:
+            if enqueue_vitals_progression(session=session, correlation_id=correlation_id) is None:
+                raise HttpError(503, "Could not enqueue vitals progression; submit a new command.")
+        else:
+            trigger_manual_tick(session=session, correlation_id=correlation_id)
+    except ValidationError as exc:
+        _mark_command_failed(command, str(exc))
+        raise HttpError(409, str(exc)) from None
+    except Exception:
+        # An uncertain enqueue must not be repeated automatically with this key.
+        _mark_command_failed(command, "Tick could not be confirmed; refresh before retrying.")
+        raise
+
+    command.status = TrainerCommand.CommandStatus.PROCESSED
+    command.processed_at = timezone.now()
+    _save_command(command, update_fields=["status", "processed_at"])
+    return _accepted(command)
 
 
 # ---------------------------------------------------------------------------

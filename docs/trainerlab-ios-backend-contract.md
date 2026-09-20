@@ -19,6 +19,8 @@ Map iOS service methods to these canonical backend paths:
 - `pauseRun` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/pause/`
 - `resumeRun` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/resume/`
 - `stopRun` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/stop/`
+- `triggerRunTick` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/tick/`
+- `triggerVitalsTick` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/run/tick/vitals/`
 - `injectInjury` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/events/injuries/`
 - `injectIllness` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/events/illnesses/`
 - `injectProblem` -> `POST /api/v1/trainerlab/simulations/{simulation_id}/events/problems/`
@@ -54,6 +56,25 @@ Important route choice:
 - The session hub should treat the hub SSE stream as primary live transport and `/simulations/` as polling/resync fallback.
 
 ## iOS follow-up
+
+### Manual tick retries
+
+Both tick endpoints require `Idempotency-Key`. Preserve the key when retrying
+delivery. The opaque `command_id` now identifies a durable command rather than
+an AI call or timestamp. Successful replays return the same acknowledgement,
+even after the session ends. Reusing a key for another tick type returns `409`.
+
+Ticks require a running or paused session. An unavailable vitals enqueue returns
+`503` and records a failed command; replaying that key returns `409` without
+another enqueue. Refresh before explicitly submitting a new command with a new
+key. A `409` with `Idempotency-Key request is already in progress` can be retried
+with the original key. Other conflicts should be surfaced instead of repeatedly
+replayed in the background.
+
+HTTP command availability is independent of SSE health. A paused engine must
+still allow Resume and Stop requests; server guard policy remains authoritative.
+
+### Timing
 
 The backend already returns `tick_interval_seconds` in the TrainerLab session DTO.
 The iOS client should treat that value as authoritative for heartbeat and vitals

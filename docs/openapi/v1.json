@@ -2024,6 +2024,62 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/decisions/{decision_id}/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_decide_scenario_branch",
+        "summary": "Decide Scenario Branch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "decision_id",
+            "schema": {
+              "title": "Decision Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_trainerlab_access_me",
@@ -3667,6 +3723,53 @@
         "tags": [
           "trainerlab"
         ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/summary/review/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_review_debrief",
+        "summary": "Review Debrief",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebriefReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
         "security": [
           {
             "JWTAuth": []
@@ -7330,6 +7433,37 @@
         "title": "LabAccessOut",
         "type": "object"
       },
+      "TrainerCommandAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id"
+        ],
+        "title": "TrainerCommandAck",
+        "type": "object"
+      },
+      "ScenarioDecisionIn": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "title": "ScenarioDecisionIn",
+        "type": "object"
+      },
       "DictionaryItemOut": {
         "properties": {
           "code": {
@@ -8153,6 +8287,162 @@
           }
         },
         "title": "ControlPlaneDebugOut",
+        "type": "object"
+      },
+      "DashboardAttentionItemOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "severity"
+        ],
+        "title": "DashboardAttentionItemOut",
+        "type": "object"
+      },
+      "DashboardCapabilitiesOut": {
+        "properties": {
+          "lifecycle_actions": {
+            "items": {
+              "enum": [
+                "start",
+                "pause",
+                "resume",
+                "stop"
+              ],
+              "type": "string"
+            },
+            "title": "Lifecycle Actions",
+            "type": "array"
+          },
+          "can_record_learner_action": {
+            "default": false,
+            "title": "Can Record Learner Action",
+            "type": "boolean"
+          },
+          "can_inject_event": {
+            "default": false,
+            "title": "Can Inject Event",
+            "type": "boolean"
+          },
+          "can_override_patient_state": {
+            "default": false,
+            "title": "Can Override Patient State",
+            "type": "boolean"
+          },
+          "can_steer": {
+            "default": false,
+            "title": "Can Steer",
+            "type": "boolean"
+          },
+          "can_annotate": {
+            "default": false,
+            "title": "Can Annotate",
+            "type": "boolean"
+          },
+          "can_tick_ai": {
+            "default": false,
+            "title": "Can Tick Ai",
+            "type": "boolean"
+          },
+          "can_tick_vitals": {
+            "default": false,
+            "title": "Can Tick Vitals",
+            "type": "boolean"
+          },
+          "can_view_debrief": {
+            "default": false,
+            "title": "Can View Debrief",
+            "type": "boolean"
+          }
+        },
+        "title": "DashboardCapabilitiesOut",
+        "type": "object"
+      },
+      "DashboardPresentationOut": {
+        "properties": {
+          "patient_summary": {
+            "default": "",
+            "title": "Patient Summary",
+            "type": "string"
+          },
+          "primary_cue": {
+            "default": "",
+            "title": "Primary Cue",
+            "type": "string"
+          },
+          "cue_rationale": {
+            "default": "",
+            "title": "Cue Rationale",
+            "type": "string"
+          },
+          "upcoming_changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upcoming Changes",
+            "type": "array"
+          },
+          "monitoring_focus": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Monitoring Focus",
+            "type": "array"
+          },
+          "attention_items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardAttentionItemOut"
+            },
+            "title": "Attention Items",
+            "type": "array"
+          },
+          "held_vital_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Vital Types",
+            "type": "array"
+          },
+          "capabilities": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardCapabilitiesOut"
+              }
+            ]
+          },
+          "progression": {
+            "additionalProperties": true,
+            "title": "Progression",
+            "type": "object"
+          },
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "title": "DashboardPresentationOut",
         "type": "object"
       },
       "EventTimelineEntryOut": {
@@ -9493,6 +9783,18 @@
             "title": "Active Elapsed Seconds",
             "type": "integer"
           },
+          "clock_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Observed At"
+          },
           "tick_count": {
             "default": 0,
             "title": "Tick Count",
@@ -9608,6 +9910,12 @@
             "additionalProperties": true,
             "title": "Request Metadata",
             "type": "object"
+          },
+          "latest_event_sequence": {
+            "default": 0,
+            "description": "Highest committed session event sequence represented by this snapshot.",
+            "title": "Latest Event Sequence",
+            "type": "integer"
           },
           "latest_event_cursor": {
             "anyOf": [
@@ -9953,6 +10261,9 @@
           "runtime_snapshot": {
             "$ref": "#/components/schemas/RuntimeSnapshotOut"
           },
+          "presentation": {
+            "$ref": "#/components/schemas/DashboardPresentationOut"
+          },
           "event_timeline": {
             "$ref": "#/components/schemas/EventTimelineOut"
           },
@@ -9966,6 +10277,7 @@
           "status",
           "scenario_snapshot",
           "runtime_snapshot",
+          "presentation",
           "event_timeline",
           "metadata"
         ],
@@ -10136,24 +10448,6 @@
           "message"
         ],
         "title": "GuardDenialDetail",
-        "type": "object"
-      },
-      "TrainerCommandAck": {
-        "properties": {
-          "command_id": {
-            "title": "Command Id",
-            "type": "string"
-          },
-          "status": {
-            "default": "accepted",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "command_id"
-        ],
-        "title": "TrainerCommandAck",
         "type": "object"
       },
       "SteerPromptIn": {
@@ -10618,6 +10912,16 @@
               }
             ],
             "title": "Client Event Id"
+          },
+          "voice_provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceActionProvenanceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10646,6 +10950,49 @@
           "kind"
         ],
         "title": "InterventionDetailsIn",
+        "type": "object"
+      },
+      "VoiceActionProvenanceIn": {
+        "additionalProperties": false,
+        "description": "Audit-only capture metadata; never an instruction or performed-action source.",
+        "properties": {
+          "capture_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "push_to_talk",
+            "default": "push_to_talk",
+            "title": "Source",
+            "type": "string"
+          },
+          "original_transcript": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Original Transcript",
+            "type": "string"
+          },
+          "reviewed_transcript": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reviewed Transcript",
+            "type": "string"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "capture_id",
+          "original_transcript",
+          "reviewed_transcript",
+          "confirmed"
+        ],
+        "title": "VoiceActionProvenanceIn",
         "type": "object"
       },
       "AssessmentFindingCreateIn": {
@@ -11159,6 +11506,51 @@
               }
             ],
             "title": "Ai Debrief"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Revision"
+          },
+          "evidence_omitted_count": {
+            "default": 0,
+            "title": "Evidence Omitted Count",
+            "type": "integer"
+          },
+          "debrief_status": {
+            "default": "not_requested",
+            "title": "Debrief Status",
+            "type": "string"
+          },
+          "debrief_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debrief Error"
+          },
+          "ai_debrief_revision": {
+            "default": 0,
+            "title": "Ai Debrief Revision",
+            "type": "integer"
           }
         },
         "required": [
@@ -11173,6 +11565,44 @@
           "ai_rationale_notes"
         ],
         "title": "RunSummaryOut",
+        "type": "object"
+      },
+      "DebriefReviewIn": {
+        "properties": {
+          "evidence_revision": {
+            "title": "Evidence Revision",
+            "type": "string"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "maxLength": 1500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          }
+        },
+        "required": [
+          "evidence_revision"
+        ],
+        "title": "DebriefReviewIn",
         "type": "object"
       },
       "ProblemStatusOut": {
